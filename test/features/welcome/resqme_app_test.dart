@@ -5,10 +5,12 @@ import 'package:resqme/features/welcome/data/consent_repository.dart';
 class _FakeConsentRepository implements ConsentRepository {
   _FakeConsentRepository({required this.accepted});
 
-  final bool accepted;
+  bool accepted;
 
   @override
-  Future<void> acceptTerms() async {}
+  Future<void> acceptTerms() async {
+    accepted = true;
+  }
 
   @override
   Future<bool> hasAcceptedTerms() async => accepted;
@@ -39,5 +41,23 @@ void main() {
     expect(find.text('Emergency Support'), findsOneWidget);
     expect(find.text('Flutter Demo Home Page'), findsNothing);
     expect(find.text('0'), findsNothing);
+  });
+
+  testWidgets('persists consent and opens public emergency support', (
+    WidgetTester tester,
+  ) async {
+    final repository = _FakeConsentRepository(accepted: false);
+    await tester.pumpWidget(ResQMeApp(consentRepository: repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('I Agree'));
+    await tester.pumpAndSettle();
+
+    expect(repository.accepted, isTrue);
+    expect(find.text('Emergency Support'), findsOneWidget);
+    expect(find.text('Scan QR'), findsOneWidget);
+    expect(find.text('First Aid'), findsOneWidget);
+    expect(find.text('Emergency Hotlines'), findsOneWidget);
+    expect(find.text('DRRM Guidance'), findsOneWidget);
   });
 }
