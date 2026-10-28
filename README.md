@@ -49,6 +49,8 @@ production client, and do not deploy Firebase resources from this repository.
 flutter analyze
 flutter test
 firebase.cmd emulators:exec --only auth,firestore,functions "flutter test"
+cd functions
+firebase.cmd --config ..\\firebase.json --project resqme-943ee emulators:exec --only firestore "npm.cmd run test:rules"
 flutter build apk --debug
 ```
 
