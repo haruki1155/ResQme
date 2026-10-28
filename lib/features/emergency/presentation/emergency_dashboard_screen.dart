@@ -36,18 +36,30 @@ class EmergencyDashboardScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 24),
                       Expanded(
-                        child: GridView.count(
-                          crossAxisCount: columns,
-                          mainAxisSpacing: 16,
-                          crossAxisSpacing: 16,
-                          childAspectRatio: columns == 1 ? 3.4 : 1.65,
-                          children: destinations
-                              .map(
-                                (destination) =>
-                                    _EmergencyDestinationCard(destination),
+                        child: columns == 1
+                            ? ListView.separated(
+                                itemCount: destinations.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: 16),
+                                itemBuilder: (_, index) =>
+                                    _EmergencyDestinationCard(
+                                      destinations[index],
+                                    ),
                               )
-                              .toList(),
-                        ),
+                            : GridView.count(
+                                crossAxisCount: columns,
+                                mainAxisSpacing: 16,
+                                crossAxisSpacing: 16,
+                                childAspectRatio: 1.2,
+                                children: destinations
+                                    .map(
+                                      (destination) =>
+                                          _EmergencyDestinationCard(
+                                            destination,
+                                          ),
+                                    )
+                                    .toList(),
+                              ),
                       ),
                     ],
                   ),
@@ -81,6 +93,7 @@ class _EmergencyDestinationCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [

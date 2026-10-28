@@ -5,14 +5,17 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:resqme/app/resqme_app.dart';
+import 'package:resqme/core/config/app_environment.dart';
 import 'package:resqme/core/config/firebase_environment.dart';
 import 'package:resqme/features/welcome/data/shared_preferences_consent_repository.dart';
 import 'package:resqme/firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  if (kDebugMode) {
+  if (AppEnvironment.allowsFirebaseInitialization(isDebugBuild: kDebugMode)) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     await configureFirebaseForDebug(
       _FlutterFireConnector(),
       defaultTargetPlatform,
