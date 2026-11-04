@@ -4,6 +4,7 @@ import 'package:resqme/app/resqme_theme.dart';
 import 'package:resqme/features/emergency/presentation/emergency_dashboard_screen.dart';
 import 'package:resqme/features/medical_boundary/presentation/medical_access_boundary_screen.dart';
 import 'package:resqme/features/public_support/presentation/first_aid_screens.dart';
+import 'package:resqme/features/public_support/presentation/drrm_screen.dart';
 import 'package:resqme/features/tier1_shell/presentation/tier1_pending_screen.dart';
 import 'package:resqme/features/welcome/data/consent_repository.dart';
 import 'package:resqme/features/welcome/presentation/splash_screen.dart';
@@ -45,12 +46,7 @@ class ResQMeApp extends StatelessWidget {
               'An approved public hotline directory will be added when its regional contacts are supplied.',
           icon: Icons.call_outlined,
         ),
-        AppRoutes.drrm: (_) => const Tier1PendingScreen(
-          title: 'DRRM instructions',
-          message:
-              'Reviewed offline disaster-preparedness guidance will be added in the next Tier 1 milestone.',
-          icon: Icons.shield_outlined,
-        ),
+        AppRoutes.drrm: (_) => const DrrmScreen(),
         AppRoutes.profile: (_) => const Tier1PendingScreen(
           title: 'Student profile',
           message:
