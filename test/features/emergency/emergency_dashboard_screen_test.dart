@@ -4,7 +4,7 @@ import 'package:resqme/features/emergency/presentation/emergency_dashboard_scree
 
 void main() {
   testWidgets(
-    'fits every public destination on a narrow enlarged-text screen',
+    'shows the mockup-aligned Tier 1 Home Lobby on a narrow enlarged-text screen',
     (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(360, 800));
       tester.view.devicePixelRatio = 1;
@@ -20,14 +20,18 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Scan QR'), findsOneWidget);
-      expect(find.text('First Aid'), findsOneWidget);
+      expect(find.text('Ready when it matters.'), findsOneWidget);
+      expect(find.text('Emergency ID is active'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Tier 2 information'), 300);
+      expect(find.text('Tier 2 information'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('First-aid instructions'), 300);
+      expect(find.text('First-aid instructions'), findsOneWidget);
 
-      await tester.scrollUntilVisible(find.text('Emergency Hotlines'), 300);
-      expect(find.text('Emergency Hotlines'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Emergency hotlines'), 300);
+      expect(find.text('Emergency hotlines'), findsOneWidget);
 
-      await tester.scrollUntilVisible(find.text('DRRM Guidance'), 300);
-      expect(find.text('DRRM Guidance'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('DRRM instructions'), 300);
+      expect(find.text('DRRM instructions'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

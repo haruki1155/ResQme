@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 abstract final class ResQMeTheme {
   static ThemeData get light {
-    const emergencyBlue = Color(0xFF0757A1);
+    const emergencyBlue = Color(0xFFE92B32);
     final colorScheme = ColorScheme.fromSeed(
       seedColor: emergencyBlue,
       brightness: Brightness.light,
@@ -11,7 +11,7 @@ abstract final class ResQMeTheme {
     return ThemeData(
       colorScheme: colorScheme,
       useMaterial3: true,
-      scaffoldBackgroundColor: const Color(0xFFF7F9FC),
+      scaffoldBackgroundColor: const Color(0xFFF1F3F7),
       appBarTheme: AppBarTheme(
         backgroundColor: colorScheme.surface,
         foregroundColor: colorScheme.onSurface,
@@ -19,6 +19,9 @@ abstract final class ResQMeTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
+          backgroundColor: emergencyBlue,
+          foregroundColor: Colors.white,
+          shape: const StadiumBorder(),
           minimumSize: const Size.fromHeight(52),
           textStyle: const TextStyle(fontWeight: FontWeight.w700),
         ),

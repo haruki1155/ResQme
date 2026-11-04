@@ -28,19 +28,35 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
+    return Scaffold(
+      backgroundColor: const Color(0xFFE92B32),
+      body: const Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.health_and_safety_outlined, size: 64),
+            Icon(
+              Icons.health_and_safety_outlined,
+              color: Colors.white,
+              size: 72,
+            ),
             SizedBox(height: 16),
             Text(
-              'ResQMe',
-              style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
+              'RESQME  |  QR ID',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 30,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             SizedBox(height: 8),
-            Text('Emergency support, when it matters.'),
+            Text(
+              'EMERGENCY IDENTITY',
+              style: TextStyle(
+                color: Colors.white70,
+                letterSpacing: 3,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
       ),

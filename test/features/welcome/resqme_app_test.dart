@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:resqme/app/resqme_app.dart';
 import 'package:resqme/features/welcome/data/consent_repository.dart';
@@ -29,9 +30,21 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Terms & Privacy'), findsOneWidget);
+    expect(find.text('Terms and Conditions'), findsOneWidget);
     expect(find.text('Flutter Demo Home Page'), findsNothing);
     expect(find.text('0'), findsNothing);
+  });
+
+  testWidgets('requires agreement before Terms can be accepted', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      ResQMeApp(consentRepository: _FakeConsentRepository(accepted: false)),
+    );
+    await tester.pumpAndSettle();
+
+    final button = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
+    expect(button.onPressed, isNull);
   });
 
   testWidgets('opens the dashboard when consent has already been accepted', (
@@ -42,7 +55,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Emergency Support'), findsOneWidget);
+    expect(find.text('RESQME  |  QR ID'), findsOneWidget);
     expect(find.text('Flutter Demo Home Page'), findsNothing);
     expect(find.text('0'), findsNothing);
   });
@@ -54,15 +67,15 @@ void main() {
     await tester.pumpWidget(ResQMeApp(consentRepository: repository));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('I Agree'));
+    expect(find.text('Accept & continue'), findsOneWidget);
+    await tester.scrollUntilVisible(find.byType(Checkbox), 300);
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    await tester.tap(find.text('Accept & continue'));
     await tester.pumpAndSettle();
 
     expect(repository.accepted, isTrue);
-    expect(find.text('Emergency Support'), findsOneWidget);
-    expect(find.text('Scan QR'), findsOneWidget);
-    expect(find.text('First Aid'), findsOneWidget);
-    expect(find.text('Emergency Hotlines'), findsOneWidget);
-    expect(find.text('DRRM Guidance'), findsOneWidget);
+    expect(find.text('Ready when it matters.'), findsOneWidget);
   });
 
   testWidgets(
@@ -76,17 +89,20 @@ void main() {
       await tester.pumpWidget(ResQMeApp(consentRepository: repository));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('I Agree'));
+      await tester.scrollUntilVisible(find.byType(Checkbox), 300);
+      await tester.tap(find.byType(Checkbox));
+      await tester.pump();
+      await tester.tap(find.text('Accept & continue'));
       await tester.pump();
 
       expect(repository.accepted, isFalse);
-      expect(find.text('Emergency Support'), findsNothing);
+      expect(find.text('Ready when it matters.'), findsNothing);
 
       persistence.complete();
       await tester.pumpAndSettle();
 
       expect(repository.accepted, isTrue);
-      expect(find.text('Emergency Support'), findsOneWidget);
+      expect(find.text('Ready when it matters.'), findsOneWidget);
     },
   );
 }
