@@ -7,7 +7,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import {doc, getDoc, setDoc} from 'firebase/firestore';
+import {doc, getDoc, setDoc, updateDoc, deleteDoc} from 'firebase/firestore';
 
 let testEnvironment: RulesTestEnvironment;
 
@@ -67,5 +67,14 @@ test('synthetic medical records and acknowledgments are owner-read-only',async()
     await getDoc(doc(owner,path.join('/')));
     for(const context of [testEnvironment.unauthenticatedContext(),testEnvironment.authenticatedContext('other')]) await assertFails(getDoc(doc(context.firestore(),path.join('/'))));
     await assertFails(setDoc(doc(owner,path.join('/')),{guardianVerified:true}));
+    await assertFails(updateDoc(doc(owner,path.join('/')),{guardianVerified:true}));
+    await assertFails(deleteDoc(doc(owner,path.join('/'))));
   }
+});
+test('QR references are private and no client may create/update/delete them',async()=>{
+  await testEnvironment.withSecurityRulesDisabled(async context=>{await setDoc(doc(context.firestore(),'studentQrCredentials','qr-owner'),{payload:'resqme:v1:synthetic',verificationStatus:'unverified'});});
+  const owner=testEnvironment.authenticatedContext('qr-owner').firestore();
+  const ref=doc(owner,'studentQrCredentials','qr-owner');await getDoc(ref);
+  await assertFails(setDoc(ref,{payload:'forged'}));await assertFails(updateDoc(ref,{verificationStatus:'approved'}));await assertFails(deleteDoc(ref));
+  for(const context of [testEnvironment.unauthenticatedContext(),testEnvironment.authenticatedContext('other')]) await assertFails(getDoc(doc(context.firestore(),'studentQrCredentials','qr-owner')));
 });

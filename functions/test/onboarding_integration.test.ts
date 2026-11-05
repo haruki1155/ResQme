@@ -68,3 +68,26 @@ test('minor test save never verifies guardian authorization or enrollment', {tim
   assert.equal(record.guardianAuthorizationStatus,'not_verified');assert.equal(record.syntheticOnly,true);assert.equal(record.medicalStatus,'completed_synthetic');
   assert.equal((await store.doc('studentProfiles/qa-medical-minor').get()).get('status'),'pending_guardian');
 });
+test('QR denies forged requests and non-pending/missing registration', {timeout:20000},async()=>{
+  await assert.rejects(()=>anonymous.call('ensureMyTier1Qr',{}),{code:'functions/unauthenticated'});
+  await assert.rejects(()=>adult.call('ensureMyTier1Qr',{uid:'other'}),{code:'functions/invalid-argument'});
+  const ref=store.doc('studentProfiles/qa-medical-outsider');const before=(await ref.get()).data()!;
+  try{
+    for(const status of ['approved','rejected','deactivated','unknown']){await ref.update({status});await assert.rejects(()=>outsider.call('ensureMyTier1Qr',{}),{code:'functions/failed-precondition'});}
+    await ref.delete();await assert.rejects(()=>outsider.call('ensureMyTier1Qr',{}),{code:'functions/failed-precondition'});
+  }finally{await ref.set(before);}
+});
+test('concurrent QR calls produce one opaque persistent unverified reference without QA or medical completion', {timeout:20000},async()=>{
+  const results=await Promise.all(Array.from({length:4},()=>outsider.call('ensureMyTier1Qr',{})));
+  const first=results[0].data as Record<string,unknown>;
+  assert.match(first.payload as string,/^resqme:v1:[A-Za-z0-9_-]{43}$/);
+  assert.equal(first.verificationStatus,'unverified');
+  for(const result of results) assert.deepEqual(result.data,first);
+  assert.deepEqual((await outsider.call('ensureMyTier1Qr',{})).data,first);
+  assert.equal((await store.doc('studentMedicalRecords/qa-medical-outsider').get()).exists,false);
+  assert.equal((await store.doc('studentProfiles/qa-medical-outsider').get()).get('status'),'pending_review');
+  const credential=(await store.doc('studentQrCredentials/qa-medical-outsider').get()).data()!;
+  assert.deepEqual(Object.keys(credential).sort(),['issuedAt','payload','verificationStatus']);
+  assert.equal(((await minor.call('ensureMyTier1Qr',{})).data as Record<string,unknown>).verificationStatus,'unverified');
+  assert.equal((await store.doc('studentProfiles/qa-medical-minor').get()).get('status'),'pending_guardian');
+});
