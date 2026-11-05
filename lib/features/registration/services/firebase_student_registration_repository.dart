@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/registration_draft.dart';
 import '../models/student_registration_profile.dart';
 import 'student_registration_repository.dart';
+import '../../../core/data/account_operation_lock.dart';
 
 /// Implementations must be configured for local emulators before injection.
 abstract interface class RegistrationClient {
@@ -82,9 +83,14 @@ class FlutterFireRegistrationClient implements RegistrationClient {
 
 class FirebaseStudentRegistrationRepository
     implements StudentRegistrationRepository {
-  FirebaseStudentRegistrationRepository(this.client);
+  FirebaseStudentRegistrationRepository(
+    this.client, {
+    AccountOperationLock? operationLock,
+  }) : operationLock = operationLock ?? AccountOperationLock();
   final RegistrationClient client;
-  bool _busy = false;
+  final AccountOperationLock operationLock;
+  bool get _busy => operationLock.busy;
+  set _busy(bool value) => operationLock.busy = value;
   static const _retry =
       'Unable to complete registration. Please retry. Your account remains restricted.';
   RegistrationResult _error(Object error, {bool signIn = false}) {
