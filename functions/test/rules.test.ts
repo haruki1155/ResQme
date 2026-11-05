@@ -53,3 +53,19 @@ test('only the profile owner can read a submitted registration', async () => {
   await assertFails(getDoc(doc(owner, 'medicalRecords', 'owner')));
   await assertFails(setDoc(doc(owner, 'qrCredentials', 'owner'), {active: true}));
 });
+test('synthetic medical records and acknowledgments are owner-read-only',async()=>{
+  const tester=testEnvironment.authenticatedContext('medical-owner').firestore();
+  await assertFails(setDoc(doc(tester,'qaTesters','medical-owner'),{enabled:true,syntheticOnly:true}));
+  await assertFails(getDoc(doc(tester,'qaTesters','medical-owner')));
+  await testEnvironment.withSecurityRulesDisabled(async context=>{
+    await setDoc(doc(context.firestore(),'studentMedicalRecords','medical-owner'),{syntheticOnly:true});
+    await setDoc(doc(context.firestore(),'studentMedicalRecords','medical-owner','acknowledgments','request-0001'),{version:'synthetic-medical-v1'});
+  });
+  for(const suffix of [[],['acknowledgments','request-0001']]){
+    const path=['studentMedicalRecords','medical-owner',...suffix];
+    const owner=testEnvironment.authenticatedContext('medical-owner').firestore();
+    await getDoc(doc(owner,path.join('/')));
+    for(const context of [testEnvironment.unauthenticatedContext(),testEnvironment.authenticatedContext('other')]) await assertFails(getDoc(doc(context.firestore(),path.join('/'))));
+    await assertFails(setDoc(doc(owner,path.join('/')),{guardianVerified:true}));
+  }
+});
