@@ -21,13 +21,21 @@ class FlutterFireRegistrationClient implements RegistrationClient {
     required this.auth,
     required this.firestore,
     required this.functions,
+    String expectedProjectId = 'demo-resqme',
   }) {
+    if (!['demo-resqme', 'resqme-943ee'].contains(expectedProjectId)) {
+      throw StateError('Unsupported registration project.');
+    }
     if ([
-      auth.app,
-      firestore.app,
-      functions.app,
-    ].any((app) => app.options.projectId != 'demo-resqme')) {
-      throw StateError('Registration requires the local demo project.');
+          auth.app,
+          firestore.app,
+          functions.app,
+        ].any((app) => app.options.projectId != expectedProjectId) ||
+        auth.app.name != firestore.app.name ||
+        auth.app.name != functions.app.name) {
+      throw StateError(
+        'Registration clients must share the selected Firebase app.',
+      );
     }
   }
   final FirebaseAuth auth;
@@ -153,21 +161,37 @@ class FirebaseStudentRegistrationRepository
 
   @override
   Future<RegistrationResult> signIn(String email, String password) async {
+    if (_busy) {
+      return const RegistrationResult(
+        RegistrationState.failure,
+        message: 'An account operation is in progress. Please wait.',
+      );
+    }
+    _busy = true;
     try {
       await client.signIn(email.trim().toLowerCase(), password);
       return await loadOwnProfile();
     } catch (error) {
       return _error(error, signIn: true);
+    } finally {
+      _busy = false;
     }
   }
 
   @override
   Future<RegistrationResult> loadOwnProfile() async {
+    final session = client.currentEmail;
     if (client.currentEmail == null) {
       return const RegistrationResult(RegistrationState.signedOut);
     }
     try {
       final data = await client.readOwnProfile();
+      if (client.currentEmail != session) {
+        return const RegistrationResult(
+          RegistrationState.failure,
+          message: 'Account changed. Please retry.',
+        );
+      }
       if (data == null) {
         return const RegistrationResult(
           RegistrationState.authCreatedProfileIncomplete,
@@ -201,5 +225,13 @@ class FirebaseStudentRegistrationRepository
   }
 
   @override
-  Future<void> signOut() => client.signOut();
+  Future<void> signOut() async {
+    if (_busy) throw StateError('An account operation is in progress.');
+    _busy = true;
+    try {
+      await client.signOut();
+    } finally {
+      _busy = false;
+    }
+  }
 }

@@ -10,22 +10,32 @@ import 'package:resqme/core/config/firebase_environment.dart';
 import 'package:resqme/features/welcome/data/shared_preferences_consent_repository.dart';
 import 'package:resqme/features/registration/services/student_registration_repository.dart';
 import 'package:resqme/features/registration/services/firebase_student_registration_repository.dart';
+import 'package:resqme/firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   StudentRegistrationRepository? registrationRepository;
   Stream<void>? authChanges;
-  if (AppEnvironment.allowsFirebaseInitialization(isDebugBuild: kDebugMode)) {
+  final backend = BackendSelection.resolve(
+    const String.fromEnvironment('RESQME_BACKEND'),
+    isDebugBuild: kDebugMode,
+  );
+  if (backend != null) {
     try {
       final app = await Firebase.initializeApp(
-        name: 'resqme-local',
-        options: const FirebaseOptions(
-          apiKey: 'AIzaSyDemoResqmeLocalOnly000000000000000',
-          appId: '1:1234567890:android:0000000000000000000000',
-          messagingSenderId: '1234567890',
-          projectId: 'demo-resqme',
-        ),
+        name: 'resqme-${backend.mode}',
+        options: backend.isEmulator
+            ? const FirebaseOptions(
+                apiKey: 'AIzaSyDemoResqmeLocalOnly000000000000000',
+                appId: '1:1234567890:android:0000000000000000000000',
+                messagingSenderId: '1234567890',
+                projectId: 'demo-resqme',
+              )
+            : DefaultFirebaseOptions.currentPlatform,
       );
+      if (app.options.projectId != backend.projectId) {
+        throw StateError('Unexpected Firebase project.');
+      }
       final auth = FirebaseAuth.instanceFor(app: app);
       final firestore = FirebaseFirestore.instanceFor(app: app);
       final functions = FirebaseFunctions.instanceFor(
@@ -33,16 +43,19 @@ Future<void> main() async {
         region: 'us-central1',
       );
       firestore.settings = const Settings(persistenceEnabled: false);
-      await configureFirebaseForDebug(
-        _FlutterFireConnector(auth, firestore, functions),
-        defaultTargetPlatform,
-        loopbackOnly: true,
-      );
+      if (backend.isEmulator) {
+        await configureFirebaseForDebug(
+          _FlutterFireConnector(auth, firestore, functions),
+          defaultTargetPlatform,
+          loopbackOnly: true,
+        );
+      }
       registrationRepository = FirebaseStudentRegistrationRepository(
         FlutterFireRegistrationClient(
           auth: auth,
           firestore: firestore,
           functions: functions,
+          expectedProjectId: backend.projectId,
         ),
       );
       authChanges = auth.authStateChanges().map<void>((_) {});

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:resqme/features/registration/models/registration_draft.dart';
@@ -59,7 +60,35 @@ const draft = RegistrationDraft(
   email: 'synthetic@example.test',
   password: 'secret-password',
 );
+
+class _BlockedClient extends FakeRegistrationClient {
+  final started = Completer<void>(), release = Completer<void>();
+  @override
+  Future<void> submit(Map<String, dynamic> data) async {
+    started.complete();
+    await release.future;
+    await super.submit(data);
+  }
+}
+
 void main() {
+  test(
+    'session mutations cannot switch identity during registration',
+    () async {
+      final client = _BlockedClient();
+      final repo = FirebaseStudentRegistrationRepository(client);
+      final submission = repo.register(draft, acknowledged: true);
+      await client.started.future;
+      expect(
+        (await repo.signIn('other@example.test', 'secret-password')).state,
+        RegistrationState.failure,
+      );
+      await expectLater(repo.signOut(), throwsStateError);
+      expect(client.currentEmail, draft.email);
+      client.release.complete();
+      await submission;
+    },
+  );
   test('decline performs zero Auth and callable requests', () async {
     final client = FakeRegistrationClient();
     final repo = FirebaseStudentRegistrationRepository(client);
