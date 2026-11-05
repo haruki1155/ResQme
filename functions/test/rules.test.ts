@@ -7,7 +7,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import {doc, getDoc} from 'firebase/firestore';
+import {doc, getDoc, setDoc} from 'firebase/firestore';
 
 let testEnvironment: RulesTestEnvironment;
 
@@ -17,7 +17,7 @@ test.before(async () => {
 
   const [host, port] = endpoint.split(':');
   testEnvironment = await initializeTestEnvironment({
-    projectId: 'resqme-943ee',
+    projectId: 'demo-resqme',
     firestore: {
       host,
       port: Number(port),
@@ -34,4 +34,22 @@ test('A0 Firestore rules deny an unauthenticated read', async () => {
   const database = testEnvironment.unauthenticatedContext().firestore();
 
   await assertFails(getDoc(doc(database, 'students', 'synthetic-student')));
+});
+
+test('only the profile owner can read a submitted registration', async () => {
+  await testEnvironment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'studentProfiles', 'owner'), {
+      status: 'pending_review', lrn: null,
+    });
+  });
+  const owner = testEnvironment.authenticatedContext('owner').firestore();
+  await getDoc(doc(owner, 'studentProfiles', 'owner'));
+  const other = testEnvironment.authenticatedContext('other').firestore();
+  await assertFails(getDoc(doc(other, 'studentProfiles', 'owner')));
+  await assertFails(setDoc(doc(other, 'studentProfiles', 'other'), {status: 'approved'}));
+  await assertFails(getDoc(doc(testEnvironment.unauthenticatedContext().firestore(), 'studentProfiles', 'owner')));
+  await assertFails(setDoc(doc(owner, 'studentProfiles', 'owner'), {status: 'approved'}));
+  await assertFails(setDoc(doc(owner, 'studentProfiles', 'owner', 'acknowledgments', 'tier1-registration-v1'), {affirmativeAction: true}));
+  await assertFails(getDoc(doc(owner, 'medicalRecords', 'owner')));
+  await assertFails(setDoc(doc(owner, 'qrCredentials', 'owner'), {active: true}));
 });

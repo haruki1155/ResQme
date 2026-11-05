@@ -1,0 +1,3 @@
+export const noticeVersion = 'tier1-registration-v1';
+export type RegistrationInput = {fullName:string;ageYears:number;noticeVersion:string;acknowledgmentAccepted:boolean;status?:unknown;lrn?:unknown};
+export function validateRegistration(input: RegistrationInput){if(input.noticeVersion!==noticeVersion||input.acknowledgmentAccepted!==true)throw new Error('acknowledgment');if(!input.fullName.trim()||!Number.isInteger(input.ageYears)||input.ageYears<0||input.ageYears>130)throw new Error('profile');return {fullName:input.fullName.trim(),ageYears:input.ageYears,status:input.ageYears<18?'pending_guardian':'pending_review',lrn:null};}

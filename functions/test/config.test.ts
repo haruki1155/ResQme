@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-test('A0 functions module exposes no public endpoint', async () => {
+test('registration callable is exported', async () => {
   const functionsModule = require('../..');
-
-  assert.deepEqual(functionsModule, {});
+  assert.equal(typeof functionsModule.createStudentRegistration, 'function');
 });

@@ -7,8 +7,9 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test lib/test/config.test.js",
+    "test": "npm run build && node --test lib/test/config.test.js lib/test/create_student_registration.test.js lib/test/emulator_config.test.js",
     "test:rules": "npm run build && node --test lib/test/rules.test.js"
+    ,"test:integration": "node --test lib/test/registration_integration.test.js"
   },
   "dependencies": {
     "firebase-admin": "^14.5.0",
