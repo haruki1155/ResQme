@@ -20,8 +20,9 @@ class FakeRegistrationClient implements RegistrationClient {
   @override
   Future<void> createAccount(String email, String password) async {
     creates++;
-    if (authError != null)
+    if (authError != null) {
       throw FirebaseException(plugin: 'auth', code: authError!);
+    }
     currentEmail = email;
   }
 
@@ -29,16 +30,18 @@ class FakeRegistrationClient implements RegistrationClient {
   Future<void> submit(Map<String, dynamic> data) async {
     calls++;
     payload = data;
-    if (callError != null)
+    if (callError != null) {
       throw FirebaseException(plugin: 'functions', code: callError!);
+    }
   }
 
   @override
   Future<Map<String, dynamic>?> readOwnProfile() async => profile;
   @override
   Future<void> signIn(String email, String password) async {
-    if (authError != null)
+    if (authError != null) {
       throw FirebaseException(plugin: 'auth', code: authError!);
+    }
     currentEmail = email;
   }
 

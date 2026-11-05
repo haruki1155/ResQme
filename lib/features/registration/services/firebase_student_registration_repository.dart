@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import '../models/registration_draft.dart';
 import '../models/student_registration_profile.dart';
 import 'student_registration_repository.dart';
@@ -111,11 +110,12 @@ class FirebaseStudentRegistrationRepository
     RegistrationDraft draft, {
     required bool acknowledged,
   }) async {
-    if (!acknowledged || _busy)
+    if (!acknowledged || _busy) {
       return const RegistrationResult(
         RegistrationState.failure,
         message: 'Confirm the privacy acknowledgment before submitting.',
       );
+    }
     _busy = true;
     var hasAccount = false;
     try {
@@ -139,11 +139,12 @@ class FirebaseStudentRegistrationRepository
       });
       return await loadOwnProfile();
     } catch (error) {
-      if (hasAccount)
+      if (hasAccount) {
         return const RegistrationResult(
           RegistrationState.authCreatedProfileIncomplete,
           message: _retry,
         );
+      }
       return _error(error);
     } finally {
       _busy = false;
@@ -162,15 +163,17 @@ class FirebaseStudentRegistrationRepository
 
   @override
   Future<RegistrationResult> loadOwnProfile() async {
-    if (client.currentEmail == null)
+    if (client.currentEmail == null) {
       return const RegistrationResult(RegistrationState.signedOut);
+    }
     try {
       final data = await client.readOwnProfile();
-      if (data == null)
+      if (data == null) {
         return const RegistrationResult(
           RegistrationState.authCreatedProfileIncomplete,
           message: _retry,
         );
+      }
       return RegistrationResult(
         RegistrationState.pending,
         profile: StudentRegistrationProfile.fromFirestore(data),
@@ -186,8 +189,9 @@ class FirebaseStudentRegistrationRepository
       await client.sendPasswordReset(email.trim().toLowerCase());
     } catch (error) {
       if (error is! FirebaseException ||
-          !['user-not-found', 'invalid-email'].contains(error.code))
+          !['user-not-found', 'invalid-email'].contains(error.code)) {
         return _error(error);
+      }
     }
     return const RegistrationResult(
       RegistrationState.signedOut,
