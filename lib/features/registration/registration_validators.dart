@@ -1,6 +1,8 @@
 bool isMinor(int ageYears) => ageYears < 18;
 String? validateFullName(String? value) =>
-    value == null || value.trim().isEmpty ? 'Full name is required.' : null;
+    value == null || value.trim().length < 2 || value.trim().length > 120
+    ? 'Use 2–120 characters for the name.'
+    : null;
 String? validateAge(int? value) =>
     value == null || value < 0 || value > 130 ? 'Enter a valid age.' : null;
 String? validatePassword(String? value) =>

@@ -51,3 +51,29 @@ for (const altered of [false, true]) {
     }
   });
 }
+
+test('approved optional fields persist privately and altered contacts cannot overwrite', {timeout: 15000}, async () => {
+  const user = (await signInAnonymously(auth)).user;
+  const profile = store.doc(`studentProfiles/${user.uid}`);
+  const payload = {...data, ageYears:18, gender:'Female', personalPhone:'0912 345 6789', guardianName:'Synthetic Guardian', guardianRelationship:'Parent', guardianPhone:'+63 912 345 6789', secondaryName:'Synthetic Contact', secondaryPhone:'0912-345-6789', status:'approved', lrn:'forged', password:'must-not-persist'};
+  try {
+    await call(payload);
+    const before = (await profile.get()).data()!;
+    assert.equal(before.gender,'Female');
+    assert.equal(before.personalContactNumber,'09123456789');
+    assert.deepEqual(before.emergencyContacts,{primary:{fullName:'Synthetic Guardian',relationship:'Parent',phoneNumber:'+639123456789'},secondary:{fullName:'Synthetic Contact',phoneNumber:'09123456789'}});
+    assert.equal(before.status,'pending_review');
+    assert.equal(before.lrn,null);
+    assert.equal(before.password,undefined);
+    await call(payload);
+    for (const field of ['gender','personalPhone','guardianName','guardianRelationship','guardianPhone','secondaryName','secondaryPhone']) {
+      const replacement = field.includes('Phone') ? '09999999999' : 'Different';
+      await assert.rejects(() => call({...payload,[field]:replacement}), {code:'functions/already-exists'});
+    }
+    assert.deepEqual((await profile.get()).data(),before);
+    assert.equal((await profile.collection('acknowledgments').get()).size,1);
+  } finally {
+    for (const ack of (await profile.collection('acknowledgments').get()).docs) await ack.ref.delete();
+    await profile.delete(); await user.delete();
+  }
+});
