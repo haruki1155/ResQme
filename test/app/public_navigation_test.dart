@@ -60,7 +60,7 @@ void main() {
     await tester.scrollUntilVisible(find.byTooltip('Profile'), 250);
     await tester.tap(find.byTooltip('Profile'));
     await tester.pumpAndSettle();
-    expect(find.text('Student profile'), findsOneWidget);
+    expect(find.text('Student Account'), findsOneWidget);
   });
 
   testWidgets('Tier 2 route presents a boundary without profile data', (

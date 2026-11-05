@@ -22,6 +22,19 @@ class _RecordingConnector implements FirebaseConnector {
 }
 
 void main() {
+  test('registration uses loopback only, including on Android', () async {
+    final connector = _RecordingConnector();
+    await configureFirebaseForDebug(
+      connector,
+      TargetPlatform.android,
+      loopbackOnly: true,
+    );
+    expect(connector.calls, [
+      'auth:127.0.0.1:9099',
+      'firestore:127.0.0.1:8080',
+      'functions:127.0.0.1:5001',
+    ]);
+  });
   test('uses Android emulator host and Firebase emulator ports', () {
     final endpoints = FirebaseEmulatorEndpoints.forPlatform(
       TargetPlatform.android,

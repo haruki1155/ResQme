@@ -9,11 +9,20 @@ import 'package:resqme/features/tier1_shell/presentation/tier1_pending_screen.da
 import 'package:resqme/features/welcome/data/consent_repository.dart';
 import 'package:resqme/features/welcome/presentation/splash_screen.dart';
 import 'package:resqme/features/welcome/presentation/terms_privacy_screen.dart';
+import 'package:resqme/features/registration/services/student_registration_repository.dart';
+import 'package:resqme/features/registration/widgets/student_access_gate.dart';
 
 class ResQMeApp extends StatelessWidget {
-  const ResQMeApp({super.key, required this.consentRepository});
+  const ResQMeApp({
+    super.key,
+    required this.consentRepository,
+    this.registrationRepository,
+    this.authChanges,
+  });
 
   final ConsentRepository consentRepository;
+  final StudentRegistrationRepository? registrationRepository;
+  final Stream<void>? authChanges;
 
   @override
   Widget build(BuildContext context) {
@@ -47,12 +56,17 @@ class ResQMeApp extends StatelessWidget {
           icon: Icons.call_outlined,
         ),
         AppRoutes.drrm: (_) => const DrrmScreen(),
-        AppRoutes.profile: (_) => const Tier1PendingScreen(
-          title: 'Student profile',
-          message:
-              'Synthetic Tier 1 enrollment will be added after the consent fields are approved.',
-          icon: Icons.person_outline,
-        ),
+        AppRoutes.profile: (_) => registrationRepository == null
+            ? const Tier1PendingScreen(
+                title: 'Student Account',
+                message:
+                    'Local registration services are unavailable. Public emergency resources remain accessible.',
+                icon: Icons.person_outline,
+              )
+            : StudentAccessGate(
+                repository: registrationRepository!,
+                authChanges: authChanges,
+              ),
         AppRoutes.medicalBoundary: (_) => const MedicalAccessBoundaryScreen(),
       },
     );

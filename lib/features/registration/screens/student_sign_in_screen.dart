@@ -15,6 +15,24 @@ class StudentSignInScreen extends StatefulWidget {
 }
 
 class _StudentSignInScreenState extends State<StudentSignInScreen> {
+  void createAccount() {
+    final navigator = Navigator.of(context);
+    final onSignedIn = widget.onSignedIn;
+    navigator.push<void>(
+      MaterialPageRoute(
+        builder: (_) => CreateStudentAccountScreen(
+          repository: widget.repository,
+          onRegistered: () {
+            if (navigator.mounted) {
+              navigator.pop();
+              onSignedIn();
+            }
+          },
+        ),
+      ),
+    );
+  }
+
   final form = GlobalKey<FormState>();
   final email = TextEditingController(), password = TextEditingController();
   bool busy = false;
@@ -135,20 +153,7 @@ class _StudentSignInScreenState extends State<StudentSignInScreen> {
                     child: const Text('Forgot password'),
                   ),
                   OutlinedButton(
-                    onPressed: busy
-                        ? null
-                        : () => Navigator.push<void>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => CreateStudentAccountScreen(
-                                repository: widget.repository,
-                                onRegistered: () {
-                                  Navigator.pop(context);
-                                  widget.onSignedIn();
-                                },
-                              ),
-                            ),
-                          ),
+                    onPressed: busy ? null : createAccount,
                     child: const Text('Create account'),
                   ),
                   TextButton(

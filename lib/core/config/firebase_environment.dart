@@ -28,16 +28,12 @@ class FirebaseEmulatorEndpoints {
 
 Future<void> configureFirebaseForDebug(
   FirebaseConnector connector,
-  TargetPlatform platform,
-) async {
+  TargetPlatform platform, {
+  bool loopbackOnly = false,
+}) async {
   final endpoints = FirebaseEmulatorEndpoints.forPlatform(platform);
-  await connector.configureAuth(endpoints.authHost, endpoints.authPort);
-  await connector.configureFirestore(
-    endpoints.firestoreHost,
-    endpoints.firestorePort,
-  );
-  await connector.configureFunctions(
-    endpoints.functionsHost,
-    endpoints.functionsPort,
-  );
+  final host = loopbackOnly ? '127.0.0.1' : endpoints.host;
+  await connector.configureAuth(host, endpoints.authPort);
+  await connector.configureFirestore(host, endpoints.firestorePort);
+  await connector.configureFunctions(host, endpoints.functionsPort);
 }
