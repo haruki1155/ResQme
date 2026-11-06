@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:resqme/app/app_routes.dart';
 
 class EmergencyDashboardScreen extends StatelessWidget {
-  const EmergencyDashboardScreen({super.key});
+  const EmergencyDashboardScreen({super.key, this.accountPanel});
+  final Widget? accountPanel;
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +113,7 @@ class EmergencyDashboardScreen extends StatelessWidget {
                                             ),
                                           ),
                                           Text(
-                                            'Emergency ID is active',
+                                            'Public emergency support is available',
                                             style: TextStyle(
                                               color: Colors.white,
                                               fontWeight: FontWeight.w800,
@@ -133,6 +134,7 @@ class EmergencyDashboardScreen extends StatelessWidget {
                           ],
                         ),
                       ),
+                      ?accountPanel,
                       const SizedBox(height: 36),
                       const Text(
                         'PUBLIC ACCESS',

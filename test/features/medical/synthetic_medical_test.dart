@@ -6,6 +6,9 @@ import 'package:resqme/features/medical/models/synthetic_medical_draft.dart';
 import 'package:resqme/features/medical/services/synthetic_medical_repository.dart';
 import 'package:resqme/features/medical/screens/synthetic_medical_screen.dart';
 import 'package:resqme/features/medical/widgets/finish_medical_record_reminder.dart';
+import 'package:resqme/features/medical/widgets/account_dashboard_panel.dart';
+import 'package:resqme/features/registration/services/firebase_student_registration_repository.dart';
+import '../registration/firebase_student_registration_repository_test.dart' show FakeRegistrationClient;
 
 class FakePilotClient implements PilotClient {
   @override
@@ -13,6 +16,7 @@ class FakePilotClient implements PilotClient {
   int writes = 0;
   String? error;
   Map<String, dynamic>? medical;
+  Map<String, dynamic>? qr;
   Map<String, dynamic> profile = {
     'emergencyContacts': {
       'primary': {'fullName': null, 'relationship': null, 'phoneNumber': null},
@@ -21,7 +25,11 @@ class FakePilotClient implements PilotClient {
   Map<String, dynamic>? lastPayload;
   @override
   Future<Map<String, dynamic>?> readMine(String collection) async =>
-      collection == 'studentProfiles' ? profile : medical;
+      collection == 'studentProfiles'
+      ? profile
+      : collection == 'studentQrCredentials'
+      ? qr
+      : medical;
   @override
   Future<Map<String, dynamic>> invoke(
     String name,
@@ -33,10 +41,11 @@ class FakePilotClient implements PilotClient {
       throw FirebaseException(plugin: 'functions', code: error!);
     }
     if (name == 'ensureMyTier1Qr') {
-      return {
+      qr = {
         'payload': 'resqme:v1:${'A' * 43}',
         'verificationStatus': 'unverified',
       };
+      return qr!;
     }
     medical = {
       'schemaVersion': 1,
@@ -54,6 +63,12 @@ class FakePilotClient implements PilotClient {
 }
 
 void main() {
+  testWidgets('dashboard refreshes medical completion after returning from account route', (tester)async{
+    final client=FakePilotClient();
+    await tester.pumpWidget(MaterialApp(home:Scaffold(body:AccountDashboardPanel(registration:FirebaseStudentRegistrationRepository(FakeRegistrationClient()..currentEmail='synthetic@example.test'),medical:SyntheticMedicalRepository(client))),routes:{'/profile':(context)=>Scaffold(body:TextButton(onPressed:(){client.medical={'schemaVersion':1,'syntheticOnly':true,'medicalStatus':'completed_synthetic','guardianAuthorizationStatus':'not_verified','revision':1,'conditions':{'state':'unknown','details':null},'allergies':{'state':'unknown','details':null}};Navigator.pop(context);},child:const Text('Synthetic save and return')))}));
+    await tester.pumpAndSettle();await tester.tap(find.text('Finish now'));await tester.pumpAndSettle();await tester.tap(find.text('Synthetic save and return'));await tester.pumpAndSettle();
+    expect(find.text('Finish Medical Record'),findsNothing);expect(find.text('View/Update Medical Record'),findsOneWidget);
+  });
   test('reminder snooze belongs to the signed-in session', () {
     final client = FakePilotClient();
     final repo = SyntheticMedicalRepository(client);

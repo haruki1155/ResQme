@@ -34,7 +34,11 @@ class FirebasePilotClient implements PilotClient {
   String? get uid => auth.currentUser?.uid;
   @override
   Future<Map<String, dynamic>?> readMine(String collection) async {
-    if (!['studentProfiles', 'studentMedicalRecords'].contains(collection)) {
+    if (![
+      'studentProfiles',
+      'studentMedicalRecords',
+      'studentQrCredentials',
+    ].contains(collection)) {
       throw StateError('Unsupported private collection.');
     }
     final owner = uid;

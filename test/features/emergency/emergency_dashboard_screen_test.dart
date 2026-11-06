@@ -21,7 +21,7 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.text('Ready when it matters.'), findsOneWidget);
-      expect(find.text('Emergency ID is active'), findsOneWidget);
+      expect(find.text('Public emergency support is available'), findsOneWidget);
       await tester.scrollUntilVisible(find.text('Tier 2 information'), 300);
       expect(find.text('Tier 2 information'), findsOneWidget);
       await tester.scrollUntilVisible(find.text('First-aid instructions'), 300);

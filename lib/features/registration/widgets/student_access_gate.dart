@@ -5,15 +5,24 @@ import '../screens/create_student_account_screen.dart';
 import '../screens/registration_pending_screen.dart';
 import '../screens/student_sign_in_screen.dart';
 import '../services/student_registration_repository.dart';
+import '../models/student_registration_profile.dart';
 
 class StudentAccessGate extends StatefulWidget {
   const StudentAccessGate({
     super.key,
     required this.repository,
     this.authChanges,
+    this.pendingBuilder,
   });
   final StudentRegistrationRepository repository;
   final Stream<void>? authChanges;
+  final Widget Function(
+    StudentRegistrationProfile,
+    VoidCallback,
+    VoidCallback,
+    VoidCallback,
+  )?
+  pendingBuilder;
   @override
   State<StudentAccessGate> createState() => _StudentAccessGateState();
 }
@@ -112,6 +121,17 @@ class _StudentAccessGateState extends State<StudentAccessGate>
       }
       if (result?.state == RegistrationState.pending &&
           result?.profile != null) {
+        if (widget.pendingBuilder != null) {
+          return KeyedSubtree(
+            key: ObjectKey(result!.profile),
+            child: widget.pendingBuilder!(
+              result.profile!,
+              publicDashboard,
+              signOut,
+              reload,
+            ),
+          );
+        }
         return RegistrationPendingScreen(
           key: ObjectKey(result!.profile),
           profile: result.profile!,

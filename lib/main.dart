@@ -11,11 +11,17 @@ import 'package:resqme/features/welcome/data/shared_preferences_consent_reposito
 import 'package:resqme/features/registration/services/student_registration_repository.dart';
 import 'package:resqme/features/registration/services/firebase_student_registration_repository.dart';
 import 'package:resqme/firebase_options.dart';
+import 'package:resqme/core/data/pilot_client.dart';
+import 'package:resqme/core/data/account_operation_lock.dart';
+import 'package:resqme/features/medical/services/synthetic_medical_repository.dart';
+import 'package:resqme/features/qr/services/tier1_qr_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   StudentRegistrationRepository? registrationRepository;
   Stream<void>? authChanges;
+  SyntheticMedicalRepository? medicalRepository;
+  Tier1QrRepository? qrRepository;
   final backend = BackendSelection.resolve(
     const String.fromEnvironment('RESQME_BACKEND'),
     isDebugBuild: kDebugMode,
@@ -50,6 +56,7 @@ Future<void> main() async {
           loopbackOnly: true,
         );
       }
+      final operationLock = AccountOperationLock();
       registrationRepository = FirebaseStudentRegistrationRepository(
         FlutterFireRegistrationClient(
           auth: auth,
@@ -57,8 +64,21 @@ Future<void> main() async {
           functions: functions,
           expectedProjectId: backend.projectId,
         ),
+        operationLock: operationLock,
       );
-      authChanges = auth.authStateChanges().map<void>((_) {});
+      final pilot = FirebasePilotClient(
+        auth: auth,
+        firestore: firestore,
+        functions: functions,
+        operationLock: operationLock,
+        expectedProjectId: backend.projectId,
+      );
+      final medical = SyntheticMedicalRepository(pilot);
+      medicalRepository = medical;
+      qrRepository = Tier1QrRepository(pilot);
+      authChanges = auth.authStateChanges().map<void>((_) {
+        medical.syncSession();
+      });
     } catch (_) {
       // Keep public emergency resources available when local setup is unavailable.
     }
@@ -68,6 +88,8 @@ Future<void> main() async {
     ResQMeApp(
       registrationRepository: registrationRepository,
       authChanges: authChanges,
+      medicalRepository: medicalRepository,
+      qrRepository: qrRepository,
       consentRepository: SharedPreferencesConsentRepository(
         SharedPreferencesBooleanStore(),
       ),
