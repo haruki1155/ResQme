@@ -7,7 +7,10 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test lib/test/config.test.js lib/test/create_student_registration.test.js lib/test/emulator_config.test.js lib/test/synthetic_medical_record.test.js lib/test/ensure_my_tier1_qr.test.js",
+    "test": "npm run build && node --test lib/test/config.test.js lib/test/create_student_registration.test.js lib/test/emulator_config.test.js lib/test/synthetic_medical_record.test.js lib/test/ensure_my_tier1_qr.test.js lib/test/inventory.test.js",
+    "test:inventory": "npm run build && node --test lib/test/inventory.test.js",
+    "test:inventory:integration": "node --test lib/test/inventory_integration.test.js",
+    "inventory:local": "node lib/tools/g2_inventory/runner.js",
     "test:rules": "npm run build && node --test lib/test/rules.test.js"
     ,"test:integration": "node --test --test-concurrency=1 lib/test/registration_integration.test.js lib/test/onboarding_integration.test.js"
   },
