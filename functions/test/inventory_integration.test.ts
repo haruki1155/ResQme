@@ -9,6 +9,8 @@ import {deleteDoc,doc,setDoc} from 'firebase/firestore';
 import {localConfig,scopes} from '../tools/g2_inventory/contract';
 import {LocalFirestoreTransport} from '../tools/g2_inventory/transport';
 import {runInventory} from '../tools/g2_inventory/inventory';
+import {HostedFirestoreTransport} from '../tools/g2_inventory/hosted/transport';
+import {documentPrefixFor} from '../tools/g2_inventory/contract';
 
 const sentinel='FORBIDDEN_SYNTHETIC_NAME_CONTACT_MEDICAL_QR_TOKEN';
 let environment:RulesTestEnvironment;
@@ -48,6 +50,18 @@ test('local CLI emits sanitized report and writes only synthetic temporary priva
  assert.ok(!resolve(output.evidenceDirectory).startsWith(resolve(__dirname,'../../..')));
  const privateData=await readFile(resolve(output.evidenceDirectory,'private-synthetic-evidence.json'),'utf8');
  assert.ok(!privateData.includes(sentinel));assert.ok(privateData.includes('g2a-private-owner'));
+});
+
+test('mock hosted namespace reuses actual emulator-projected results without a live hosted session',{timeout:15000},async()=>{
+ const local=new LocalFirestoreTransport(process.env);
+ const transport=new HostedFirestoreTransport({query:async(method,body:any,signal)=>{
+  if(method==='listCollectionIds'){const page=await local.collections(body.pageToken,body.pageSize,signal);return {collectionIds:page.ids,...(page.next?{nextPageToken:page.next}:{})};}
+  const q=body.structuredQuery;const scope=scopes.find(s=>s.collection===q.from[0].collectionId)!;
+  const cursor=q.startAt?.values[0].referenceValue?.replace(documentPrefixFor('staging'),documentPrefixFor('demo'));
+  return (await local.query(scope.id,cursor,q.limit,signal)).map(d=>({document:{...d,name:d.name.replace(documentPrefixFor('demo'),documentPrefixFor('staging'))}}));
+ }});
+ const result=await runInventory(transport,{namespace:'staging',limits:{pageSize:2}});
+ assert.equal(result.report.status,'COMPLETE');assert.equal(result.report.g2Complete,false);assert.ok(!JSON.stringify(result).includes(sentinel));
 });
 
 test('unexpected collection-group paths stop inventory without retrieving content',{timeout:15000},async()=>{

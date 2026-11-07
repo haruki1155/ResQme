@@ -1,4 +1,4 @@
-import {boundedLimits, documentPrefix, InventoryError, scopes, validName, type Limits, type ProjectedDocument, type ReadTransport, type ScopeId} from './contract';
+import {boundedLimits, documentPrefixFor, type DocumentNamespace, InventoryError, scopes, validName, type Limits, type ProjectedDocument, type ReadTransport, type ScopeId} from './contract';
 
 export type Classification='TRUSTED'|'UNTRUSTED'|'UNRESOLVED';
 export interface ProvenanceEvidence {source:'independent-review';authorizedCreation:boolean;changesCovered:boolean;unauthorizedChange:boolean;conflicting:boolean;reference:string;}
@@ -36,7 +36,8 @@ function validateFields(document:ProjectedDocument,scopeId:ScopeId) {
   return {fields,concerns};
 }
 
-export async function runInventory(transport:ReadTransport,options:{limits?:Partial<Limits>;signal?:AbortSignal;now?:()=>number}={}) {
+export async function runInventory(transport:ReadTransport,options:{limits?:Partial<Limits>;signal?:AbortSignal;now?:()=>number;namespace?:DocumentNamespace}={}) {
+  const documentPrefix=documentPrefixFor(options.namespace);
   const cap=boundedLimits(options.limits);const now=options.now??Date.now;const start=now();
   const records:SafeRecord[]=[];const privateRecords:PrivateRecord[]=[];const aliases:Record<string,string>=Object.create(null);
   const rootCollections:string[]=[];const counts:Record<string,number>=Object.fromEntries(scopes.map(s=>[s.id,0]));
@@ -69,7 +70,7 @@ export async function runInventory(transport:ReadTransport,options:{limits?:Part
         const page=await within(signal=>transport.query(scope.id,cursor,size,signal));
         if(page.length>size)throw new InventoryError('pagination_error');
         for(const document of page){
-          const uid=validName(scope.id,document.name);
+          const uid=validName(scope.id,document.name,options.namespace);
           if(cursor&&Buffer.compare(Buffer.from(document.name),Buffer.from(cursor))<=0)throw new InventoryError('pagination_error');
           cursor=document.name;read++;examined++;counts[scope.id]++;
           const summary:SafeRecord={record:`record-${String(examined).padStart(4,'0')}`,account:alias(uid),scope:scope.id,classification:classifyEvidence(),concerns:[]};records.push(summary);

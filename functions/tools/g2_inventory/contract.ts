@@ -32,13 +32,19 @@ export function scopeFor(id: ScopeId) {
   return scope;
 }
 export const documentPrefix='projects/demo-resqme/databases/(default)/documents/';
+export type DocumentNamespace='demo'|'staging';
+export function documentPrefixFor(namespace:DocumentNamespace='demo') {
+  if(namespace!=='demo'&&namespace!=='staging')throw new InventoryError('invalid_namespace');
+  return namespace==='demo'?documentPrefix:'projects/resqme-943ee/databases/(default)/documents/';
+}
 export type WireValue = {stringValue?:unknown;integerValue?:unknown;booleanValue?:unknown;[key:string]:unknown};
 export interface ProjectedDocument {name:string; fields:Record<string,WireValue>;createTime?:string;updateTime?:string;}
 export interface ReadTransport {
   collections(token:string|undefined,pageSize:number,signal:AbortSignal): Promise<{ids:string[];next?:string}>;
   query(scope:ScopeId,after:string|undefined,pageSize:number,signal:AbortSignal): Promise<ProjectedDocument[]>;
 }
-export function validName(scopeId:ScopeId,name:string): string {
+export function validName(scopeId:ScopeId,name:string,namespace:DocumentNamespace='demo'): string {
+  const documentPrefix=documentPrefixFor(namespace);
   if(typeof name!=='string'||!name.startsWith(documentPrefix)||Buffer.byteLength(name)>6144) throw new InventoryError('unexpected_document_path');
   const parts=name.slice(documentPrefix.length).split('/');
   if(parts.some(p=>!p||Buffer.byteLength(p)>1500)) throw new InventoryError('unexpected_document_path');
