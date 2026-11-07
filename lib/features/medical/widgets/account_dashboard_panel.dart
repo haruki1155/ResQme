@@ -62,15 +62,6 @@ class _AccountDashboardPanelState extends State<AccountDashboardPanel> {
     }
   }
 
-  Future<void> openAccount({bool medical = false}) async {
-    await Navigator.pushNamed(
-      context,
-      AppRoutes.profile,
-      arguments: medical ? 'medical' : null,
-    );
-    if (mounted) await load();
-  }
-
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -81,7 +72,7 @@ class _AccountDashboardPanelState extends State<AccountDashboardPanel> {
         style: TextStyle(color: Color(0xFFE92B32), fontWeight: FontWeight.w700),
       ),
       OutlinedButton(
-        onPressed: openAccount,
+        onPressed: () => Navigator.pushNamed(context, AppRoutes.profile),
         child: Text(
           widget.medical.client.uid == null
               ? 'Student Account — Sign in / Register'
@@ -97,7 +88,11 @@ class _AccountDashboardPanelState extends State<AccountDashboardPanel> {
           (snapshot!.completed || !widget.medical.reminderSnoozed))
         FinishMedicalRecordReminder(
           completed: snapshot!.completed,
-          onOpen: () => openAccount(medical: true),
+          onOpen: () => Navigator.pushNamed(
+            context,
+            AppRoutes.profile,
+            arguments: 'medical',
+          ),
           onDismiss: () {
             setState(widget.medical.snoozeReminder);
           },

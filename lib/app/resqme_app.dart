@@ -14,6 +14,7 @@ import 'package:resqme/features/registration/widgets/student_access_gate.dart';
 import 'package:resqme/features/registration/presentation/pilot_account_screen.dart';
 import 'package:resqme/features/medical/services/synthetic_medical_repository.dart';
 import 'package:resqme/features/medical/widgets/account_dashboard_panel.dart';
+import 'package:resqme/features/qr/presentation/qr_scanner_screen.dart';
 import 'package:resqme/features/qr/services/tier1_qr_repository.dart';
 
 class ResQMeApp extends StatelessWidget {
@@ -66,12 +67,7 @@ class ResQMeApp extends StatelessWidget {
                 )
               : null,
         ),
-        AppRoutes.scanner: (_) => const Tier1PendingScreen(
-          title: 'Scan QR',
-          message:
-              'Secure QR scanning will be added after server-issued credentials are ready.',
-          icon: Icons.qr_code_scanner,
-        ),
+        AppRoutes.scanner: (_) => const QrScannerScreen(),
         AppRoutes.firstAid: (_) => const FirstAidLibraryScreen(),
         AppRoutes.hotlines: (_) => const Tier1PendingScreen(
           title: 'Emergency hotlines',
@@ -92,14 +88,14 @@ class ResQMeApp extends StatelessWidget {
                 authChanges: authChanges,
                 pendingBuilder:
                     medicalRepository != null && qrRepository != null
-                    ? (profile, onPublic, onSignOut, onRefresh) =>
+                        ? (profile, onPublic, onSignOut) =>
                           PilotAccountScreen(
                             profile: profile,
                             medical: medicalRepository!,
                             qr: qrRepository!,
                             onPublicDashboard: onPublic,
                             onSignOut: onSignOut,
-                            onRefreshStatus: onRefresh,
+                          onRefreshStatus: () {},
                             openMedical:
                                 ModalRoute.of(
                                   routeContext,

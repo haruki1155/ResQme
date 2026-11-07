@@ -16,12 +16,7 @@ class StudentAccessGate extends StatefulWidget {
   });
   final StudentRegistrationRepository repository;
   final Stream<void>? authChanges;
-  final Widget Function(
-    StudentRegistrationProfile,
-    VoidCallback,
-    VoidCallback,
-    VoidCallback,
-  )?
+  final Widget Function(StudentRegistrationProfile, VoidCallback, VoidCallback)?
   pendingBuilder;
   @override
   State<StudentAccessGate> createState() => _StudentAccessGateState();
@@ -128,7 +123,6 @@ class _StudentAccessGateState extends State<StudentAccessGate>
               result.profile!,
               publicDashboard,
               signOut,
-              reload,
             ),
           );
         }

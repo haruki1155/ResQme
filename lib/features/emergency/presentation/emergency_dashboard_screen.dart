@@ -113,7 +113,7 @@ class EmergencyDashboardScreen extends StatelessWidget {
                                             ),
                                           ),
                                           Text(
-                                            'Public emergency support is available',
+                                            'Emergency ID is active',
                                             style: TextStyle(
                                               color: Colors.white,
                                               fontWeight: FontWeight.w800,
