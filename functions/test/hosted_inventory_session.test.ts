@@ -22,11 +22,28 @@ test('Google user ADC refresh and token-info use only injected POST endpoints an
   const address=String(url);if(address.startsWith('https://oauth2.googleapis.com/')){
    calls.push(address);assert.equal(init?.method,'POST');assert.equal(init?.redirect,'error');assert.match(new Headers(init?.headers).get('Content-Type')??'',/application\/x-www-form-urlencoded/);
    if(address.endsWith('/token')){assert.ok(String(init?.body).includes('refresh_token=synthetic'));return new Response(JSON.stringify({access_token:'SYNTHETIC_TOKEN',expires_in:3600,token_type:'Bearer'}));}
-   assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer SYNTHETIC_TOKEN');return new Response(JSON.stringify({sub:'synthetic-subject',email:'operator@example.test',email_verified:true,expires_in:3600,scope:'openid email'}));
+   assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer SYNTHETIC_TOKEN');return new Response(JSON.stringify({sub:'synthetic-subject',email:'operator@example.test',email_verified:'true',expires_in:3600,scope:'openid email'}));
   }return send(url,init);
  };
  await openVerifiedSession(f.a,f.deps,new AbortController().signal);assert.deepEqual(calls,['https://oauth2.googleapis.com/token','https://oauth2.googleapis.com/tokeninfo']);
 });
 test('empty or conflicting secondary identity claims fail closed',async()=>{
  const f=fakeSession();f.deps.authFactory=()=>({token:async()=> 'SYNTHETIC_TOKEN',info:async()=>({sub:'synthetic-subject',user_id:'',email:'operator@example.test',email_verified:true,expiry_date:now+3600000})});await assert.rejects(openVerifiedSession(f.a,f.deps,new AbortController().signal));assert.equal(f.calls.length,0);
+});
+
+test('verified-email accepts only explicit boolean or string true and rejects conflicts before metadata',async()=>{
+ const cases: Array<{claims:Record<string,unknown>;allowed:boolean}>=[
+  {claims:{email_verified:true},allowed:true},{claims:{email_verified:'true'},allowed:true},
+  ...[false,'false',undefined,null,1,'TRUE',' true ',{},[]].map(value=>({claims:{email_verified:value},allowed:false})),
+  {claims:{email_verified:true,verified_email:false},allowed:false},
+  {claims:{email_verified:'true',verified_email:'false'},allowed:false},
+  {claims:{email_verified:undefined,verified_email:true},allowed:false},
+  {claims:{email_verified:true,verified_email:'true'},allowed:true},
+  {claims:{email_verified:true,verified_email:1},allowed:false}
+ ];
+ for(const {claims,allowed} of cases){
+  const f=fakeSession();f.deps.authFactory=()=>({token:async()=> 'SYNTHETIC_TOKEN',info:async()=>({sub:'synthetic-subject',email:'operator@example.test',expiry_date:now+3600000,...claims})});
+  if(allowed){await openVerifiedSession(f.a,f.deps,new AbortController().signal);assert.ok(f.calls.length>=4);}
+  else{await assert.rejects(openVerifiedSession(f.a,f.deps,new AbortController().signal));assert.equal(f.calls.length,0);}
+ }
 });

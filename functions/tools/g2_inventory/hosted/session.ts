@@ -41,7 +41,9 @@ export async function openVerifiedSession(approval:ValidatedApproval,deps:Sessio
   const auth=(deps.authFactory??libraryAuth)(adc,authRequest);
   const token=await bounded(()=>auth.token(),signal,ms());const info=await bounded(()=>auth.info(token),signal,ms());
   const subject=info.sub??info.user_id;
-  if(typeof token!=='string'||!token||typeof subject!=='string'||subject!==m.operator.subject||info.email!==m.operator.email||info.email_verified!==true||(info.sub!==undefined&&info.user_id!==undefined&&info.sub!==info.user_id)||!Number.isFinite(info.expiry_date)||info.expiry_date<deps.deadline+60000)throw new Error();
+  const explicitlyVerified=(value:unknown)=>value===true||value==='true';
+  const emailVerified=explicitlyVerified(info.email_verified)&&(!Object.hasOwn(info,'verified_email')||explicitlyVerified(info.verified_email));
+  if(typeof token!=='string'||!token||typeof subject!=='string'||subject!==m.operator.subject||info.email!==m.operator.email||!emailVerified||(info.sub!==undefined&&info.user_id!==undefined&&info.sub!==info.user_id)||!Number.isFinite(info.expiry_date)||info.expiry_date<deps.deadline+60000)throw new Error();
   const request=async(url:string,method:'GET'|'POST',body:unknown,s:AbortSignal)=>{
    if(deps.now()>=info.expiry_date||deps.now()>=Date.parse(m.validUntil)||deps.now()>=deps.deadline)throw new InventoryError('session_expired');
    return json(deps.send,url,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})},s,ms());
