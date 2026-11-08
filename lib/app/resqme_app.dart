@@ -88,14 +88,14 @@ class ResQMeApp extends StatelessWidget {
                 authChanges: authChanges,
                 pendingBuilder:
                     medicalRepository != null && qrRepository != null
-                        ? (profile, onPublic, onSignOut) =>
+                    ? (profile, onPublic, onSignOut, onRefresh) =>
                           PilotAccountScreen(
                             profile: profile,
                             medical: medicalRepository!,
                             qr: qrRepository!,
                             onPublicDashboard: onPublic,
                             onSignOut: onSignOut,
-                          onRefreshStatus: () {},
+                            onRefreshStatus: onRefresh,
                             openMedical:
                                 ModalRoute.of(
                                   routeContext,
