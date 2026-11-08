@@ -7,13 +7,12 @@ class MyUnverifiedQrScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.onDashboard,
-    this.onMedical,
-    this.onStatus,
     this.onSignOut,
+    this.onScan,
   });
   final Tier1QrRepository repository;
   final VoidCallback onDashboard;
-  final VoidCallback? onMedical, onStatus, onSignOut;
+  final VoidCallback? onScan, onSignOut;
   @override
   State<MyUnverifiedQrScreen> createState() => _MyUnverifiedQrScreenState();
 }
@@ -101,20 +100,15 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
                   onPressed: widget.onDashboard,
                   child: const Text('Go to Dashboard'),
                 ),
-                if (widget.onMedical != null)
+                if (widget.onScan != null)
                   TextButton(
-                    onPressed: widget.onMedical,
-                    child: const Text('View/Update Medical Record'),
-                  ),
-                if (widget.onStatus != null)
-                  TextButton(
-                    onPressed: widget.onStatus,
-                    child: const Text('Registration status'),
+                    onPressed: widget.onScan,
+                    child: const Text('Scan another QR'),
                   ),
                 if (widget.onSignOut != null)
                   OutlinedButton(
                     onPressed: widget.onSignOut,
-                    child: const Text('Sign out'),
+                    child: const Text('Logout'),
                   ),
               ],
             ),

@@ -18,6 +18,8 @@ void main() {
       ResQMeApp(consentRepository: _AcceptedConsentRepository()),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue as Guest'));
+    await tester.pumpAndSettle();
   }
 
   testWidgets('opens each public service and returns to the Home Lobby', (

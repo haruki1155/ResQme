@@ -20,6 +20,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Continue as Guest'));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('First-aid instructions'), 250);
     await tester.drag(find.byType(ListView), const Offset(0, -120));
     await tester.pumpAndSettle();
@@ -44,6 +46,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Continue as Guest'));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('First-aid instructions'), 250);
     await tester.drag(find.byType(ListView), const Offset(0, -120));
     await tester.pumpAndSettle();

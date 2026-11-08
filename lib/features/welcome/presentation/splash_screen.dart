@@ -23,7 +23,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
     Navigator.of(
       context,
-    ).pushReplacementNamed(accepted ? AppRoutes.dashboard : AppRoutes.terms);
+    ).pushReplacementNamed(accepted ? AppRoutes.entry : AppRoutes.terms);
   }
 
   @override

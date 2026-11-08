@@ -7,9 +7,11 @@ class StudentSignInScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.onSignedIn,
+    this.onRegistered,
   });
   final StudentRegistrationRepository repository;
   final VoidCallback onSignedIn;
+  final VoidCallback? onRegistered;
   @override
   State<StudentSignInScreen> createState() => _StudentSignInScreenState();
 }
@@ -17,7 +19,7 @@ class StudentSignInScreen extends StatefulWidget {
 class _StudentSignInScreenState extends State<StudentSignInScreen> {
   void createAccount() {
     final navigator = Navigator.of(context);
-    final onSignedIn = widget.onSignedIn;
+    final onSignedIn = widget.onRegistered ?? widget.onSignedIn;
     navigator.push<void>(
       MaterialPageRoute(
         builder: (_) => CreateStudentAccountScreen(

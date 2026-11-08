@@ -9,13 +9,11 @@ import 'unverified_qr_modal.dart';
 /// Handles complete camera lifecycle via [WidgetsBindingObserver] with
 /// serialized start/stop operations, debounced detection, and unverified format display.
 class QrScannerScreen extends StatefulWidget {
-  const QrScannerScreen({
-    super.key,
-    this.controllerOverride,
-  });
+  const QrScannerScreen({super.key, this.controllerOverride, this.onDashboard});
 
   /// Optional controller override for unit/widget testing without physical camera hardware.
   final MobileScannerController? controllerOverride;
+  final VoidCallback? onDashboard;
 
   @override
   State<QrScannerScreen> createState() => QrScannerScreenState();
@@ -125,16 +123,25 @@ class QrScannerScreenState extends State<QrScannerScreen>
       },
       onDashboard: () {
         if (!mounted) return;
-        Navigator.of(context).pop();
+        goToDashboard();
       },
     );
   }
 
   @visibleForTesting
-  void handleBarcodeDetected(BarcodeCapture capture) => _onBarcodeDetected(capture);
+  void handleBarcodeDetected(BarcodeCapture capture) =>
+      _onBarcodeDetected(capture);
 
   @visibleForTesting
   bool get isModalOpen => _isModalOpen;
+
+  void goToDashboard() {
+    if (widget.onDashboard != null) {
+      widget.onDashboard!();
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   void dispose() {
@@ -233,7 +240,7 @@ class QrScannerScreenState extends State<QrScannerScreen>
                         ),
                         const SizedBox(height: 24),
                         FilledButton(
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: goToDashboard,
                           style: FilledButton.styleFrom(
                             backgroundColor: const Color(0xFFE92B32),
                             minimumSize: const Size(double.infinity, 44),
@@ -270,9 +277,9 @@ class _ViewfinderOverlay extends StatelessWidget {
       builder: (context, constraints) {
         final scanAreaSize =
             (constraints.maxWidth < constraints.maxHeight
-                    ? constraints.maxWidth
-                    : constraints.maxHeight) *
-                0.68;
+                ? constraints.maxWidth
+                : constraints.maxHeight) *
+            0.68;
 
         return Stack(
           children: [

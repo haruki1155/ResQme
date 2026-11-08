@@ -15,6 +15,8 @@ void main() {
   testWidgets('shows searchable DRRM guidance', (t) async {
     await t.pumpWidget(ResQMeApp(consentRepository: R()));
     await t.pumpAndSettle();
+    await t.tap(find.text('Continue as Guest'));
+    await t.pumpAndSettle();
     await t.scrollUntilVisible(find.text('DRRM instructions'), 250);
     await t.drag(find.byType(ListView), const Offset(0, -120));
     await t.pumpAndSettle();

@@ -24,8 +24,13 @@ class _RegisteringClient extends FakeRegistrationClient {
   _RegisteringClient(this.pilot, this.changes);
   final FakePilotClient pilot;
   final StreamController<void> changes;
-  int reads=0;
-  @override Future<Map<String,dynamic>?> readOwnProfile() async {reads++;return super.readOwnProfile();}
+  int reads = 0;
+  @override
+  Future<Map<String, dynamic>?> readOwnProfile() async {
+    reads++;
+    return super.readOwnProfile();
+  }
+
   @override
   Future<void> createAccount(String email, String password) async {
     await super.createAccount(email, password);
@@ -42,17 +47,6 @@ class _RegisteringClient extends FakeRegistrationClient {
 }
 
 void main() {
-  testWidgets('registration status action reloads trusted profile', (tester)async{
-    final changes=StreamController<void>.broadcast();addTearDown(changes.close);
-    final pilot=FakePilotClient()..qr={'payload':'resqme:v1:${'A'*43}','verificationStatus':'unverified'};
-    final registration=_RegisteringClient(pilot,changes)..currentEmail='synthetic@example.test';
-    await tester.pumpWidget(ResQMeApp(consentRepository:_Consent(),registrationRepository:FirebaseStudentRegistrationRepository(registration),medicalRepository:SyntheticMedicalRepository(pilot),qrRepository:Tier1QrRepository(pilot),authChanges:changes.stream));
-    await tester.pumpAndSettle();await tester.ensureVisible(find.text('My Account / My QR'));await tester.pumpAndSettle();await tester.tap(find.text('My Account / My QR'));await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Registration status'));await tester.pumpAndSettle();await tester.tap(find.text('Registration status'));await tester.pumpAndSettle();
-    final before=registration.reads;
-    await tester.ensureVisible(find.text('View registration status'));await tester.pumpAndSettle();await tester.tap(find.text('View registration status'));await tester.pumpAndSettle();
-    expect(registration.reads,greaterThan(before));
-  });
   testWidgets('QA test save leads to the same QR on restart', (tester) async {
     final client = FakePilotClient();
     final profile = StudentRegistrationProfile.fromFirestore({
@@ -64,6 +58,7 @@ void main() {
     Widget app() => MaterialApp(
       home: PilotAccountScreen(
         profile: profile,
+        openMedical: client.qr == null,
         medical: SyntheticMedicalRepository(client),
         qr: Tier1QrRepository(client),
         onPublicDashboard: () {},
@@ -124,15 +119,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.ensureVisible(
-        find.text('Student Account — Sign in / Register'),
-      );
+      await tester.ensureVisible(find.text('Register'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Student Account — Sign in / Register'));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Create account'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Create account'));
+      await tester.tap(find.text('Register'));
       await tester.pumpAndSettle();
       for (final entry in {
         'Full name': 'Synthetic Student',
@@ -172,7 +161,7 @@ void main() {
       await tester.tap(find.text('Go to Dashboard'));
       await tester.pumpAndSettle();
       expect(find.text('Ready when it matters.'), findsOneWidget);
-      expect(find.text('Finish Medical Record'), findsOneWidget);
+      expect(find.text('Finish Medical Record'), findsNothing);
     },
   );
   test(
@@ -206,6 +195,7 @@ void main() {
         MaterialApp(
           home: PilotAccountScreen(
             profile: profile,
+            openMedical: true,
             medical: SyntheticMedicalRepository(client),
             qr: Tier1QrRepository(client),
             onPublicDashboard: () {

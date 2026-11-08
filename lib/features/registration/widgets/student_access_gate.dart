@@ -13,13 +13,17 @@ class StudentAccessGate extends StatefulWidget {
     required this.repository,
     this.authChanges,
     this.pendingBuilder,
+    this.startWithRegistration = false,
   });
   final StudentRegistrationRepository repository;
   final Stream<void>? authChanges;
+  final bool startWithRegistration;
   final Widget Function(
     StudentRegistrationProfile,
     VoidCallback,
     VoidCallback,
+    VoidCallback,
+    bool,
     VoidCallback,
   )?
   pendingBuilder;
@@ -31,12 +35,18 @@ class _StudentAccessGateState extends State<StudentAccessGate>
     with WidgetsBindingObserver {
   late Future<RegistrationResult> state;
   StreamSubscription<void>? subscription;
+  bool registrationCompleted = false;
+  bool registrationInProgress = false;
+  late bool showRegistration;
   @override
   void initState() {
     super.initState();
+    showRegistration = widget.startWithRegistration;
     WidgetsBinding.instance.addObserver(this);
     state = widget.repository.loadOwnProfile();
-    subscription = widget.authChanges?.listen((_) => reload());
+    subscription = widget.authChanges?.listen((_) {
+      if (!registrationInProgress) reload();
+    });
   }
 
   @override
@@ -48,8 +58,10 @@ class _StudentAccessGateState extends State<StudentAccessGate>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState value) {
+    // Do not replace a submitted form between Auth creation and profile creation.
+    if (registrationInProgress) return;
     if (value == AppLifecycleState.resumed) {
-      reload();
+      if (!registrationInProgress) reload();
     } else {
       setState(() {
         state = Future.value(
@@ -70,13 +82,24 @@ class _StudentAccessGateState extends State<StudentAccessGate>
   void publicDashboard() => Navigator.of(
     context,
   ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (_) => false);
+  void onRegistered() {
+    registrationCompleted = true;
+    registrationInProgress = false;
+    showRegistration = false;
+    reload();
+  }
+
   Future<void> signOut() async {
     setState(() {
       state = Future.value(const RegistrationResult(RegistrationState.failure));
     });
     try {
       await widget.repository.signOut();
-      reload();
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(AppRoutes.entry, (_) => false);
+      }
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -114,9 +137,17 @@ class _StudentAccessGateState extends State<StudentAccessGate>
       }
       final result = snapshot.data;
       if (result?.state == RegistrationState.signedOut) {
+        if (showRegistration) {
+          registrationInProgress = true;
+          return CreateStudentAccountScreen(
+            repository: widget.repository,
+            onRegistered: onRegistered,
+          );
+        }
         return StudentSignInScreen(
           repository: widget.repository,
           onSignedIn: reload,
+          onRegistered: onRegistered,
         );
       }
       if (result?.state == RegistrationState.pending &&
@@ -129,6 +160,8 @@ class _StudentAccessGateState extends State<StudentAccessGate>
               publicDashboard,
               signOut,
               reload,
+              registrationCompleted,
+              () => registrationCompleted = false,
             ),
           );
         }
@@ -169,7 +202,7 @@ class _StudentAccessGateState extends State<StudentAccessGate>
                           repository: widget.repository,
                           onRegistered: () {
                             Navigator.pop(context);
-                            reload();
+                            onRegistered();
                           },
                         ),
                       ),

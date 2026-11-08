@@ -150,6 +150,7 @@ void main() {
       ..profile = null;
     await tester.pumpWidget(
       MaterialApp(
+        routes: {'/entry': (_) => const Scaffold(body: Text('Scanner Entry'))},
         home: StudentAccessGate(
           repository: FirebaseStudentRegistrationRepository(client),
         ),
@@ -159,6 +160,6 @@ void main() {
     expect(find.text('Complete registration'), findsOneWidget);
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
-    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('Scanner Entry'), findsOneWidget);
   });
 }

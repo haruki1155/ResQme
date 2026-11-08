@@ -13,7 +13,7 @@ import 'package:resqme/features/registration/services/student_registration_repos
 import 'package:resqme/features/registration/widgets/student_access_gate.dart';
 import 'package:resqme/features/registration/presentation/pilot_account_screen.dart';
 import 'package:resqme/features/medical/services/synthetic_medical_repository.dart';
-import 'package:resqme/features/medical/widgets/account_dashboard_panel.dart';
+import 'package:resqme/features/welcome/presentation/scanner_entry_screen.dart';
 import 'package:resqme/features/qr/presentation/qr_scanner_screen.dart';
 import 'package:resqme/features/qr/services/tier1_qr_repository.dart';
 
@@ -32,6 +32,37 @@ class ResQMeApp extends StatelessWidget {
   final Stream<void>? authChanges;
   final SyntheticMedicalRepository? medicalRepository;
   final Tier1QrRepository? qrRepository;
+
+  Widget account({bool register = false}) => registrationRepository == null
+      ? const Tier1PendingScreen(
+          title: 'Student Account',
+          message:
+              'Registration services are unavailable. Return to Scanner Entry to continue as a guest.',
+          icon: Icons.person_outline,
+        )
+      : StudentAccessGate(
+          repository: registrationRepository!,
+          authChanges: authChanges,
+          startWithRegistration: register,
+          pendingBuilder: medicalRepository != null && qrRepository != null
+              ? (
+                  profile,
+                  onPublic,
+                  onSignOut,
+                  onRefresh,
+                  registered,
+                  onOnboarded,
+                ) => PilotAccountScreen(
+                  profile: profile,
+                  medical: medicalRepository!,
+                  qr: qrRepository!,
+                  onPublicDashboard: onPublic,
+                  onSignOut: onSignOut,
+                  openMedical: registered,
+                  onMedicalCompleted: onOnboarded,
+                )
+              : null,
+        );
 
   @override
   Widget build(BuildContext context) {
@@ -52,22 +83,16 @@ class ResQMeApp extends StatelessWidget {
           onAccepted: () async {
             await consentRepository.acceptTerms();
             if (!routeContext.mounted) return;
-            Navigator.of(
-              routeContext,
-            ).pushReplacementNamed(AppRoutes.dashboard);
+            Navigator.of(routeContext).pushReplacementNamed(AppRoutes.entry);
           },
         ),
-        AppRoutes.dashboard: (_) => EmergencyDashboardScreen(
-          accountPanel:
-              registrationRepository != null && medicalRepository != null
-              ? AccountDashboardPanel(
-                  registration: registrationRepository!,
-                  medical: medicalRepository!,
-                  authChanges: authChanges,
-                )
-              : null,
+        AppRoutes.entry: (_) => const ScannerEntryScreen(),
+        AppRoutes.dashboard: (_) => const EmergencyDashboardScreen(),
+        AppRoutes.scanner: (context) => QrScannerScreen(
+          onDashboard: () => Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (_) => false),
         ),
-        AppRoutes.scanner: (_) => const QrScannerScreen(),
         AppRoutes.firstAid: (_) => const FirstAidLibraryScreen(),
         AppRoutes.hotlines: (_) => const Tier1PendingScreen(
           title: 'Emergency hotlines',
@@ -76,34 +101,8 @@ class ResQMeApp extends StatelessWidget {
           icon: Icons.call_outlined,
         ),
         AppRoutes.drrm: (_) => const DrrmScreen(),
-        AppRoutes.profile: (routeContext) => registrationRepository == null
-            ? const Tier1PendingScreen(
-                title: 'Student Account',
-                message:
-                    'Local registration services are unavailable. Public emergency resources remain accessible.',
-                icon: Icons.person_outline,
-              )
-            : StudentAccessGate(
-                repository: registrationRepository!,
-                authChanges: authChanges,
-                pendingBuilder:
-                    medicalRepository != null && qrRepository != null
-                    ? (profile, onPublic, onSignOut, onRefresh) =>
-                          PilotAccountScreen(
-                            profile: profile,
-                            medical: medicalRepository!,
-                            qr: qrRepository!,
-                            onPublicDashboard: onPublic,
-                            onSignOut: onSignOut,
-                            onRefreshStatus: onRefresh,
-                            openMedical:
-                                ModalRoute.of(
-                                  routeContext,
-                                )?.settings.arguments ==
-                                'medical',
-                          )
-                    : null,
-              ),
+        AppRoutes.profile: (_) => account(),
+        AppRoutes.register: (_) => account(register: true),
         AppRoutes.medicalBoundary: (_) => const MedicalAccessBoundaryScreen(),
       },
     );
