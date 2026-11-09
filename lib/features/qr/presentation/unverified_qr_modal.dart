@@ -12,17 +12,20 @@ class UnverifiedQrModal extends StatelessWidget {
     required this.result,
     required this.onScanAgain,
     required this.onDashboard,
+    this.active = false,
   });
 
   final QrScanResult result;
   final VoidCallback onScanAgain;
   final VoidCallback onDashboard;
+  final bool active;
 
   static Future<void> show({
     required BuildContext context,
     required QrScanResult result,
     required VoidCallback onScanAgain,
     required VoidCallback onDashboard,
+    bool active = false,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -40,6 +43,7 @@ class UnverifiedQrModal extends StatelessWidget {
           Navigator.of(modalContext).pop();
           onDashboard();
         },
+        active: active,
       ),
     );
   }
@@ -47,6 +51,7 @@ class UnverifiedQrModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isValid = result is ValidResQMeQr;
+    final isInactive = result is InactiveQr;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
@@ -75,14 +80,20 @@ class UnverifiedQrModal extends StatelessWidget {
               children: [
                 Icon(
                   isValid ? Icons.qr_code_scanner : Icons.error_outline,
-                  color: isValid ? const Color(0xFFE92B32) : Colors.orange.shade800,
+                  color: isValid
+                      ? const Color(0xFFE92B32)
+                      : Colors.orange.shade800,
                   size: 28,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     isValid
-                        ? 'RESQME QR FORMAT RECOGNIZED'
+                        ? active
+                              ? 'QR ACCEPTED - TIER 1'
+                              : 'RESQME QR FORMAT RECOGNIZED'
+                        : isInactive
+                        ? 'QR NOT ACTIVE'
                         : 'UNRECOGNIZED QR CODE',
                     style: const TextStyle(
                       fontSize: 18,
@@ -97,20 +108,33 @@ class UnverifiedQrModal extends StatelessWidget {
             Align(
               alignment: Alignment.centerLeft,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
-                  color: isValid ? const Color(0xFFFFF0F1) : Colors.grey.shade100,
+                  color: isValid
+                      ? const Color(0xFFFFF0F1)
+                      : Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: isValid ? const Color(0xFFE92B32) : Colors.grey.shade400,
+                    color: isValid
+                        ? const Color(0xFFE92B32)
+                        : Colors.grey.shade400,
                   ),
                 ),
                 child: Text(
                   isValid
-                      ? 'UNVERIFIED — TEST PILOT ONLY'
+                      ? active
+                            ? 'ACTIVE RESQME QR'
+                            : 'UNVERIFIED — TEST PILOT ONLY'
+                      : isInactive
+                      ? 'Not confirmed active'
                       : 'Invalid format',
                   style: TextStyle(
-                    color: isValid ? const Color(0xFFE92B32) : Colors.grey.shade800,
+                    color: isValid
+                        ? const Color(0xFFE92B32)
+                        : Colors.grey.shade800,
                     fontWeight: FontWeight.w700,
                     fontSize: 12,
                   ),
@@ -120,7 +144,11 @@ class UnverifiedQrModal extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               isValid
-                  ? 'This QR code matches the ResQMe format, but its identity and status have not been verified.'
+                  ? active
+                        ? 'This QR is active. Continue to public emergency resources. Scanning does not sign you in or reveal private student information.'
+                        : 'This QR code matches the ResQMe format, but its identity and status have not been verified.'
+                  : isInactive
+                  ? 'This QR could not be confirmed as active. No account or medical information was exposed.'
                   : 'This QR code does not match the ResQMe format.',
               style: const TextStyle(
                 fontSize: 14,
@@ -139,7 +167,11 @@ class UnverifiedQrModal extends StatelessWidget {
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.shield_outlined, size: 20, color: Color(0xFF718096)),
+                    Icon(
+                      Icons.shield_outlined,
+                      size: 20,
+                      color: Color(0xFF718096),
+                    ),
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(

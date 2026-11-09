@@ -13,7 +13,6 @@ class RegistrationPendingScreen extends StatelessWidget {
   final VoidCallback onRefreshStatus, onPublicDashboard, onSignOut;
   @override
   Widget build(BuildContext context) {
-    final minor = profile.status == 'pending_guardian';
     return Scaffold(
       appBar: AppBar(title: const Text('Registration status')),
       body: SafeArea(
@@ -32,16 +31,12 @@ class RegistrationPendingScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    minor
-                        ? 'Registration received — guardian authorization pending'
-                        : 'Registration received — pending school review',
+                    'Registration received - pending school review',
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    minor
-                        ? 'Guardian verification and school review are not active in this milestone. Your privacy acknowledgment is not guardian authorization.'
-                        : 'Registration does not confirm student status. School review is not active in this milestone.',
+                    'Registration does not confirm student status. School approval is required before your QR can be activated.',
                   ),
                   const SizedBox(height: 24),
                   ExpansionTile(

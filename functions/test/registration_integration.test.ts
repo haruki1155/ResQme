@@ -37,7 +37,7 @@ for (const altered of [false, true]) {
       const original = (await profile.get()).data();
       const acknowledgments = await profile.collection('acknowledgments').get();
       assert.equal(acknowledgments.size, 1);
-      assert.equal(original?.status, 'pending_guardian');
+      assert.equal(original?.status, 'pending_review');
       assert.equal(original?.lrn, null);
       if (altered) await assert.rejects(() => call({...data, fullName: 'Altered Synthetic', ageYears: 18}), {code: 'functions/already-exists'});
       else await call(data);

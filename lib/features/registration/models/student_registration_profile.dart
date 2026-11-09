@@ -3,6 +3,9 @@ class StudentRegistrationProfile {
     this.fullName,
     this.ageYearsAtRegistration,
     this.status,
+    this.schoolApprovalStatus,
+    this.medicalStatus,
+    this.medicalRevision,
     this.gender,
     this.personalPhone,
     this.guardianName,
@@ -11,7 +14,8 @@ class StudentRegistrationProfile {
     this.secondaryName,
     this.secondaryPhone,
   );
-  final String fullName, status;
+  final String fullName, status, schoolApprovalStatus, medicalStatus;
+  final int medicalRevision;
   final int ageYearsAtRegistration;
   final String? gender,
       personalPhone,
@@ -31,6 +35,17 @@ class StudentRegistrationProfile {
         (data['ageYearsAtRegistration'] as int) < 0 ||
         (data['ageYearsAtRegistration'] as int) > 130 ||
         !['pending_review', 'pending_guardian'].contains(data['status']) ||
+        (data['schoolApprovalStatus'] != null &&
+            ![
+              'pending',
+              'approved',
+              'revoked',
+            ].contains(data['schoolApprovalStatus'])) ||
+        (data['medicalStatus'] != null &&
+            !['not_started', 'complete'].contains(data['medicalStatus'])) ||
+        (data['medicalRevision'] != null &&
+            (data['medicalRevision'] is! int ||
+                (data['medicalRevision'] as int) < 0)) ||
         data['lrn'] != null) {
       throw const FormatException('Registration unavailable.');
     }
@@ -55,6 +70,9 @@ class StudentRegistrationProfile {
       data['fullName'] as String,
       data['ageYearsAtRegistration'] as int,
       data['status'] as String,
+      data['schoolApprovalStatus'] as String? ?? 'pending',
+      data['medicalStatus'] as String? ?? 'not_started',
+      data['medicalRevision'] as int? ?? 0,
       optional(data['gender']),
       optional(data['personalContactNumber']),
       optional(primary?['fullName']),

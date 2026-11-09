@@ -9,11 +9,23 @@ import 'unverified_qr_modal.dart';
 /// Handles complete camera lifecycle via [WidgetsBindingObserver] with
 /// serialized start/stop operations, debounced detection, and unverified format display.
 class QrScannerScreen extends StatefulWidget {
-  const QrScannerScreen({super.key, this.controllerOverride, this.onDashboard});
+  const QrScannerScreen({
+    super.key,
+    this.controllerOverride,
+    this.onDashboard,
+    this.embedded = false,
+    this.onDetectionChanged,
+    this.onResolveQr,
+  });
 
   /// Optional controller override for unit/widget testing without physical camera hardware.
   final MobileScannerController? controllerOverride;
   final VoidCallback? onDashboard;
+
+  /// Reuse camera lifecycle and detection inside the public entry frame.
+  final bool embedded;
+  final ValueChanged<bool>? onDetectionChanged;
+  final Future<bool> Function(String payload)? onResolveQr;
 
   @override
   State<QrScannerScreen> createState() => QrScannerScreenState();
@@ -99,7 +111,7 @@ class QrScannerScreenState extends State<QrScannerScreen>
     }
   }
 
-  void _onBarcodeDetected(BarcodeCapture capture) {
+  Future<void> _onBarcodeDetected(BarcodeCapture capture) async {
     if (_isModalOpen || !mounted) return;
 
     final barcode = capture.barcodes.firstOrNull;
@@ -110,15 +122,28 @@ class QrScannerScreenState extends State<QrScannerScreen>
 
     setState(() => _isModalOpen = true);
     _stopCamera();
+    widget.onDetectionChanged?.call(true);
+    if (widget.embedded && !MediaQuery.disableAnimationsOf(context)) {
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      if (!mounted) return;
+    }
 
-    final result = QrPayloadParser.parse(rawValue);
+    var result = QrPayloadParser.parse(rawValue);
+    var active = false;
+    if (result is ValidResQMeQr && widget.onResolveQr != null) {
+      active = await widget.onResolveQr!(rawValue.trim());
+      if (!mounted) return;
+      if (!active) result = const InactiveQr();
+    }
 
     UnverifiedQrModal.show(
       context: context,
       result: result,
+      active: active,
       onScanAgain: () {
         if (!mounted) return;
         setState(() => _isModalOpen = false);
+        widget.onDetectionChanged?.call(false);
         _startCamera();
       },
       onDashboard: () {
@@ -154,6 +179,86 @@ class QrScannerScreenState extends State<QrScannerScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            MobileScanner(
+              controller: _controller,
+              onDetect: _onBarcodeDetected,
+              errorBuilder: (context, error) => ColoredBox(
+                color: const Color(0xFF25262A),
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.videocam_off_outlined,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          error.errorCode ==
+                                  MobileScannerErrorCode.permissionDenied
+                              ? 'Camera permission required. Enable access in device settings.'
+                              : 'Camera unavailable. Please try again.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _startCamera,
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Try Again'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (_isModalOpen)
+              IgnorePointer(
+                child: ColoredBox(
+                  color: Colors.black54,
+                  child: Center(
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: .75, end: 1),
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 300),
+                      builder: (context, scale, child) =>
+                          Transform.scale(scale: scale, child: child),
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.qr_code_2, color: Colors.white, size: 48),
+                          SizedBox(height: 8),
+                          Text(
+                            'QR detected',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(

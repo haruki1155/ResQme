@@ -7,6 +7,7 @@ abstract interface class PilotClient {
   String? get uid;
   Future<Map<String, dynamic>?> readMine(String collection);
   Future<Map<String, dynamic>> invoke(String name, Map<String, dynamic> data);
+  Future<bool> resolveQr(String payload);
 }
 
 class FirebasePilotClient implements PilotClient {
@@ -58,6 +59,9 @@ class FirebasePilotClient implements PilotClient {
           'saveMySyntheticMedicalRecord',
           'clearMySyntheticMedicalRecord',
           'ensureMyTier1Qr',
+          'replaceMyTier1Qr',
+          'completeMyMedicalRecord',
+          'getMyStudentProfile',
         ].contains(name)) {
           throw StateError('Unsupported pilot operation.');
         }
@@ -76,4 +80,19 @@ class FirebasePilotClient implements PilotClient {
         }
         return Map<String, dynamic>.from(result.data as Map);
       });
+
+  @override
+  Future<bool> resolveQr(String payload) async {
+    final result = await functions
+        .httpsCallable(
+          'resolveTier1Qr',
+          options: HttpsCallableOptions(timeout: const Duration(seconds: 10)),
+        )
+        .call<dynamic>({'payload': payload});
+    if (result.data is! Map ||
+        (result.data as Map).keys.any((key) => key != 'active')) {
+      throw StateError('Invalid QR response.');
+    }
+    return (result.data as Map)['active'] == true;
+  }
 }

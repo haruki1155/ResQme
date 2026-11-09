@@ -5,6 +5,7 @@ import 'package:resqme/features/qr/screens/my_unverified_qr_screen.dart';
 import 'package:resqme/features/registration/presentation/pilot_account_screen.dart';
 import 'package:resqme/features/registration/models/student_registration_profile.dart';
 import 'package:resqme/features/medical/services/synthetic_medical_repository.dart';
+import 'package:resqme/features/medical/services/medical_completion_repository.dart';
 import '../medical/synthetic_medical_test.dart' show FakePilotClient;
 import 'dart:async';
 import 'package:resqme/app/resqme_app.dart';
@@ -89,10 +90,7 @@ void main() {
     await tester.tap(find.text('Save Test Record'));
     await tester.pumpAndSettle();
     expect(client.medical!['medicalStatus'], 'completed_synthetic');
-    expect(
-      find.text('UNVERIFIED — not proof of school enrollment'),
-      findsOneWidget,
-    );
+    expect(find.text('Active after school approval'), findsOneWidget);
     final qr = client.qr!['payload'];
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(app());
@@ -101,7 +99,7 @@ void main() {
     expect(client.qr!['payload'], qr);
   });
   testWidgets(
-    'guest registers, skips, views QR and returns to public dashboard',
+    'new registration is routed to required medical completion before QR',
     (tester) async {
       final changes = StreamController<void>.broadcast();
       addTearDown(changes.close);
@@ -114,6 +112,7 @@ void main() {
             registration,
           ),
           medicalRepository: SyntheticMedicalRepository(pilot),
+          medicalCompletionRepository: MedicalCompletionRepository(pilot),
           qrRepository: Tier1QrRepository(pilot),
           authChanges: changes.stream,
         ),
@@ -145,23 +144,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agree & Create Account'));
       await tester.pumpAndSettle();
-      expect(find.text('Medical Information (Optional)'), findsOneWidget);
-      await tester.ensureVisible(find.text('Skip for now'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Skip for now'));
-      await tester.pumpAndSettle();
-      expect(
-        find.text('UNVERIFIED — not proof of school enrollment'),
-        findsOneWidget,
-      );
+      expect(find.text('Required before QR activation'), findsOneWidget);
+      expect(find.text('Skip for now'), findsNothing);
+      expect(find.text('My ResQMe QR'), findsNothing);
       expect(registration.creates, 1);
       expect(pilot.medical, null);
-      await tester.ensureVisible(find.text('Go to Dashboard'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Go to Dashboard'));
-      await tester.pumpAndSettle();
-      expect(find.text('Ready when it matters.'), findsOneWidget);
-      expect(find.text('Finish Medical Record'), findsNothing);
     },
   );
   test(
@@ -173,56 +160,38 @@ void main() {
       expect(payload, startsWith('resqme:v1:'));
       expect((await repo.ensureMine()), payload);
       expect(client.lastPayload, isEmpty);
-      client.qr = {
-        'payload': 'uid-private',
-        'verificationStatus': 'unverified',
-      };
+      client.error = 'permission-denied';
       await expectLater(repo.loadMine(), throwsA(isA<QrFailure>()));
     },
   );
-  testWidgets(
-    'pending account skips medical without writes then sees QR and dashboard action',
-    (tester) async {
-      final client = FakePilotClient();
-      var dashboard = 0;
-      final profile = StudentRegistrationProfile.fromFirestore({
-        'schemaVersion': 1,
-        'fullName': 'Synthetic Student',
-        'ageYearsAtRegistration': 17,
-        'status': 'pending_guardian',
-      });
-      await tester.pumpWidget(
-        MaterialApp(
-          home: PilotAccountScreen(
-            profile: profile,
-            openMedical: true,
-            medical: SyntheticMedicalRepository(client),
-            qr: Tier1QrRepository(client),
-            onPublicDashboard: () {
-              dashboard++;
-            },
-            onSignOut: () {},
-          ),
+  testWidgets('pending account must complete medical before QR activation', (
+    tester,
+  ) async {
+    final client = FakePilotClient();
+    final profile = StudentRegistrationProfile.fromFirestore({
+      'schemaVersion': 1,
+      'fullName': 'Synthetic Student',
+      'ageYearsAtRegistration': 17,
+      'status': 'pending_guardian',
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PilotAccountScreen(
+          profile: profile,
+          openMedical: true,
+          medical: SyntheticMedicalRepository(client),
+          completion: MedicalCompletionRepository(client),
+          qr: Tier1QrRepository(client),
+          onPublicDashboard: () {},
+          onSignOut: () {},
         ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('Medical Information (Optional)'), findsOneWidget);
-      await tester.ensureVisible(find.text('Skip for now'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Skip for now'));
-      await tester.pumpAndSettle();
-      expect(
-        find.text('UNVERIFIED — not proof of school enrollment'),
-        findsOneWidget,
-      );
-      expect(client.medical, null);
-      expect(client.writes, 1);
-      await tester.ensureVisible(find.text('Go to Dashboard'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Go to Dashboard'));
-      expect(dashboard, 1);
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Required before QR activation'), findsOneWidget);
+    expect(find.text('Skip for now'), findsNothing);
+    expect(find.text('My ResQMe QR'), findsNothing);
+  });
   testWidgets(
     'QR failure offers retry without registration or medical writes',
     (tester) async {
@@ -237,14 +206,14 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Retry QR'), findsOneWidget);
-      expect(find.textContaining('Unable to load'), findsOneWidget);
+      expect(
+        find.textContaining('Your QR is not available yet'),
+        findsOneWidget,
+      );
       client.error = null;
       await tester.tap(find.text('Retry QR'));
       await tester.pumpAndSettle();
-      expect(
-        find.text('UNVERIFIED — not proof of school enrollment'),
-        findsOneWidget,
-      );
+      expect(find.text('Active after school approval'), findsOneWidget);
     },
   );
 }

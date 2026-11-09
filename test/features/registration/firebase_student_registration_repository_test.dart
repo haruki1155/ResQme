@@ -8,7 +8,7 @@ import 'package:resqme/features/registration/services/firebase_student_registrat
 class FakeRegistrationClient implements RegistrationClient {
   @override
   String? currentEmail;
-  int creates = 0, calls = 0;
+  int creates = 0, calls = 0, profileReads = 0;
   String? authError, callError;
   Map<String, dynamic>? payload;
   Map<String, dynamic>? profile = {
@@ -37,7 +37,10 @@ class FakeRegistrationClient implements RegistrationClient {
   }
 
   @override
-  Future<Map<String, dynamic>?> readOwnProfile() async => profile;
+  Future<Map<String, dynamic>?> readOwnProfile() async {
+    profileReads++;
+    return profile;
+  }
   @override
   Future<void> signIn(String email, String password) async {
     if (authError != null) {
@@ -110,6 +113,7 @@ void main() {
       );
       expect(client.creates, 1);
       expect(client.calls, 1);
+      expect(client.profileReads, 1);
       expect(client.payload!['noticeVersion'], 'tier1-registration-v1');
       expect(client.payload!.containsKey('password'), false);
       expect(client.payload!.containsKey('email'), false);
@@ -131,6 +135,7 @@ void main() {
       );
       expect(client.creates, 1);
       expect(client.calls, 2);
+      expect(client.profileReads, 1);
     },
   );
   test('concurrent taps cannot create duplicate users', () async {
@@ -142,6 +147,15 @@ void main() {
     ]);
     expect(client.creates, 1);
     expect(client.calls, 1);
+  });
+  test('sign-in refresh loads the authenticated profile', () async {
+    final client = FakeRegistrationClient();
+    final repo = FirebaseStudentRegistrationRepository(client);
+    expect(
+      (await repo.signIn(draft.email, draft.password)).state,
+      RegistrationState.pending,
+    );
+    expect(client.profileReads, 1);
   });
   test(
     'safe error messages and missing/approved profiles stay restricted',

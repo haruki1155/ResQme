@@ -15,6 +15,9 @@ import 'package:resqme/core/data/pilot_client.dart';
 import 'package:resqme/core/data/account_operation_lock.dart';
 import 'package:resqme/features/medical/services/synthetic_medical_repository.dart';
 import 'package:resqme/features/qr/services/tier1_qr_repository.dart';
+import 'package:resqme/features/medical/services/medical_completion_repository.dart';
+import 'package:resqme/features/medical/services/tier2_authorization_repository.dart';
+import 'package:resqme/features/medical/services/platform_tier2_key.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +25,8 @@ Future<void> main() async {
   Stream<void>? authChanges;
   SyntheticMedicalRepository? medicalRepository;
   Tier1QrRepository? qrRepository;
+  MedicalCompletionRepository? medicalCompletionRepository;
+  Tier2AuthorizationRepository? tier2Repository;
   final backend = BackendSelection.resolve(
     const String.fromEnvironment('RESQME_BACKEND'),
     isDebugBuild: kDebugMode,
@@ -76,6 +81,13 @@ Future<void> main() async {
       final medical = SyntheticMedicalRepository(pilot);
       medicalRepository = medical;
       qrRepository = Tier1QrRepository(pilot);
+      medicalCompletionRepository = MedicalCompletionRepository(pilot);
+      tier2Repository = Tier2AuthorizationRepository(
+        auth: auth,
+        functions: functions,
+        keyProvider: PlatformTier2Key(),
+        expectedProjectId: backend.projectId,
+      );
       authChanges = auth.authStateChanges().map<void>((_) {
         medical.syncSession();
       });
@@ -90,6 +102,8 @@ Future<void> main() async {
       authChanges: authChanges,
       medicalRepository: medicalRepository,
       qrRepository: qrRepository,
+      medicalCompletionRepository: medicalCompletionRepository,
+      tier2Repository: tier2Repository,
       consentRepository: SharedPreferencesConsentRepository(
         SharedPreferencesBooleanStore(),
       ),

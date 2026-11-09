@@ -5,8 +5,8 @@ const registrationPrivacyBody =
     'To create your ResQMe student account, we will process your full name, age and email address. You may also provide your gender, personal contact number, and parent/guardian or secondary emergency-contact details. These details will be stored in your private basic profile for registration and future authorized school enrollment and emergency-contact procedures. Your password is handled by our authentication service and is not stored in your student profile. Contact numbers and registration details are not displayed in public QR results. No medical information is collected or made available by this acknowledgment.';
 const registrationPrivacyCheckbox =
     'I have read and understood the ResQMe Privacy Notice and agree to the processing of my registration information for the purposes described above.';
-const minorPrivacyExplanation =
-    'Your enrollment will remain pending until the school confirms the required parent or guardian authorization. This checkbox does not provide that authorization.';
+const registrationPendingExplanation =
+    'Your enrollment will remain pending until your school approves it. This checkbox is a privacy acknowledgment, not school approval.';
 
 class RegistrationPrivacyDialog extends StatefulWidget {
   const RegistrationPrivacyDialog({
@@ -36,7 +36,7 @@ class _RegistrationPrivacyDialogState extends State<RegistrationPrivacyDialog> {
         const SizedBox(height: 16),
         if (widget.ageYears < 18)
           const Text(
-            minorPrivacyExplanation,
+            registrationPendingExplanation,
             style: TextStyle(fontWeight: FontWeight.w600),
           ),
         const SizedBox(height: 12),
@@ -52,7 +52,7 @@ class _RegistrationPrivacyDialogState extends State<RegistrationPrivacyDialog> {
                 children: [
                   Text(registrationPrivacyBody),
                   SizedBox(height: 16),
-                  Text(minorPrivacyExplanation),
+                  Text(registrationPendingExplanation),
                   SizedBox(height: 16),
                   Text(
                     'Synthetic-data pilot. School privacy-officer review is required before real student data is processed.',

@@ -9,4 +9,5 @@ abstract final class AppRoutes {
   static const drrm = '/drrm';
   static const profile = '/profile';
   static const medicalBoundary = '/medical-boundary';
+  static const tier2 = '/tier2';
 }

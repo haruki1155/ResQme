@@ -22,7 +22,7 @@ export function validateRegistration(input: RegistrationInput) {
   const secondaryName = name(input.secondaryName);
   const secondaryPhone = phone(input.secondaryPhone);
   if (Boolean(secondaryName) !== Boolean(secondaryPhone)) throw new Error('secondary');
-  return {fullName, ageYears:input.ageYears, status:input.ageYears<18?'pending_guardian':'pending_review', lrn:null,
+  return {fullName, ageYears:input.ageYears, status:'pending_review', lrn:null,
     gender:optionalText(input.gender, 40), personalContactNumber:phone(input.personalPhone),
     emergencyContacts:{primary:{fullName:name(input.guardianName), relationship:optionalText(input.guardianRelationship, 40), phoneNumber:phone(input.guardianPhone)}, secondary:{fullName:secondaryName, phoneNumber:secondaryPhone}}};
 }

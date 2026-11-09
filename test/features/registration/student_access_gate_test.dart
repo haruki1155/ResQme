@@ -92,7 +92,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), null);
       expect(
-        find.text('Registration received — guardian authorization pending'),
+        find.text('Registration received - pending school review'),
         findsOneWidget,
       );
     },
@@ -126,12 +126,12 @@ void main() {
         expect(find.text('Sign in'), findsOneWidget);
       } else if (status == 'pending_review') {
         expect(
-          find.text('Registration received — pending school review'),
+          find.text('Registration received - pending school review'),
           findsOneWidget,
         );
       } else if (status == 'pending_guardian') {
         expect(
-          find.text('Registration received — guardian authorization pending'),
+          find.text('Registration received - pending school review'),
           findsOneWidget,
         );
       } else {

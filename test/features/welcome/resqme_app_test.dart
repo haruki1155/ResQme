@@ -55,7 +55,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Continue as Guest'), findsOneWidget);
+    expect(find.text('Go to Dashboard as Guest'), findsOneWidget);
     expect(find.text('Flutter Demo Home Page'), findsNothing);
     expect(find.text('0'), findsNothing);
   });
@@ -75,7 +75,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.accepted, isTrue);
-    expect(find.text('Continue as Guest'), findsOneWidget);
+    expect(find.text('Go to Dashboard as Guest'), findsOneWidget);
   });
 
   testWidgets('waits for consent persistence before opening scanner entry', (
@@ -96,12 +96,12 @@ void main() {
     await tester.pump();
 
     expect(repository.accepted, isFalse);
-    expect(find.text('Continue as Guest'), findsNothing);
+    expect(find.text('Go to Dashboard as Guest'), findsNothing);
 
     persistence.complete();
     await tester.pumpAndSettle();
 
     expect(repository.accepted, isTrue);
-    expect(find.text('Continue as Guest'), findsOneWidget);
+    expect(find.text('Go to Dashboard as Guest'), findsOneWidget);
   });
 }

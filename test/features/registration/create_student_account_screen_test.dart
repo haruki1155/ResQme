@@ -77,7 +77,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('This checkbox does not provide that authorization.'),
+      find.text(registrationPendingExplanation),
       findsOneWidget,
     );
     expect(

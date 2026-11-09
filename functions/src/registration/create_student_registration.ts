@@ -2,7 +2,8 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import {getApps, initializeApp} from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import {noticeVersion, validateRegistration} from './registration_contract';
-export const createStudentRegistration = onCall(async (request) => {
+import {resqmeRuntimeOptions} from '../onboarding/authorization';
+export const createStudentRegistration = onCall(resqmeRuntimeOptions, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in is required.');
   const data = request.data as Record<string, unknown>;
   let registration; try { registration=validateRegistration({fullName:typeof data?.fullName==='string'?data.fullName:'',ageYears:data?.ageYears as number,noticeVersion:data?.noticeVersion as string,acknowledgmentAccepted:data?.acknowledgmentAccepted===true,gender:data?.gender,personalPhone:data?.personalPhone,guardianName:data?.guardianName,guardianRelationship:data?.guardianRelationship,guardianPhone:data?.guardianPhone,secondaryName:data?.secondaryName,secondaryPhone:data?.secondaryPhone}); } catch { throw new HttpsError('invalid-argument','Invalid registration request.'); }
@@ -25,7 +26,7 @@ export const createStudentRegistration = onCall(async (request) => {
       }
       return;
     }
-    tx.create(profile, {schemaVersion: 1, fullName:registration.fullName, ageYearsAtRegistration:registration.ageYears, status:registration.status, lrn: null, gender:registration.gender,personalContactNumber:registration.personalContactNumber,emergencyContacts:registration.emergencyContacts, schoolId: 'synthetic-pilot', createdAt: FieldValue.serverTimestamp()});
+    tx.create(profile, {schemaVersion: 1, fullName:registration.fullName, ageYearsAtRegistration:registration.ageYears, status:registration.status, schoolApprovalStatus:'pending', schoolAssignmentStatus:'unassigned', medicalStatus:'not_started', medicalRevision:0, lrn: null, gender:registration.gender,personalContactNumber:registration.personalContactNumber,emergencyContacts:registration.emergencyContacts, createdAt: FieldValue.serverTimestamp()});
     tx.create(acknowledgment, {affirmativeAction: true, actorUid: request.auth!.uid, serverTimestamp: FieldValue.serverTimestamp()});
   });
   const result = await profile.get(); return {status: result.get('status'), profilePath: profile.path};

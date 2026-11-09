@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:resqme/app/resqme_app.dart';
 import 'package:resqme/features/medical/services/synthetic_medical_repository.dart';
+import 'package:resqme/features/medical/services/medical_completion_repository.dart';
 import 'package:resqme/features/qr/presentation/qr_scanner_screen.dart';
 import 'package:resqme/features/qr/services/tier1_qr_repository.dart';
 import 'package:resqme/features/registration/services/firebase_student_registration_repository.dart';
@@ -41,6 +42,18 @@ class AccountClient extends FakeRegistrationClient {
 }
 
 void main() {
+  setUp(() {
+    TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      disableAnimations: true,
+    );
+  });
+  tearDown(
+    () => TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher
+        .clearAccessibilityFeaturesTestValue(),
+  );
+
   Future<void> open(
     WidgetTester tester, {
     bool accepted = true,
@@ -56,6 +69,9 @@ void main() {
         medicalRepository: pilot == null
             ? null
             : SyntheticMedicalRepository(pilot),
+        medicalCompletionRepository: pilot == null
+            ? null
+            : MedicalCompletionRepository(pilot),
         qrRepository: pilot == null ? null : Tier1QrRepository(pilot),
       ),
     );
@@ -72,17 +88,12 @@ void main() {
       tester.platformDispatcher.clearTextScaleFactorTestValue();
     });
     await open(tester);
-    await tester.ensureVisible(find.text('Sign In'));
+    await tester.ensureVisible(find.text('Register'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('Sign In'));
+    await tester.ensureVisible(find.text('Go to Dashboard as Guest'));
     await tester.pumpAndSettle();
-    expect(find.text('Student Account'), findsOneWidget);
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Continue as Guest'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Continue as Guest'));
+    await tester.tap(find.text('Go to Dashboard as Guest'));
     await tester.pumpAndSettle();
     expect(find.text('Ready when it matters.'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -94,10 +105,20 @@ void main() {
       final pilot = FakePilotClient();
       final account = AccountClient(pilot)
         ..currentEmail = 'synthetic@example.test';
+      account.profile = {
+        ...account.profile!,
+        'medicalStatus': 'complete',
+        'schoolApprovalStatus': 'approved',
+      };
       await open(tester, account: account, pilot: pilot);
-      await tester.ensureVisible(find.text('Sign In'));
+      await tester.ensureVisible(find.text('Go to Dashboard as Guest'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Sign In'));
+      await tester.ensureVisible(find.text('Go to Dashboard as Guest'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Go to Dashboard as Guest'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.byTooltip('Profile'), 250);
+      await tester.tap(find.byTooltip('Profile'));
       await tester.pumpAndSettle();
       final ownQr = pilot.qr!['payload'];
       await tester.ensureVisible(find.text('Scan another QR'));
@@ -125,19 +146,21 @@ void main() {
   );
 
   testWidgets(
-    'accepted terms open four entry actions without starting camera',
+    'accepted terms open three entry actions without starting camera',
     (tester) async {
       await open(tester);
       for (final label in [
-        'Scan QR',
-        'Continue as Guest',
+        'Enable Camera',
+        'Go to Dashboard as Guest',
         'Register',
-        'Sign In',
       ]) {
         expect(find.text(label), findsOneWidget);
       }
+      expect(find.text('Sign In'), findsNothing);
       expect(find.byType(MobileScanner), findsNothing);
-      await tester.tap(find.text('Continue as Guest'));
+      await tester.ensureVisible(find.text('Go to Dashboard as Guest'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Go to Dashboard as Guest'));
       await tester.pumpAndSettle();
       expect(find.text('Ready when it matters.'), findsOneWidget);
     },
@@ -152,12 +175,12 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Accept & continue'));
     await tester.pumpAndSettle();
-    expect(find.text('Continue as Guest'), findsOneWidget);
+    expect(find.text('Go to Dashboard as Guest'), findsOneWidget);
     expect(find.text('Ready when it matters.'), findsNothing);
   });
 
   testWidgets(
-    'Register opens registration directly; Sign In opens credentials',
+    'Register opens registration directly; dashboard Profile opens credentials',
     (tester) async {
       final pilot = FakePilotClient()..uid = null;
       final account = AccountClient(pilot);
@@ -169,23 +192,31 @@ void main() {
       expect(find.text('Create student account'), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Sign In'));
+      await tester.ensureVisible(find.text('Go to Dashboard as Guest'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Sign In'));
+      await tester.ensureVisible(find.text('Go to Dashboard as Guest'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Go to Dashboard as Guest'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.byTooltip('Profile'), 250);
+      await tester.tap(find.byTooltip('Profile'));
       await tester.pumpAndSettle();
       expect(find.text('Welcome to ResQMe'), findsOneWidget);
       expect(find.text('Forgot password'), findsOneWidget);
     },
   );
 
-  testWidgets('sign-in without existing QR opens My QR without medical step', (
+  testWidgets('pending sign-in requires medical and school approval before QR', (
     tester,
   ) async {
     final pilot = FakePilotClient()..uid = null;
     await open(tester, account: AccountClient(pilot), pilot: pilot);
-    await tester.ensureVisible(find.text('Sign In'));
+    await tester.ensureVisible(find.text('Go to Dashboard as Guest'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Sign In'));
+    await tester.tap(find.text('Go to Dashboard as Guest'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byTooltip('Profile'), 250);
+    await tester.tap(find.byTooltip('Profile'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Email'),
@@ -197,13 +228,13 @@ void main() {
     );
     await tester.tap(find.text('Sign in'));
     await tester.pumpAndSettle();
-    expect(find.text('Medical Information (Optional)'), findsNothing);
-    expect(find.text('Scan another QR'), findsOneWidget);
-    expect(find.text('Logout'), findsOneWidget);
-    expect(find.text('View/Update Medical Record'), findsNothing);
+    expect(find.text('Medical information'), findsOneWidget);
+    expect(find.text('Required before QR activation'), findsOneWidget);
+    expect(find.text('Scan another QR'), findsNothing);
+    expect(find.text('Logout'), findsNothing);
     expect(find.text('Registration status'), findsNothing);
     expect(find.text('Synthetic Student'), findsNothing);
-    expect(pilot.qr, isNotNull);
+    expect(pilot.qr, isNull);
   });
 
   for (final fails in [false, true]) {
@@ -214,8 +245,15 @@ void main() {
       final account = AccountClient(pilot)
         ..currentEmail = 'synthetic@example.test'
         ..failSignOut = fails;
+      account.profile = {
+        ...account.profile!,
+        'medicalStatus': 'complete',
+        'schoolApprovalStatus': 'approved',
+      };
       await open(tester, account: account, pilot: pilot);
-      await tester.tap(find.text('Continue as Guest'));
+      await tester.ensureVisible(find.text('Go to Dashboard as Guest'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Go to Dashboard as Guest'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(find.byTooltip('Profile'), 250);
       await tester.tap(find.byTooltip('Profile'));
@@ -225,7 +263,7 @@ void main() {
       await tester.tap(find.text('Logout'));
       await tester.pumpAndSettle();
       expect(
-        find.text('Continue as Guest'),
+        find.text('Go to Dashboard as Guest'),
         fails ? findsNothing : findsOneWidget,
       );
       if (fails) {
@@ -235,11 +273,58 @@ void main() {
     });
   }
 
+  testWidgets('camera runs in entry frame and stops before guest navigation', (
+    tester,
+  ) async {
+    await open(tester);
+    expect(find.byType(MobileScanner), findsNothing);
+    await tester.tap(find.text('Enable Camera'));
+    await tester.pumpAndSettle();
+    expect(find.text('RESQME | QR ID'), findsOneWidget);
+    expect(find.text('Disable Camera'), findsOneWidget);
+    expect(find.byType(MobileScanner), findsOneWidget);
+    expect(find.text('Scan QR'), findsNothing);
+    await tester.ensureVisible(find.text('Go to Dashboard as Guest'));
+    await tester.tap(find.text('Go to Dashboard as Guest'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MobileScanner, skipOffstage: false), findsNothing);
+    Navigator.of(tester.element(find.text('Ready when it matters.'))).pop();
+    await tester.pumpAndSettle();
+    expect(find.text('Enable Camera'), findsOneWidget);
+    expect(find.byType(MobileScanner), findsNothing);
+  });
+
+  testWidgets('scan sweep animates only while camera is enabled', (
+    tester,
+  ) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: false);
+    await open(tester);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    await tester.tap(find.text('Enable Camera'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(tester.binding.hasScheduledFrame, isTrue);
+    await tester.tap(find.text('Disable Camera'));
+    await tester.pumpAndSettle();
+    expect(tester.binding.hasScheduledFrame, isFalse);
+  });
+
+  testWidgets('camera can be disabled without leaving entry', (tester) async {
+    await open(tester);
+    await tester.tap(find.text('Enable Camera'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Disable Camera'));
+    await tester.pumpAndSettle();
+    expect(find.text('RESQME | QR ID'), findsOneWidget);
+    expect(find.byType(MobileScanner), findsNothing);
+  });
+
   testWidgets('offline scan dashboard action reaches dashboard from entry', (
     tester,
   ) async {
     await open(tester);
-    await tester.tap(find.text('Scan QR'));
+    await tester.tap(find.text('Enable Camera'));
     await tester.pumpAndSettle();
     tester
         .state<QrScannerScreenState>(find.byType(QrScannerScreen))

@@ -66,12 +66,16 @@ class FlutterFireRegistrationClient implements RegistrationClient {
 
   @override
   Future<Map<String, dynamic>?> readOwnProfile() async {
-    final uid = auth.currentUser?.uid;
-    if (uid == null) return null;
-    return (await firestore
-            .doc('studentProfiles/$uid')
-            .get(const GetOptions(source: Source.server)))
-        .data();
+    if (auth.currentUser == null) return null;
+    return (await functions
+            .httpsCallable(
+              'getMyStudentProfile',
+              options: HttpsCallableOptions(
+                timeout: const Duration(seconds: 10),
+              ),
+            )
+            .call<Map<String, dynamic>>({}))
+        .data;
   }
 
   @override

@@ -19,6 +19,11 @@ class InvalidQr extends QrScanResult {
   final String reason;
 }
 
+/// A syntactically valid QR that the server did not confirm as active.
+class InactiveQr extends QrScanResult {
+  const InactiveQr();
+}
+
 /// Strict offline syntactic parser for ResQMe emergency QR payloads.
 abstract final class QrPayloadParser {
   static const String prefix = 'resqme:v1:';
@@ -62,7 +67,9 @@ abstract final class QrPayloadParser {
 
       return const ValidResQMeQr();
     } catch (_) {
-      return const InvalidQr(reason: 'Malformed or non-canonical base64url encoding.');
+      return const InvalidQr(
+        reason: 'Malformed or non-canonical base64url encoding.',
+      );
     }
   }
 }

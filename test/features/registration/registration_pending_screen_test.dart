@@ -32,11 +32,7 @@ void main() {
           ),
         );
         expect(
-          find.text(
-            minor
-                ? 'Registration received — guardian authorization pending'
-                : 'Registration received — pending school review',
-          ),
+          find.text('Registration received - pending school review'),
           findsOneWidget,
         );
         expect(find.text('Synthetic Student'), findsNothing);

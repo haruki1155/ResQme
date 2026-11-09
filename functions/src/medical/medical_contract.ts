@@ -34,3 +34,13 @@ export function validateMedicalSave(value:unknown) {
   return {...revisionRequest(data),conditions:answer(data.conditions),allergies:answer(data.allergies),acknowledgment:{version:'synthetic-medical-v1',syntheticDataConfirmed:true,minorNoticeAcknowledged:acknowledgment.minorNoticeAcknowledged===true},
     emergencyContact:data.emergencyContact===undefined?null:contact(data.emergencyContact),expectedContact:data.expectedContact===undefined?null:contact(data.expectedContact)};
 }
+
+/** Production completion contract. Synthetic QA records use validateMedicalSave separately. */
+export function validateMedicalCompletion(value:unknown) {
+  const data=object(value);
+  keys(data,['conditions','allergies','primaryContact','selfReportConfirmed','expectedRevision','requestId']);
+  if(data.selfReportConfirmed!==true) throw new HttpsError('invalid-argument','Confirm the medical information is self-reported.');
+  const conditions=answer(data.conditions),allergies=answer(data.allergies),primaryContact=contact(data.primaryContact);
+  if(!primaryContact.fullName||!primaryContact.relationship||!primaryContact.phoneNumber) throw new HttpsError('invalid-argument','Complete the primary emergency contact.');
+  return {...revisionRequest(data),conditions,allergies,primaryContact,selfReportConfirmed:true};
+}

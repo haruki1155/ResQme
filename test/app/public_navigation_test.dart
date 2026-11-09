@@ -18,7 +18,9 @@ void main() {
       ResQMeApp(consentRepository: _AcceptedConsentRepository()),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Continue as Guest'));
+    await tester.ensureVisible(find.text('Go to Dashboard as Guest'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Go to Dashboard as Guest'));
     await tester.pumpAndSettle();
   }
 

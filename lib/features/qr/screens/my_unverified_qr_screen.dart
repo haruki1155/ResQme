@@ -9,10 +9,12 @@ class MyUnverifiedQrScreen extends StatefulWidget {
     required this.onDashboard,
     this.onSignOut,
     this.onScan,
+    this.onTier2,
   });
   final Tier1QrRepository repository;
   final VoidCallback onDashboard;
   final VoidCallback? onScan, onSignOut;
+  final VoidCallback? onTier2;
   @override
   State<MyUnverifiedQrScreen> createState() => _MyUnverifiedQrScreenState();
 }
@@ -48,9 +50,45 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
     }
   }
 
+  Future<void> replace() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Replace this QR?'),
+        content: const Text(
+          'The current QR will stop working as soon as the new one is created.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Replace QR'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      loading = true;
+      failed = false;
+      payload = null;
+    });
+    try {
+      final result = await widget.repository.replaceMine();
+      if (mounted) setState(() => payload = result);
+    } catch (_) {
+      if (mounted) setState(() => failed = true);
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('My unverified QR')),
+    appBar: AppBar(title: const Text('My ResQMe QR')),
     body: SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -61,7 +99,7 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'TEST MODE — Synthetic pilot',
+                  'RESQME QR CREDENTIAL',
                   style: TextStyle(
                     color: Color(0xFFE92B32),
                     fontWeight: FontWeight.w700,
@@ -69,12 +107,12 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'UNVERIFIED — not proof of school enrollment',
+                  'Active after school approval',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'This QR is not a login credential, a medical-data key, or permission to access Tier 2. Public emergency resources do not require it.',
+                  'Scanning confirms this QR is active for Tier 1 public emergency resources. It does not sign the holder into the student account or reveal private student information.',
                 ),
                 const SizedBox(height: 24),
                 if (loading) const Center(child: CircularProgressIndicator()),
@@ -89,17 +127,28 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
                       ),
                     ),
                   ),
+                if (payload != null)
+                  OutlinedButton(
+                    onPressed: loading ? null : replace,
+                    child: const Text('Replace QR'),
+                  ),
                 if (failed) ...[
                   const Text(
-                    'Unable to load your unverified QR. Please retry.',
+                    'Your QR is not available yet. Complete required information and wait for school approval, then retry.',
                   ),
                   FilledButton(onPressed: load, child: const Text('Retry QR')),
+                  OutlinedButton(onPressed: loading ? null : replace, child: const Text('Generate a new QR')),
                 ],
                 const SizedBox(height: 24),
                 FilledButton(
                   onPressed: widget.onDashboard,
                   child: const Text('Go to Dashboard'),
                 ),
+                if (widget.onTier2 != null)
+                  OutlinedButton(
+                    onPressed: widget.onTier2,
+                    child: const Text('Access Tier 2'),
+                  ),
                 if (widget.onScan != null)
                   TextButton(
                     onPressed: widget.onScan,

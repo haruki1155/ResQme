@@ -79,8 +79,196 @@ class FirstAidLibraryScreen extends StatefulWidget {
 }
 
 class _FirstAidLibraryScreenState extends State<FirstAidLibraryScreen> {
+  static const _red = Color(0xFFE3222A);
+  static const _ink = Color(0xFF10131C);
+  static const _muted = Color(0xFF697789);
+  final _search = TextEditingController();
   String _query = '';
   String _category = 'All';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _submitSearch() {
+    FocusScope.of(context).unfocus();
+    setState(() => _query = _search.text);
+  }
+
+  void _clearFilters() {
+    _search.clear();
+    setState(() {
+      _query = '';
+      _category = 'All';
+    });
+  }
+
+  Widget _guideCard(
+    FirstAidGuide guide, {
+    required bool initiallyExpanded,
+  }) => Container(
+    margin: const EdgeInsets.only(bottom: 16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(color: const Color(0xFFF0F1F4)),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x0D101828),
+          blurRadius: 5,
+          offset: Offset(0, 2),
+        ),
+      ],
+    ),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: ExpansionTile(
+        key: PageStorageKey(guide.title),
+        initiallyExpanded: initiallyExpanded,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        shape: const Border(),
+        collapsedShape: const Border(),
+        iconColor: const Color(0xFFA4ADBA),
+        collapsedIconColor: const Color(0xFFA4ADBA),
+        leading: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF1F2),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(guide.icon, color: _red, size: 23),
+        ),
+        title: Text(
+          guide.title,
+          style: const TextStyle(
+            color: _ink,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            height: 1.3,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            guide.category,
+            style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
+          ),
+        ),
+        children: [
+          const Divider(height: 1, color: Color(0xFFF0F1F4)),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7F8FA),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'BEFORE YOU BEGIN',
+                        style: TextStyle(
+                          color: _muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.4,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Use professional emergency services for serious or life-threatening conditions.',
+                        style: TextStyle(
+                          color: Color(0xFF455165),
+                          fontSize: 14,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'WHAT TO DO',
+                  style: TextStyle(
+                    color: _red,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                for (final section in guide.details.split('\n\n'))
+                  _instruction(section),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => FirstAidDetailScreen(guide: guide),
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: _red,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('Open full guide'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _instruction(String section) {
+    final match = RegExp(r'^Step (\d+):\s*').firstMatch(section);
+    final text = Text(
+      match == null ? section : section.substring(match.end),
+      style: const TextStyle(
+        color: Color(0xFF455165),
+        fontSize: 14,
+        height: 1.55,
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: match == null
+          ? text
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: _red,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    match.group(1)!,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: text),
+              ],
+            ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,64 +280,205 @@ class _FirstAidLibraryScreenState extends State<FirstAidLibraryScreen> {
         .where(
           (guide) =>
               (_category == 'All' || guide.category == _category) &&
-              guide.title.toLowerCase().contains(_query.toLowerCase()),
+              guide.title.toLowerCase().contains(_query.trim().toLowerCase()),
         )
         .toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('First-aid instructions')),
+      backgroundColor: const Color(0xFFF5F6F8),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: _ink,
+        centerTitle: true,
+        toolbarHeight: 72,
+        leadingWidth: 72,
+        leading: Center(
+          child: IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).maybePop(),
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFFF3F5F8),
+              minimumSize: const Size(48, 48),
+            ),
+            icon: const Icon(Icons.chevron_left, size: 29),
+          ),
+        ),
+        title: const Text(
+          'First-aid instructions',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 22),
+            child: Icon(Icons.add_circle_outline, color: _red, size: 25),
+          ),
+        ],
+      ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Text(
-              'First aid, ready when it matters.',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Use professional emergency services for serious or life-threatening conditions.',
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              onChanged: (value) => setState(() => _query = value),
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Search instructions',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
               children: [
-                for (final category in categories)
-                  ChoiceChip(
-                    label: Text(category),
-                    selected: _category == category,
-                    onSelected: (_) => setState(() => _category = category),
+                const Text(
+                  'IMMEDIATE CARE GUIDE',
+                  style: TextStyle(
+                    color: _red,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'What do you need\nhelp with?',
+                  style: TextStyle(
+                    color: _ink,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _search,
+                        textInputAction: TextInputAction.search,
+                        onChanged: (value) => setState(() => _query = value),
+                        onSubmitted: (_) => _submitSearch(),
+                        style: const TextStyle(fontSize: 14, color: _ink),
+                        decoration: InputDecoration(
+                          hintText: 'Search injury or symptom',
+                          hintStyle: const TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF7B889A),
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            size: 21,
+                            color: Color(0xFF8B98AA),
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 16,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFE1E5EB),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFE1E5EB),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: _red,
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      tooltip: 'Search guides',
+                      onPressed: _submitSearch,
+                      style: IconButton.styleFrom(
+                        backgroundColor: _red,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(52, 52),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: const Icon(Icons.search, size: 25),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${guides.length} ${guides.length == 1 ? 'GUIDE' : 'GUIDES'}',
+                        style: const TextStyle(
+                          color: Color(0xFF7B889A),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: .6,
+                        ),
+                      ),
+                    ),
+                    PopupMenuButton<String>(
+                      tooltip: 'Filter guides',
+                      initialValue: _category,
+                      onSelected: (value) => setState(() => _category = value),
+                      itemBuilder: (_) => [
+                        for (final category in categories)
+                          CheckedPopupMenuItem(
+                            value: category,
+                            checked: category == _category,
+                            child: Text(category),
+                          ),
+                      ],
+                      icon: Icon(
+                        Icons.filter_list,
+                        color: _category == 'All' ? _muted : _red,
+                        size: 21,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (guides.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'No guides found',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: _ink,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Try another search or clear the selected filters.',
+                          textAlign: TextAlign.center,
+                        ),
+                        TextButton(
+                          onPressed: _clearFilters,
+                          child: const Text('Clear search & filters'),
+                        ),
+                      ],
+                    ),
+                  ),
+                for (var i = 0; i < guides.length; i++)
+                  _guideCard(
+                    guides[i],
+                    initiallyExpanded:
+                        i == 0 && _query.isEmpty && _category == 'All',
                   ),
               ],
             ),
-            const SizedBox(height: 20),
-            for (final guide in guides)
-              Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: const Color(0xFFFFF0F1),
-                    child: Icon(guide.icon, color: const Color(0xFFE92B32)),
-                  ),
-                  title: Text(guide.title),
-                  subtitle: Text(guide.category),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => FirstAidDetailScreen(guide: guide),
-                    ),
-                  ),
-                ),
-              ),
-          ],
+          ),
         ),
       ),
     );

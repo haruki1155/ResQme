@@ -66,7 +66,7 @@ test('minor test save never verifies guardian authorization or enrollment', {tim
   await minor.call('saveMySyntheticMedicalRecord',{...base,acknowledgment:{...base.acknowledgment,minorNoticeAcknowledged:true}});
   const record=(await store.doc('studentMedicalRecords/qa-medical-minor').get()).data()!;
   assert.equal(record.guardianAuthorizationStatus,'not_verified');assert.equal(record.syntheticOnly,true);assert.equal(record.medicalStatus,'completed_synthetic');
-  assert.equal((await store.doc('studentProfiles/qa-medical-minor').get()).get('status'),'pending_guardian');
+  assert.equal((await store.doc('studentProfiles/qa-medical-minor').get()).get('status'),'pending_review');
 });
 test('QR denies forged requests and non-pending/missing registration', {timeout:20000},async()=>{
   await assert.rejects(()=>anonymous.call('ensureMyTier1Qr',{}),{code:'functions/unauthenticated'});
@@ -77,17 +77,10 @@ test('QR denies forged requests and non-pending/missing registration', {timeout:
     await ref.delete();await assert.rejects(()=>outsider.call('ensureMyTier1Qr',{}),{code:'functions/failed-precondition'});
   }finally{await ref.set(before);}
 });
-test('concurrent QR calls produce one opaque persistent unverified reference without QA or medical completion', {timeout:20000},async()=>{
-  const results=await Promise.all(Array.from({length:4},()=>outsider.call('ensureMyTier1Qr',{})));
-  const first=results[0].data as Record<string,unknown>;
-  assert.match(first.payload as string,/^resqme:v1:[A-Za-z0-9_-]{43}$/);
-  assert.equal(first.verificationStatus,'unverified');
-  for(const result of results) assert.deepEqual(result.data,first);
-  assert.deepEqual((await outsider.call('ensureMyTier1Qr',{})).data,first);
-  assert.equal((await store.doc('studentMedicalRecords/qa-medical-outsider').get()).exists,false);
-  assert.equal((await store.doc('studentProfiles/qa-medical-outsider').get()).get('status'),'pending_review');
-  const credential=(await store.doc('studentQrCredentials/qa-medical-outsider').get()).data()!;
-  assert.deepEqual(Object.keys(credential).sort(),['issuedAt','payload','verificationStatus']);
-  assert.equal(((await minor.call('ensureMyTier1Qr',{})).data as Record<string,unknown>).verificationStatus,'unverified');
-  assert.equal((await store.doc('studentProfiles/qa-medical-minor').get()).get('status'),'pending_guardian');
+test('QR activation remains denied until production medical completion and trusted school approval', {timeout:20000},async()=>{
+  for(const person of [adult,minor,outsider]) await assert.rejects(()=>person.call('ensureMyTier1Qr',{}),{code:'functions/failed-precondition'});
+  for(const uid of ['qa-medical-adult','qa-medical-minor','qa-medical-outsider']) {
+    assert.equal((await store.doc(`studentQrCredentials/${uid}`).get()).exists,false);
+    assert.equal((await store.doc(`studentProfiles/${uid}`).get()).get('schoolAssignmentStatus'),'unassigned');
+  }
 });

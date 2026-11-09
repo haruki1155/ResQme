@@ -8,7 +8,8 @@ import 'package:resqme/features/medical/screens/synthetic_medical_screen.dart';
 import 'package:resqme/features/medical/widgets/finish_medical_record_reminder.dart';
 import 'package:resqme/features/medical/widgets/account_dashboard_panel.dart';
 import 'package:resqme/features/registration/services/firebase_student_registration_repository.dart';
-import '../registration/firebase_student_registration_repository_test.dart' show FakeRegistrationClient;
+import '../registration/firebase_student_registration_repository_test.dart'
+    show FakeRegistrationClient;
 
 class FakePilotClient implements PilotClient {
   @override
@@ -40,11 +41,18 @@ class FakePilotClient implements PilotClient {
     if (error != null) {
       throw FirebaseException(plugin: 'functions', code: error!);
     }
-    if (name == 'ensureMyTier1Qr') {
-      qr = {
-        'payload': 'resqme:v1:${'A' * 43}',
-        'verificationStatus': 'unverified',
+    if (name == 'getMyStudentProfile') {
+      return {
+        'medicalStatus': 'not_started',
+        'medicalRevision': 0,
+        'schoolApprovalStatus': 'pending',
       };
+    }
+    if (name == 'completeMyMedicalRecord') {
+      return {'medicalStatus': 'complete', 'revision': 1};
+    }
+    if (name == 'ensureMyTier1Qr' || name == 'replaceMyTier1Qr') {
+      qr = {'payload': 'resqme:v1:${'A' * 43}', 'verificationStatus': 'active'};
       return qr!;
     }
     medical = {
@@ -60,15 +68,57 @@ class FakePilotClient implements PilotClient {
     };
     return {'revision': medical!['revision']};
   }
+
+  @override
+  Future<bool> resolveQr(String payload) async => false;
 }
 
 void main() {
-  testWidgets('dashboard refreshes medical completion after returning from account route', (tester)async{
-    final client=FakePilotClient();
-    await tester.pumpWidget(MaterialApp(home:Scaffold(body:AccountDashboardPanel(registration:FirebaseStudentRegistrationRepository(FakeRegistrationClient()..currentEmail='synthetic@example.test'),medical:SyntheticMedicalRepository(client))),routes:{'/profile':(context)=>Scaffold(body:TextButton(onPressed:(){client.medical={'schemaVersion':1,'syntheticOnly':true,'medicalStatus':'completed_synthetic','guardianAuthorizationStatus':'not_verified','revision':1,'conditions':{'state':'unknown','details':null},'allergies':{'state':'unknown','details':null}};Navigator.pop(context);},child:const Text('Synthetic save and return')))}));
-    await tester.pumpAndSettle();await tester.tap(find.text('Finish now'));await tester.pumpAndSettle();await tester.tap(find.text('Synthetic save and return'));await tester.pumpAndSettle();
-    expect(find.text('Finish Medical Record'),findsNothing);expect(find.text('View/Update Medical Record'),findsOneWidget);
-  });
+  testWidgets(
+    'dashboard refreshes medical completion after returning from account route',
+    (tester) async {
+      final client = FakePilotClient();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AccountDashboardPanel(
+              registration: FirebaseStudentRegistrationRepository(
+                FakeRegistrationClient()
+                  ..currentEmail = 'synthetic@example.test',
+              ),
+              medical: SyntheticMedicalRepository(client),
+            ),
+          ),
+          routes: {
+            '/profile': (context) => Scaffold(
+              body: TextButton(
+                onPressed: () {
+                  client.medical = {
+                    'schemaVersion': 1,
+                    'syntheticOnly': true,
+                    'medicalStatus': 'completed_synthetic',
+                    'guardianAuthorizationStatus': 'not_verified',
+                    'revision': 1,
+                    'conditions': {'state': 'unknown', 'details': null},
+                    'allergies': {'state': 'unknown', 'details': null},
+                  };
+                  Navigator.pop(context);
+                },
+                child: const Text('Synthetic save and return'),
+              ),
+            ),
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Finish now'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Synthetic save and return'));
+      await tester.pumpAndSettle();
+      expect(find.text('Finish Medical Record'), findsNothing);
+      expect(find.text('View/Update Medical Record'), findsOneWidget);
+    },
+  );
   test('reminder snooze belongs to the signed-in session', () {
     final client = FakePilotClient();
     final repo = SyntheticMedicalRepository(client);
