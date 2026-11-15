@@ -5,6 +5,7 @@ import {HttpsError,onCall} from 'firebase-functions/v2/https';
 import {isQrPayload} from './ensure_my_tier1_qr';
 import {resqmeRuntimeOptions} from '../onboarding/authorization';
 import {keys,object} from '../medical/medical_contract';
+import {evaluateQrEligibility} from './qr_eligibility';
 
 export function validateResolveQrRequest(value:unknown):string {
   const input=object(value);
@@ -38,13 +39,13 @@ export const resolveTier1Qr=onCall({...resqmeRuntimeOptions,maxInstances:4},asyn
   const lookup=await db.doc(`studentQrLookups/${hashQrPayload(payload)}`).get();
   if(!lookup.exists||lookup.get('status')!=='active'||typeof lookup.get('uid')!=='string') return {active:false};
   const uid=lookup.get('uid') as string;
-  const [profile,credential,medical]=await Promise.all([
+  const [profile,credential,medical,guardian]=await Promise.all([
     db.doc(`studentProfiles/${uid}`).get(),
     db.doc(`studentQrCredentials/${uid}`).get(),
     db.doc(`studentMedicalRecords/${uid}`).get(),
+    db.doc(`studentGuardianAuthorizations/${uid}`).get(),
   ]);
-  const eligible=profile.exists&&profile.get('schemaVersion')===1&&profile.get('schoolApprovalStatus')==='approved'&&profile.get('medicalStatus')==='complete'&&
-    medical.exists&&medical.get('medicalStatus')==='complete'&&medical.get('selfReported')===true&&
-    credential.exists&&credential.get('verificationStatus')==='active'&&credential.get('payload')===payload;
+  const eligible=profile.exists&&credential.exists&&credential.get('payload')===payload&&lookup.get('status')==='active'&&
+    evaluateQrEligibility({uid,profile:profile.data(),medical:medical.data(),guardianAuthorization:guardian.data(),credential:credential.data(),lookup:lookup.data()});
   return {active:eligible};
 });

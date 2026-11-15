@@ -44,3 +44,9 @@ export function validateMedicalCompletion(value:unknown) {
   if(!primaryContact.fullName||!primaryContact.relationship||!primaryContact.phoneNumber) throw new HttpsError('invalid-argument','Complete the primary emergency contact.');
   return {...revisionRequest(data),conditions,allergies,primaryContact,selfReportConfirmed:true};
 }
+
+export function assertMedicalCompletionAllowed(profile:Record<string,unknown>):void {
+ if(!['pending_review','pending_guardian'].includes(profile.status as string)||profile.schoolApprovalStatus==='revoked') {
+  throw new HttpsError('failed-precondition','Medical information cannot be updated for this account.');
+ }
+}

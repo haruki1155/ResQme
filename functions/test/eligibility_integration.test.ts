@@ -36,7 +36,7 @@ async function deleteOwnedTree(ref:FirebaseFirestore.DocumentReference) {
 test.before(async()=>{
   for(const person of people) await adminAuth(admin).createUser({...person,password:'Synthetic-Local-123'});
   for(let index=0;index<apps.length;index++) await signInWithEmailAndPassword(apps[index].auth,people[index].email,'Synthetic-Local-123');
-  await student.call('createStudentRegistration',{fullName:'Fictional Student',ageYears:16,noticeVersion:'tier1-registration-v1',acknowledgmentAccepted:true});
+  await student.call('createStudentRegistration',{fullName:'Fictional Student',ageYears:18,lrn:'900000000903',noticeVersion:'tier1-registration-v1',acknowledgmentAccepted:true});
   await store.doc(`studentProfiles/${people[0].uid}`).update({schoolId:'synthetic-pilot',schoolAssignmentStatus:'assigned'});
   await store.doc(`studentQrCredentials/${people[0].uid}`).set({payload:legacyPayload,verificationStatus:'unverified'});
   qrPayloads.push(legacyPayload);
@@ -59,9 +59,22 @@ test.after(async()=>{
   await deleteAdmin(admin);
 });
 
-test('school approval is server-scoped and requires a complete owner medical record',{timeout:30000},async()=>{
-  await assert.rejects(()=>reviewer.call('approveStudentQr',{studentUid:people[0].uid,requestId:'approval-0001'}),{code:'functions/failed-precondition'});
+test('school approval is independent; QR remains pending until medical completion',{timeout:30000},async()=>{
+  // Legacy rejection is intentional; removing this exact local fixture is not a migration.
+  const legacyCredential=store.doc(`studentQrCredentials/${people[0].uid}`);
+  const legacyBefore=(await legacyCredential.get()).data();
   await assert.rejects(()=>student.call('ensureMyTier1Qr',{}),{code:'functions/failed-precondition'});
+  assert.deepEqual((await legacyCredential.get()).data(),legacyBefore);
+  assert.deepEqual((await reviewer.call('resolveTier1Qr',{payload:legacyPayload})).data,{active:false});
+  await legacyCredential.delete();
+  const candidate=await reviewer.call('getSchoolReviewCandidate',{studentUid:people[0].uid});
+  assert.deepEqual(candidate.data,{studentUid:people[0].uid,fullName:'Fictional Student',schoolApprovalStatus:'pending',schoolVerificationOutcome:'manual_review'});
+  const approved=await reviewer.call('approveStudentQr',{studentUid:people[0].uid,requestId:'approval-0001'});
+  assert.deepEqual(approved.data,{schoolApprovalStatus:'approved'});
+  const pendingQr=(await student.call('ensureMyTier1Qr',{})).data as {payload:string;verificationStatus:string};
+  qrPayloads.push(pendingQr.payload);
+  assert.equal(pendingQr.verificationStatus,'pending');
+  assert.deepEqual((await reviewer.call('resolveTier1Qr',{payload:pendingQr.payload})).data,{active:false});
   await assert.rejects(()=>student.call('completeMyMedicalRecord',{}),{code:'functions/invalid-argument'});
   const medical={
     conditions:{state:'unknown'},allergies:{state:'none_known'},selfReportConfirmed:true,
@@ -76,12 +89,9 @@ test('school approval is server-scoped and requires a complete owner medical rec
   await reviewerRef.update({schoolId:'another-school'});
   await assert.rejects(()=>reviewer.call('approveStudentQr',{studentUid:people[0].uid,requestId:'approval-wrong-0001'}),{code:'functions/permission-denied'});
   await reviewerRef.update({schoolId:'synthetic-pilot'});
-  const approved=await reviewer.call('approveStudentQr',{studentUid:people[0].uid,requestId:'approval-0001'});
-  assert.deepEqual(approved.data,{schoolApprovalStatus:'approved'});
   assert.equal((await store.doc(`studentProfiles/${people[0].uid}`).get()).get('schoolApprovalStatus'),'approved');
   assert.equal((await store.doc(`studentProfiles/${people[0].uid}/schoolApprovals/approval-0001`).get()).get('reviewerUid'),people[1].uid);
-  await assert.rejects(()=>student.call('ensureMyTier1Qr',{}),{code:'functions/failed-precondition'});
-  const issued=(await student.call('replaceMyTier1Qr',{})).data as {payload:string;verificationStatus:string};
+  const issued=(await student.call('ensureMyTier1Qr',{})).data as {payload:string;verificationStatus:string};
   qrPayloads.push(issued.payload);
   assert.equal(issued.verificationStatus,'active');
   assert.deepEqual((await reviewer.call('resolveTier1Qr',{payload:issued.payload})).data,{active:true});

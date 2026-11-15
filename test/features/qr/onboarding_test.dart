@@ -90,7 +90,7 @@ void main() {
     await tester.tap(find.text('Save Test Record'));
     await tester.pumpAndSettle();
     expect(client.medical!['medicalStatus'], 'completed_synthetic');
-    expect(find.text('Active after school approval'), findsOneWidget);
+    expect(find.text('Pending Verification'), findsOneWidget);
     final qr = client.qr!['payload'];
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(app());
@@ -99,7 +99,7 @@ void main() {
     expect(client.qr!['payload'], qr);
   });
   testWidgets(
-    'new registration is routed to required medical completion before QR',
+    'new registration receives an inert pending QR before optional medical completion',
     (tester) async {
       final changes = StreamController<void>.broadcast();
       addTearDown(changes.close);
@@ -125,6 +125,7 @@ void main() {
       for (final entry in {
         'Full name': 'Synthetic Student',
         'Age (years)': '17',
+        '12-digit LRN': '001234567890',
         'Email': 'synthetic@example.test',
         'Password': 'secret-password',
         'Confirm password': 'secret-password',
@@ -144,11 +145,15 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Agree & Create Account'));
       await tester.pumpAndSettle();
-      expect(find.text('Required before QR activation'), findsOneWidget);
-      expect(find.text('Skip for now'), findsNothing);
-      expect(find.text('My ResQMe QR'), findsNothing);
+      expect(find.text('Pending Verification'), findsOneWidget);
+      expect(find.text('Complete Medical Information'), findsOneWidget);
+      expect(find.text('My ResQMe QR'), findsOneWidget);
       expect(registration.creates, 1);
       expect(pilot.medical, null);
+      await tester.ensureVisible(find.text('Complete Medical Information'));
+      await tester.tap(find.text('Complete Medical Information'));
+      await tester.pumpAndSettle();
+      expect(find.text('Required before QR activation'), findsOneWidget);
     },
   );
   test(
@@ -156,6 +161,11 @@ void main() {
     () async {
       final client = FakePilotClient();
       final repo = Tier1QrRepository(client);
+      final pending = repo.validate({
+        'payload': 'resqme:v1:${'B' * 43}',
+        'verificationStatus': 'pending',
+      });
+      expect(pending.verificationStatus, 'pending');
       final payload = await repo.ensureMine();
       expect(payload, startsWith('resqme:v1:'));
       expect((await repo.ensureMine()), payload);
@@ -164,34 +174,67 @@ void main() {
       await expectLater(repo.loadMine(), throwsA(isA<QrFailure>()));
     },
   );
-  testWidgets('pending account must complete medical before QR activation', (
-    tester,
-  ) async {
-    final client = FakePilotClient();
-    final profile = StudentRegistrationProfile.fromFirestore({
-      'schemaVersion': 1,
-      'fullName': 'Synthetic Student',
-      'ageYearsAtRegistration': 17,
-      'status': 'pending_guardian',
-    });
-    await tester.pumpWidget(
-      MaterialApp(
-        home: PilotAccountScreen(
-          profile: profile,
-          openMedical: true,
-          medical: SyntheticMedicalRepository(client),
-          completion: MedicalCompletionRepository(client),
-          qr: Tier1QrRepository(client),
-          onPublicDashboard: () {},
-          onSignOut: () {},
+  testWidgets(
+    'school-pending account can show inert QR before medical completion',
+    (tester) async {
+      final client = FakePilotClient();
+      final profile = StudentRegistrationProfile.fromFirestore({
+        'schemaVersion': 1,
+        'fullName': 'Synthetic Student',
+        'ageYearsAtRegistration': 17,
+        'status': 'pending_guardian',
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PilotAccountScreen(
+            profile: profile,
+            openMedical: true,
+            medical: SyntheticMedicalRepository(client),
+            completion: MedicalCompletionRepository(client),
+            qr: Tier1QrRepository(client),
+            onPublicDashboard: () {},
+            onSignOut: () {},
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Required before QR activation'), findsOneWidget);
-    expect(find.text('Skip for now'), findsNothing);
-    expect(find.text('My ResQMe QR'), findsNothing);
-  });
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Pending Verification'), findsOneWidget);
+      expect(find.text('Complete Medical Information'), findsOneWidget);
+      expect(find.text('My ResQMe QR'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'school approval before medical completion still leaves QR pending',
+    (tester) async {
+      final client = FakePilotClient();
+      final profile = StudentRegistrationProfile.fromFirestore({
+        'schemaVersion': 1,
+        'fullName': 'Synthetic Adult',
+        'ageYearsAtRegistration': 18,
+        'status': 'pending_review',
+        'schoolApprovalStatus': 'approved',
+        'schoolAssignmentStatus': 'assigned',
+        'medicalStatus': 'not_started',
+        'medicalRevision': 0,
+        'lrn': '001234567890',
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PilotAccountScreen(
+            profile: profile,
+            medical: SyntheticMedicalRepository(client),
+            completion: MedicalCompletionRepository(client),
+            qr: Tier1QrRepository(client),
+            onPublicDashboard: () {},
+            onSignOut: () {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Pending Verification'), findsOneWidget);
+      expect(find.text('Complete Medical Information'), findsOneWidget);
+    },
+  );
   testWidgets(
     'QR failure offers retry without registration or medical writes',
     (tester) async {
@@ -213,7 +256,7 @@ void main() {
       client.error = null;
       await tester.tap(find.text('Retry QR'));
       await tester.pumpAndSettle();
-      expect(find.text('Active after school approval'), findsOneWidget);
+      expect(find.text('Pending Verification'), findsOneWidget);
     },
   );
 }

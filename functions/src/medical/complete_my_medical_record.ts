@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
 import {onboardingDatabase,requirePending,resqmeRuntimeOptions} from '../onboarding/authorization';
-import {validateMedicalCompletion} from './medical_contract';
+import {assertMedicalCompletionAllowed,validateMedicalCompletion} from './medical_contract';
 
 export const completeMyMedicalRecord=onCall(resqmeRuntimeOptions,async request=>{
   const uid=request.auth?.uid;
@@ -17,12 +17,12 @@ export const completeMyMedicalRecord=onCall(resqmeRuntimeOptions,async request=>
       tx.get(profile),tx.get(record),tx.get(receipt),
     ]);
     const owner=requirePending(profileSnapshot.data());
+    assertMedicalCompletionAllowed(owner);
     if(recordSnapshot.get('syntheticOnly')===true) throw new HttpsError('failed-precondition','Medical information needs to be completed through the approved form.');
     if(replay.exists){
       if(replay.get('digest')!==digest) throw new HttpsError('already-exists','Request ID already used.');
       return {revision:replay.get('revision') as number};
     }
-    if(['approved','revoked'].includes(owner.schoolApprovalStatus)) throw new HttpsError('failed-precondition','Contact your school to update medical information.');
     const current=Number.isSafeInteger(owner.medicalRevision)?owner.medicalRevision:0;
     if(recordSnapshot.exists&&recordSnapshot.get('syntheticOnly')!==true&&recordSnapshot.get('revision')!==current) {
       throw new HttpsError('failed-precondition','Medical information changed. Reload before saving.');

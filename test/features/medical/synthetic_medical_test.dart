@@ -18,6 +18,7 @@ class FakePilotClient implements PilotClient {
   String? error;
   Map<String, dynamic>? medical;
   Map<String, dynamic>? qr;
+  String qrStatus = 'pending';
   Map<String, dynamic> profile = {
     'emergencyContacts': {
       'primary': {'fullName': null, 'relationship': null, 'phoneNumber': null},
@@ -52,7 +53,7 @@ class FakePilotClient implements PilotClient {
       return {'medicalStatus': 'complete', 'revision': 1};
     }
     if (name == 'ensureMyTier1Qr' || name == 'replaceMyTier1Qr') {
-      qr = {'payload': 'resqme:v1:${'A' * 43}', 'verificationStatus': 'active'};
+      qr = {'payload': 'resqme:v1:${'A' * 43}', 'verificationStatus': qrStatus};
       return qr!;
     }
     medical = {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {validateMedicalCompletion} from '../src/medical/medical_contract';
+import {assertMedicalCompletionAllowed,validateMedicalCompletion} from '../src/medical/medical_contract';
 
 const base = {
   conditions: {state: 'unknown'},
@@ -44,4 +44,10 @@ test('rejects missing contact, unsupported fields and forged completion status',
     {status: 'approved'},
     {uid: 'other'},
   ]) assert.throws(() => validateMedicalCompletion({...base, ...patch}));
+});
+
+test('school approval and medical completion are independent decisions',()=>{
+ assert.doesNotThrow(()=>assertMedicalCompletionAllowed({status:'pending_review',schoolApprovalStatus:'pending'}));
+ assert.doesNotThrow(()=>assertMedicalCompletionAllowed({status:'pending_review',schoolApprovalStatus:'approved'}));
+ assert.throws(()=>assertMedicalCompletionAllowed({status:'pending_review',schoolApprovalStatus:'revoked'}));
 });

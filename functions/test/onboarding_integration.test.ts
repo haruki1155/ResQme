@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import test from 'node:test';
 import {initializeApp,deleteApp} from 'firebase/app';
 import {connectAuthEmulator,getAuth,signInWithEmailAndPassword} from 'firebase/auth';
@@ -12,7 +13,7 @@ const admin=initializeAdmin({projectId},'onboarding-integration');
 const store=getFirestore(admin);
 function client(name:string){const app=initializeApp({projectId,apiKey:'test'},name);const auth=getAuth(app);connectAuthEmulator(auth,`http://${endpoints.auth.host}:${endpoints.auth.port}`,{disableWarnings:true});const fn=getFunctions(app,'us-central1');connectFunctionsEmulator(fn,endpoints.functions.host,endpoints.functions.port);return {app,auth,call:(name:string,data:unknown)=>httpsCallable(fn,name,{timeout:10000})(data)};}
 const adult=client('qa-adult'),minor=client('qa-minor'),outsider=client('qa-outsider'),anonymous=client('qa-anonymous');
-const fixtures=[{client:adult,uid:'qa-medical-adult',age:18},{client:minor,uid:'qa-medical-minor',age:17},{client:outsider,uid:'qa-medical-outsider',age:18}];
+const fixtures=[{client:adult,uid:'qa-medical-adult',age:18,lrn:'900000000911'},{client:minor,uid:'qa-medical-minor',age:17,lrn:'900000000912'},{client:outsider,uid:'qa-medical-outsider',age:18,lrn:'900000000913'}];
 const created:string[]=[];
 test.before(async()=>{
   for(const fixture of fixtures){
@@ -20,11 +21,14 @@ test.before(async()=>{
     await adminAuth(admin).createUser({uid:fixture.uid,email,password:'Synthetic-Local-123'});created.push(fixture.uid);
     if(fixture.client!==outsider) await store.doc(`qaTesters/${fixture.uid}`).set({enabled:true,syntheticOnly:true});
     await signInWithEmailAndPassword(fixture.client.auth,email,'Synthetic-Local-123');
-    await fixture.client.call('createStudentRegistration',{fullName:'Synthetic Tester',ageYears:fixture.age,noticeVersion:'tier1-registration-v1',acknowledgmentAccepted:true});
+    await fixture.client.call('createStudentRegistration',{fullName:'Synthetic Tester',ageYears:fixture.age,lrn:fixture.lrn,noticeVersion:'tier1-registration-v1',acknowledgmentAccepted:true});
   }
 });
 test.after(async()=>{
   for(const uid of created){
+    const credential=await store.doc(`studentQrCredentials/${uid}`).get();
+    const payload=credential.get('payload');
+    if(typeof payload==='string') await store.doc(`studentQrLookups/${createHash('sha256').update(payload).digest('hex')}`).delete();
     for(const path of [`studentProfiles/${uid}`,`studentMedicalRecords/${uid}`,`studentQrCredentials/${uid}`]) {
       const ref=store.doc(path);for(const collection of await ref.listCollections()){for(const doc of (await collection.get()).docs) await doc.ref.delete();}await ref.delete();
     }
@@ -77,10 +81,12 @@ test('QR denies forged requests and non-pending/missing registration', {timeout:
     await ref.delete();await assert.rejects(()=>outsider.call('ensureMyTier1Qr',{}),{code:'functions/failed-precondition'});
   }finally{await ref.set(before);}
 });
-test('QR activation remains denied until production medical completion and trusted school approval', {timeout:20000},async()=>{
-  for(const person of [adult,minor,outsider]) await assert.rejects(()=>person.call('ensureMyTier1Qr',{}),{code:'functions/failed-precondition'});
-  for(const uid of ['qa-medical-adult','qa-medical-minor','qa-medical-outsider']) {
-    assert.equal((await store.doc(`studentQrCredentials/${uid}`).get()).exists,false);
-    assert.equal((await store.doc(`studentProfiles/${uid}`).get()).get('schoolAssignmentStatus'),'unassigned');
+test('unassigned and synthetic-only profiles receive pending QR without activation', {timeout:20000},async()=>{
+  for(const fixture of fixtures) {
+    const qr=(await fixture.client.call('ensureMyTier1Qr',{})).data as {payload:string;verificationStatus:string};
+    assert.equal(qr.verificationStatus,'pending');
+    assert.deepEqual((await anonymous.call('resolveTier1Qr',{payload:qr.payload})).data,{active:false});
+    assert.equal((await store.doc(`studentQrCredentials/${fixture.uid}`).get()).get('verificationStatus'),'pending');
+    assert.equal((await store.doc(`studentProfiles/${fixture.uid}`).get()).get('schoolAssignmentStatus'),'unassigned');
   }
 });
