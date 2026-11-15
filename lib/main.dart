@@ -18,6 +18,7 @@ import 'package:resqme/features/qr/services/tier1_qr_repository.dart';
 import 'package:resqme/features/medical/services/medical_completion_repository.dart';
 import 'package:resqme/features/medical/services/tier2_authorization_repository.dart';
 import 'package:resqme/features/medical/services/platform_tier2_key.dart';
+import 'package:resqme/features/school/services/school_review_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +28,7 @@ Future<void> main() async {
   Tier1QrRepository? qrRepository;
   MedicalCompletionRepository? medicalCompletionRepository;
   Tier2AuthorizationRepository? tier2Repository;
+  SchoolReviewRepository? schoolReviewRepository;
   final backend = BackendSelection.resolve(
     const String.fromEnvironment('RESQME_BACKEND'),
     isDebugBuild: kDebugMode,
@@ -88,6 +90,12 @@ Future<void> main() async {
         keyProvider: PlatformTier2Key(),
         expectedProjectId: backend.projectId,
       );
+      schoolReviewRepository = FirebaseSchoolReviewRepository(
+        auth: auth,
+        functions: functions,
+        operationLock: operationLock,
+        expectedProjectId: backend.projectId,
+      );
       authChanges = auth.authStateChanges().map<void>((_) {
         medical.syncSession();
       });
@@ -104,6 +112,7 @@ Future<void> main() async {
       qrRepository: qrRepository,
       medicalCompletionRepository: medicalCompletionRepository,
       tier2Repository: tier2Repository,
+      schoolReviewRepository: schoolReviewRepository,
       consentRepository: SharedPreferencesConsentRepository(
         SharedPreferencesBooleanStore(),
       ),

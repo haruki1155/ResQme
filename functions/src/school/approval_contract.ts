@@ -18,17 +18,28 @@ export function requireSchoolReviewer(value:Record<string,unknown>|undefined) {
 export function assertApprovalEligible(input:{
   reviewer:Record<string,unknown>|undefined;
   student:Record<string,unknown>|undefined;
-  medical:Record<string,unknown>|undefined;
 }) {
   const schoolId=requireSchoolReviewer(input.reviewer);
   if(!input.student) throw new HttpsError('not-found','Approval unavailable.');
   if(input.student.schemaVersion!==1||!['pending_review','pending_guardian'].includes(input.student.status as string)||input.student.schoolAssignmentStatus!=='assigned'||input.student.schoolId!==schoolId||input.student.schoolApprovalStatus==='revoked') {
     throw new HttpsError('permission-denied','Approval unavailable.');
   }
-  if(!input.medical||input.medical.medicalStatus!=='complete'||input.medical.selfReported!==true||input.medical.syntheticOnly===true) {
-    throw new HttpsError('failed-precondition','Required medical information is incomplete.');
-  }
   return schoolId;
+}
+
+export function assertReviewCandidateEligible(input:{reviewer:Record<string,unknown>|undefined;student:Record<string,unknown>|undefined;reviewerUid:string;studentUid:string}) {
+  const schoolId=requireSchoolReviewer(input.reviewer),student=input.student;
+  if(input.reviewerUid===input.studentUid||!student||student.schemaVersion!==1||
+    student.schoolAssignmentStatus!=='assigned'||student.schoolId!==schoolId||
+    student.schoolApprovalStatus!=='pending'||typeof student.fullName!=='string'||student.fullName.trim().length<2) {
+    throw new HttpsError('not-found','Candidate unavailable.');
+  }
+  return {
+    studentUid:input.studentUid,
+    fullName:student.fullName,
+    schoolApprovalStatus:'pending' as const,
+    schoolVerificationOutcome:['verified','manual_review','conflict'].includes(student.schoolVerificationOutcome as string)?student.schoolVerificationOutcome as string:'manual_review',
+  };
 }
 
 export function assertRevocationEligible(input:{

@@ -20,6 +20,8 @@ import 'package:resqme/features/medical/screens/tier2_access_screen.dart';
 import 'package:resqme/features/welcome/presentation/scanner_entry_screen.dart';
 import 'package:resqme/features/qr/presentation/qr_scanner_screen.dart';
 import 'package:resqme/features/qr/services/tier1_qr_repository.dart';
+import 'package:resqme/features/school/services/school_review_repository.dart';
+import 'package:resqme/features/school/screens/school_review_screen.dart';
 
 class ResQMeApp extends StatelessWidget {
   const ResQMeApp({
@@ -31,6 +33,7 @@ class ResQMeApp extends StatelessWidget {
     this.qrRepository,
     this.medicalCompletionRepository,
     this.tier2Repository,
+    this.schoolReviewRepository,
   });
 
   final ConsentRepository consentRepository;
@@ -40,6 +43,7 @@ class ResQMeApp extends StatelessWidget {
   final Tier1QrRepository? qrRepository;
   final MedicalCompletionRepository? medicalCompletionRepository;
   final Tier2AuthorizationRepository? tier2Repository;
+  final SchoolReviewRepository? schoolReviewRepository;
 
   Widget account(BuildContext context, {bool register = false}) =>
       registrationRepository == null
@@ -120,6 +124,13 @@ class ResQMeApp extends StatelessWidget {
         AppRoutes.tier2: (_) => tier2Repository == null
             ? const MedicalAccessBoundaryScreen()
             : Tier2AccessScreen(repository: tier2Repository!),
+        AppRoutes.schoolReview: (_) => schoolReviewRepository == null
+            ? const Tier1PendingScreen(
+                title: 'School review unavailable',
+                message: 'Reviewer services are unavailable.',
+                icon: Icons.school_outlined,
+              )
+            : SchoolReviewScreen(repository: schoolReviewRepository!),
       },
     );
   }

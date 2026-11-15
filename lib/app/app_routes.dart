@@ -10,4 +10,5 @@ abstract final class AppRoutes {
   static const profile = '/profile';
   static const medicalBoundary = '/medical-boundary';
   static const tier2 = '/tier2';
+  static const schoolReview = '/school-review';
 }

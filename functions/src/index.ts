@@ -4,6 +4,7 @@ export {saveMySyntheticMedicalRecord,clearMySyntheticMedicalRecord} from './medi
 export {completeMyMedicalRecord} from './medical/complete_my_medical_record';
 export {approveStudentQr} from './school/approve_student_qr';
 export {revokeStudentQr} from './school/revoke_student_qr';
+export {getSchoolReviewCandidate} from './school/get_school_review_candidate';
 export {ensureMyTier1Qr} from './qr/ensure_my_tier1_qr';
 export {resolveTier1Qr} from './qr/resolve_tier1_qr';
 export {replaceMyTier1Qr} from './qr/replace_my_tier1_qr';

@@ -11,18 +11,16 @@ export const approveStudentQr=onCall(resqmeRuntimeOptions,async request=>{
   if(input.studentUid===reviewerUid) throw new HttpsError('permission-denied','Approval unavailable.');
   const reviewer=db.doc(`schoolReviewers/${reviewerUid}`);
   const profile=db.doc(`studentProfiles/${input.studentUid}`);
-  const medical=db.doc(`studentMedicalRecords/${input.studentUid}`);
   const audit=profile.collection('schoolApprovals').doc(input.requestId);
   const digest=createHash('sha256').update(JSON.stringify({studentUid:input.studentUid})).digest('hex');
   return db.runTransaction(async tx=>{
-    const [reviewerSnapshot,profileSnapshot,medicalSnapshot,replay]=await Promise.all([
-      tx.get(reviewer),tx.get(profile),tx.get(medical),tx.get(audit),
+    const [reviewerSnapshot,profileSnapshot,replay]=await Promise.all([
+      tx.get(reviewer),tx.get(profile),tx.get(audit),
     ]);
     if(!profileSnapshot.exists) throw new HttpsError('not-found','Approval unavailable.');
     const student=requirePending(profileSnapshot.data());
     const schoolId=assertApprovalEligible({
       reviewer:reviewerSnapshot.data(),student,
-      medical:medicalSnapshot.data(),
     });
     if(replay.exists){
       if(replay.get('digest')!==digest) throw new HttpsError('already-exists','Request ID already used.');
