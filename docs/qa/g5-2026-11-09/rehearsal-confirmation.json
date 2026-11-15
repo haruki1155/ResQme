@@ -1,0 +1,23 @@
+{
+  "completeRehearsal": false,
+  "stoppedAt": "Emergency hotlines",
+  "elapsedIncludingUiAutomationSeconds": 16.67,
+  "steps": [
+    {
+      "action": "Continue as Guest",
+      "expectedVisible": true,
+      "elapsedIncludingUiAutomationSeconds": 5.22
+    },
+    {
+      "action": "First-aid instructions",
+      "expectedVisible": true,
+      "elapsedIncludingUiAutomationSeconds": 5.69
+    },
+    {
+      "action": "Emergency hotlines",
+      "result": "FAIL",
+      "reason": "Approved directory placeholder; no numbers or calling UI",
+      "elapsedIncludingUiAutomationSeconds": 5.06
+    }
+  ]
+}

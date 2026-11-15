@@ -1,0 +1,14 @@
+{
+  "apkSha256": "6edebee6c0fd951c03bcfd7f3e202badf48494de78d06f832071f91370597dc5",
+  "device": "TECNO CN5 Android 16",
+  "directoryProvidedNumbers": 12,
+  "confirmationCancel": "PASS",
+  "confirmedPrefilledPhone": "PASS",
+  "selectedDialerNumber": "0755686114",
+  "dialerPackage": "com.sh.smart.caller",
+  "actualCallAttempted": false,
+  "focusedTestsPassed": 9,
+  "analysis": "No issues found",
+  "build": "Debug staging PASS",
+  "install": "In-place PASS"
+}

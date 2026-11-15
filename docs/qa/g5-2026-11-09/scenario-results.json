@@ -1,0 +1,586 @@
+[
+  {
+    "id": "ENV-01",
+    "feature": "Physical device",
+    "expected": "One authorized Android device",
+    "actual": "TECNO CN5, Android 16/API 36, arm64; authorized USB device",
+    "status": "PASS",
+    "evidence": "adb devices -l; flutter devices"
+  },
+  {
+    "id": "ENV-02",
+    "feature": "APK/source identity",
+    "expected": "Known debug APK installed in place",
+    "actual": "Fresh staging debug build and in-place install; installed SHA-256 matches built APK",
+    "status": "PASS",
+    "evidence": "Build/install output and on-device sha256sum"
+  },
+  {
+    "id": "ENV-03",
+    "feature": "Backend selection",
+    "expected": "Hosted staging; no unintended emulator",
+    "actual": "RESQME_BACKEND=staging; source pins resqme-943ee and us-central1",
+    "status": "PASS",
+    "evidence": "Exact build command; main.dart; BackendSelection"
+  },
+  {
+    "id": "C1-01",
+    "feature": "Cold launch",
+    "expected": "No blank startup/crash",
+    "actual": "Cold activity starts succeeded; entry rendered",
+    "status": "PASS",
+    "evidence": "ADB cold launches: 4.232s, 3.244s, 2.795s; debug observations"
+  },
+  {
+    "id": "C1-02",
+    "feature": "Existing consent",
+    "expected": "Accepted consent persists",
+    "actual": "Process recreation returned to entry without a consent loop",
+    "status": "PASS",
+    "evidence": "Cold-reopen UI hierarchy"
+  },
+  {
+    "id": "C1-03",
+    "feature": "First-time Terms/Privacy",
+    "expected": "Consent gating and acceptance work",
+    "actual": "Existing consent retained; first-consent path not reset or exercised",
+    "status": "BLOCKED",
+    "evidence": "No data-clear permission; source/widget coverage only"
+  },
+  {
+    "id": "C1-04",
+    "feature": "Public back navigation",
+    "expected": "Return from resources without reset",
+    "actual": "First-aid/DRRM/boundary back and result-to-dashboard worked",
+    "status": "PASS",
+    "evidence": "Repeated public route observations"
+  },
+  {
+    "id": "C2-01",
+    "feature": "Guest dashboard",
+    "expected": "Public help accessible without Auth",
+    "actual": "Guest entry opened all advertised destination routes",
+    "status": "PASS",
+    "evidence": "dashboard-bottom.png; route observations"
+  },
+  {
+    "id": "C2-02",
+    "feature": "Portrait layout",
+    "expected": "Readable destination controls",
+    "actual": "No clipping observed on reviewed public screens; resources require scrolling",
+    "status": "PASS",
+    "evidence": "Public screenshots; bounded current-process overflow check"
+  },
+  {
+    "id": "C3-01",
+    "feature": "First aid: Asthma",
+    "expected": "Topic opens and can scroll",
+    "actual": "Detail opened; one scroll performed; no complete clinical/content audit",
+    "status": "PASS",
+    "evidence": "Physical-device topic navigation; library-results.json"
+  },
+  {
+    "id": "C3-02",
+    "feature": "First aid: Anemia",
+    "expected": "Topic opens and can scroll",
+    "actual": "Detail opened; one scroll performed; no complete clinical/content audit",
+    "status": "PASS",
+    "evidence": "Physical-device topic navigation; library-results.json"
+  },
+  {
+    "id": "C3-03",
+    "feature": "First aid: Nosebleed",
+    "expected": "Topic opens and can scroll",
+    "actual": "Detail opened; one scroll performed; no complete clinical/content audit",
+    "status": "PASS",
+    "evidence": "Physical-device topic navigation; library-results.json"
+  },
+  {
+    "id": "C3-04",
+    "feature": "First aid: Hyperventilation",
+    "expected": "Topic opens and can scroll",
+    "actual": "Detail opened; one scroll performed; no complete clinical/content audit",
+    "status": "PASS",
+    "evidence": "Physical-device topic navigation; library-results.json"
+  },
+  {
+    "id": "C3-05",
+    "feature": "First aid: Moving an injured person",
+    "expected": "Topic opens and can scroll",
+    "actual": "Detail opened; one scroll performed; no complete clinical/content audit",
+    "status": "PASS",
+    "evidence": "Physical-device topic navigation; library-results.json"
+  },
+  {
+    "id": "C3-06",
+    "feature": "First aid: Basic life support (BLS) / CPR",
+    "expected": "Topic opens and can scroll",
+    "actual": "Detail opened; one scroll performed; no complete clinical/content audit",
+    "status": "PASS",
+    "evidence": "Physical-device topic navigation; library-results.json"
+  },
+  {
+    "id": "C3-07",
+    "feature": "First aid: Choking (blocked airway)",
+    "expected": "Topic opens and can scroll",
+    "actual": "Detail opened; one scroll performed; no complete clinical/content audit",
+    "status": "PASS",
+    "evidence": "Physical-device topic navigation; library-results.json"
+  },
+  {
+    "id": "C3-08",
+    "feature": "First aid: Bleeding and wound care",
+    "expected": "Topic opens and can scroll",
+    "actual": "Detail opened; one scroll performed; no complete clinical/content audit",
+    "status": "PASS",
+    "evidence": "Physical-device topic navigation; library-results.json"
+  },
+  {
+    "id": "C3-09",
+    "feature": "First aid: Burns",
+    "expected": "Topic opens and can scroll",
+    "actual": "Detail opened; one scroll performed; no complete clinical/content audit",
+    "status": "PASS",
+    "evidence": "Physical-device topic navigation; library-results.json"
+  },
+  {
+    "id": "C3-10",
+    "feature": "First aid: Fractures, sprains, dislocations & seizures",
+    "expected": "Topic opens and can scroll",
+    "actual": "Detail opened; one scroll performed; no complete clinical/content audit",
+    "status": "PASS",
+    "evidence": "Physical-device topic navigation; library-results.json"
+  },
+  {
+    "id": "C3-11",
+    "feature": "First-aid category filter",
+    "expected": "Only matching topics shown",
+    "actual": "Bleeding & wounds showed Nosebleed and Bleeding and wound care",
+    "status": "PASS",
+    "evidence": "Device UI hierarchy"
+  },
+  {
+    "id": "C3-12",
+    "feature": "First-aid empty search",
+    "expected": "Explain no matches and recovery",
+    "actual": "No-match query removed topics with no explanatory result message; reproduced twice",
+    "status": "FAIL",
+    "evidence": "empty-search.png; source filtered list"
+  },
+  {
+    "id": "C3-13",
+    "feature": "First aid offline",
+    "expected": "Local guidance remains available",
+    "actual": "Asthma instructions rendered with airplane mode on and no default network",
+    "status": "PASS",
+    "evidence": "Offline hierarchy and Android network metadata"
+  },
+  {
+    "id": "C4-01",
+    "feature": "Emergency hotlines",
+    "expected": "Approved numbers and useful hotline UI",
+    "actual": "Placeholder only; no directory or call control; reproduced twice",
+    "status": "FAIL",
+    "evidence": "hotlines.png; app_routes wiring"
+  },
+  {
+    "id": "C4-02",
+    "feature": "Safe dialer handoff",
+    "expected": "Stop before any actual call",
+    "actual": "No call control exists; no emergency call attempted",
+    "status": "BLOCKED",
+    "evidence": "Depends on missing approved directory"
+  },
+  {
+    "id": "C5-01",
+    "feature": "DRRM: Drought",
+    "expected": "Hazard opens/expands",
+    "actual": "Expansion succeeded; image slots are placeholders",
+    "status": "PASS",
+    "evidence": "Physical-device expansion; drrm-results.json"
+  },
+  {
+    "id": "C5-02",
+    "feature": "DRRM: Landslides and mudslides",
+    "expected": "Hazard opens/expands",
+    "actual": "Expansion succeeded; image slots are placeholders",
+    "status": "PASS",
+    "evidence": "Physical-device expansion; drrm-results.json"
+  },
+  {
+    "id": "C5-03",
+    "feature": "DRRM: Tsunami",
+    "expected": "Hazard opens/expands",
+    "actual": "Expansion succeeded; image slots are placeholders",
+    "status": "PASS",
+    "evidence": "Physical-device expansion; drrm-results.json"
+  },
+  {
+    "id": "C5-04",
+    "feature": "DRRM: Severe thunderstorm",
+    "expected": "Hazard opens/expands",
+    "actual": "Expansion succeeded; image slots are placeholders",
+    "status": "PASS",
+    "evidence": "Physical-device expansion; drrm-results.json"
+  },
+  {
+    "id": "C5-05",
+    "feature": "DRRM: Flood",
+    "expected": "Hazard opens/expands",
+    "actual": "Expansion succeeded; image slots are placeholders",
+    "status": "PASS",
+    "evidence": "Physical-device expansion; drrm-results.json"
+  },
+  {
+    "id": "C5-06",
+    "feature": "DRRM: Extreme heatwaves",
+    "expected": "Hazard opens/expands",
+    "actual": "Expansion succeeded; image slots are placeholders",
+    "status": "PASS",
+    "evidence": "Physical-device expansion; drrm-results.json"
+  },
+  {
+    "id": "C5-07",
+    "feature": "DRRM: Earthquake",
+    "expected": "Hazard opens/expands",
+    "actual": "Expansion succeeded; image slots are placeholders",
+    "status": "PASS",
+    "evidence": "Physical-device expansion; drrm-results.json"
+  },
+  {
+    "id": "C5-08",
+    "feature": "DRRM: Tropical cyclone",
+    "expected": "Hazard opens/expands",
+    "actual": "Expansion succeeded; image slots are placeholders",
+    "status": "PASS",
+    "evidence": "Physical-device expansion; drrm-results.json"
+  },
+  {
+    "id": "C5-09",
+    "feature": "DRRM: Fire",
+    "expected": "Hazard opens/expands",
+    "actual": "Expansion succeeded; image slots are placeholders",
+    "status": "PASS",
+    "evidence": "Physical-device expansion; drrm-results.json"
+  },
+  {
+    "id": "C5-10",
+    "feature": "DRRM: Transportation accidents",
+    "expected": "Hazard opens/expands",
+    "actual": "Expansion succeeded; image slots are placeholders",
+    "status": "PASS",
+    "evidence": "Physical-device expansion; drrm-results.json"
+  },
+  {
+    "id": "C5-11",
+    "feature": "DRRM offline",
+    "expected": "Local guidance remains available",
+    "actual": "Earthquake expanded; before/during/after text visible offline",
+    "status": "PASS",
+    "evidence": "Airplane mode=1; active default network=none; UI hierarchy"
+  },
+  {
+    "id": "C5-12",
+    "feature": "DRRM search/empty state",
+    "expected": "Filter and explain no matches",
+    "actual": "Search present; device typing/empty-state scenario not completed",
+    "status": "BLOCKED",
+    "evidence": "Existing local widget test passed; no device claim"
+  },
+  {
+    "id": "C6-01",
+    "feature": "Empty sign-in validation",
+    "expected": "Useful required-field feedback",
+    "actual": "Enter a valid email / Enter your password shown",
+    "status": "PASS",
+    "evidence": "empty-signin.png"
+  },
+  {
+    "id": "C6-02",
+    "feature": "Offline sign-in",
+    "expected": "Bounded useful network error",
+    "actual": "Connection unavailable. Please retry. shown; sign-in control re-enabled",
+    "status": "PASS",
+    "evidence": "Offline sign-in hierarchy"
+  },
+  {
+    "id": "C6-03",
+    "feature": "Connectivity recovery",
+    "expected": "Sign in after network restored",
+    "actual": "First fictional account signed in and rendered My unverified QR",
+    "status": "PASS",
+    "evidence": "Device hierarchy; exact account setup record, subsequently removed"
+  },
+  {
+    "id": "C6-04",
+    "feature": "Account switching",
+    "expected": "Second account gets independent account UI",
+    "actual": "Logout followed by second account sign-in; QR image region changed",
+    "status": "PASS",
+    "evidence": "Sanitized UI and non-reversible QR-region comparison; no raw screenshot retained"
+  },
+  {
+    "id": "C6-05",
+    "feature": "Logout",
+    "expected": "Account-specific UI clears",
+    "actual": "Logout returned to public entry, with no QR displayed",
+    "status": "PASS",
+    "evidence": "Device hierarchy after each logout"
+  },
+  {
+    "id": "C6-06",
+    "feature": "Session process recreation",
+    "expected": "Existing sign-in survives restart",
+    "actual": "After app force-stop/cold launch, Sign In opened QR without credential re-entry",
+    "status": "PASS",
+    "evidence": "Cold launch + persisted-session hierarchy; not ordinary Android eviction"
+  },
+  {
+    "id": "C6-07",
+    "feature": "Registration required fields",
+    "expected": "Reject blank submission locally",
+    "actual": "Email/password feedback shown; no registration request submitted",
+    "status": "PASS",
+    "evidence": "registration-empty-errors.png; UI hierarchy"
+  },
+  {
+    "id": "C6-08",
+    "feature": "Successful registration on device",
+    "expected": "Stay within authorized Tier 1",
+    "actual": "Not submitted: source routes successful registration into medical screen and medical read",
+    "status": "BLOCKED",
+    "evidence": "resqme_app.dart:47-61; PilotAccountScreen.initState; medical loadMine"
+  },
+  {
+    "id": "C6-09",
+    "feature": "Privacy dialog / submitted-details panel",
+    "expected": "Acknowledgment and allowed details observable",
+    "actual": "Not reached in successful device registration due scope boundary",
+    "status": "BLOCKED",
+    "evidence": "Not substituted with historical G4 or backend setup results"
+  },
+  {
+    "id": "C6-10",
+    "feature": "Pending status / refresh",
+    "expected": "Status and refresh visible after sign-in",
+    "actual": "Pending account goes directly to QR; no status/refresh UI",
+    "status": "FAIL",
+    "evidence": "Both synthetic accounts; app ignores onRefresh callback in pendingBuilder"
+  },
+  {
+    "id": "C7-01",
+    "feature": "My Profile minimal identity",
+    "expected": "Show own student name and status",
+    "actual": "Profile route shows only My unverified QR; neither fictional name nor pending status shown",
+    "status": "FAIL",
+    "evidence": "Two account observations; app and PilotAccountScreen wiring"
+  },
+  {
+    "id": "C7-02",
+    "feature": "Profile unavailable/retry",
+    "expected": "Recover from failed own-profile retrieval",
+    "actual": "Dedicated failure state not induced under controlled device conditions",
+    "status": "BLOCKED",
+    "evidence": "Do not infer from historical backend tests"
+  },
+  {
+    "id": "C8-01",
+    "feature": "Camera grant",
+    "expected": "Preview starts after permission",
+    "actual": "Camera preview and actual fixture detection worked",
+    "status": "PASS",
+    "evidence": "Android permission granted=true; operator assistance + result hierarchy"
+  },
+  {
+    "id": "C8-02",
+    "feature": "Camera denial",
+    "expected": "Clear denial state and recovery",
+    "actual": "Permission prompt actions could not be correlated with resulting state; camera remained granted",
+    "status": "BLOCKED",
+    "evidence": "Automated and manual attempts inconclusive; not a PASS or app defect"
+  },
+  {
+    "id": "C8-03",
+    "feature": "Permanent denial",
+    "expected": "Explain Settings recovery without loop",
+    "actual": "Permanent denial not established",
+    "status": "BLOCKED",
+    "evidence": "No claim from source errorBuilder alone"
+  },
+  {
+    "id": "C8-04",
+    "feature": "Supported QR format",
+    "expected": "Recognize only format, not identity",
+    "actual": "RESQME QR FORMAT RECOGNIZED; UNVERIFIED \u2014 TEST PILOT ONLY",
+    "status": "PASS",
+    "evidence": "Operator positioned fictional fixture; independently captured UI hierarchy"
+  },
+  {
+    "id": "C8-05",
+    "feature": "Malformed QR",
+    "expected": "Safe invalid response; no raw payload",
+    "actual": "Operator reported safe invalid/unrecognized result after supplied malformed fixture",
+    "status": "PASS",
+    "evidence": "Operator-reported only; result not independently captured"
+  },
+  {
+    "id": "C8-06",
+    "feature": "Unrelated QR",
+    "expected": "Safe invalid response",
+    "actual": "Fixture prepared; physical trial not completed",
+    "status": "BLOCKED",
+    "evidence": "Parser test is separate local evidence"
+  },
+  {
+    "id": "C8-07",
+    "feature": "Damaged/obscured QR",
+    "expected": "Safe non-detection or rejection",
+    "actual": "Physical condition not exercised",
+    "status": "BLOCKED",
+    "evidence": "No simulated result counted"
+  },
+  {
+    "id": "C8-08",
+    "feature": "Repeated scan",
+    "expected": "One result at a time; Scan Again works",
+    "actual": "Same fixture recognized again after camera moved away/back; one modal observed",
+    "status": "PASS",
+    "evidence": "Operator confirmation and repeated-result hierarchy"
+  },
+  {
+    "id": "C8-09",
+    "feature": "Scanner background/resume",
+    "expected": "No duplicate result/crash",
+    "actual": "Existing result sheet survived Home/resume without duplicate navigation",
+    "status": "PASS",
+    "evidence": "Modal-preservation check only; not all live-preview lifecycle cases"
+  },
+  {
+    "id": "C8-10",
+    "feature": "Rapid camera movement",
+    "expected": "No frozen preview/crash",
+    "actual": "Physical stress condition not exercised",
+    "status": "BLOCKED",
+    "evidence": "No evidence"
+  },
+  {
+    "id": "C8-11",
+    "feature": "Low light",
+    "expected": "Safe behavior in low light",
+    "actual": "Physical lighting condition not exercised",
+    "status": "BLOCKED",
+    "evidence": "No evidence"
+  },
+  {
+    "id": "C8-12",
+    "feature": "Portrait scanner",
+    "expected": "Usable portrait scanner controls",
+    "actual": "Fixture scanning and result actions worked in portrait",
+    "status": "PASS",
+    "evidence": "Device dimensions and observed controls"
+  },
+  {
+    "id": "C8-13",
+    "feature": "Offline decoding",
+    "expected": "Decode without connectivity",
+    "actual": "Fictional fixture recognized with airplane mode on and default network none",
+    "status": "PASS",
+    "evidence": "Operator confirmation + independent Android/UI evidence"
+  },
+  {
+    "id": "C8-14",
+    "feature": "Scanner exit",
+    "expected": "Return to public dashboard",
+    "actual": "Back to Dashboard result action and app-bar Back worked",
+    "status": "PASS",
+    "evidence": "Device hierarchy; isolated system-back ambiguity not graded as defect"
+  },
+  {
+    "id": "C9-01",
+    "feature": "Public QR privacy",
+    "expected": "No student/medical/private token display",
+    "actual": "Only format/unverified explanations and safe navigation shown",
+    "status": "PASS",
+    "evidence": "Result hierarchy and parser/modal implementation; not an identity lookup"
+  },
+  {
+    "id": "C9-02",
+    "feature": "Tier 2 boundary",
+    "expected": "No biometrics or protected profile loading",
+    "actual": "Static restricted-information boundary displayed",
+    "status": "PASS",
+    "evidence": "tier2-boundary.png; boundary implementation"
+  },
+  {
+    "id": "C9-03",
+    "feature": "My QR",
+    "expected": "Own unverified QR rendered",
+    "actual": "Both account QR pages rendered black/white QR patterns without load error",
+    "status": "PASS",
+    "evidence": "In-memory pixel-region checks; no private QR image saved"
+  },
+  {
+    "id": "C9-04",
+    "feature": "My QR account separation",
+    "expected": "Avoid stale account QR",
+    "actual": "Rendered QR region differed between accounts; logout removed QR UI",
+    "status": "PASS",
+    "evidence": "In-memory region hashes; no claim of decoding or equal payload after restart"
+  },
+  {
+    "id": "C10-01",
+    "feature": "Slow network / timeout",
+    "expected": "Useful timeout and recovery",
+    "actual": "Offline error tested; controlled slow-network/request-timeout scenario not completed",
+    "status": "BLOCKED",
+    "evidence": "No global network throttling/configuration change"
+  },
+  {
+    "id": "C10-02",
+    "feature": "Rotation",
+    "expected": "Supported orientation behaves safely",
+    "actual": "Portrait verified; rotation not exercised",
+    "status": "BLOCKED",
+    "evidence": "Existing device orientation settings preserved"
+  },
+  {
+    "id": "C10-03",
+    "feature": "Rapid repeated button taps",
+    "expected": "Prevent duplicate requests/navigation",
+    "actual": "Controlled rapid-tap scenario not completed",
+    "status": "BLOCKED",
+    "evidence": "No claim based only on source busy flags"
+  },
+  {
+    "id": "C10-04",
+    "feature": "Crash/overflow smoke",
+    "expected": "No failure during observed actions",
+    "actual": "No fatal/unhandled/overflow markers in bounded current-process log sample",
+    "status": "PASS",
+    "evidence": "Sanitized log counts; not exhaustive all-session crash proof"
+  },
+  {
+    "id": "E-01",
+    "feature": "Initial demo walk-through",
+    "expected": "Complete requested sequence",
+    "actual": "Public sequence reached missing hotline directory; not complete",
+    "status": "FAIL",
+    "evidence": "Initial device observations; no full duration recorded"
+  },
+  {
+    "id": "E-02",
+    "feature": "Confirmation rehearsal",
+    "expected": "Second complete sequence without reset",
+    "actual": "Entry \u2192 dashboard \u2192 first aid \u2192 hotline reproduced same blocker; not complete",
+    "status": "FAIL",
+    "evidence": "rehearsal-confirmation.json; 16.67s includes automation overhead"
+  },
+  {
+    "id": "CLEAN-01",
+    "feature": "Synthetic cleanup",
+    "expected": "Delete only proven test resources",
+    "actual": "2 Auth users + 6 exact document paths verified absent; private session file removed",
+    "status": "PASS",
+    "evidence": "account-cleanup.json"
+  }
+]

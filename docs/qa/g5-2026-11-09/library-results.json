@@ -1,0 +1,62 @@
+[
+  {
+    "topic": "Asthma",
+    "result": "PASS",
+    "opened": true,
+    "scrollPerformed": true
+  },
+  {
+    "topic": "Anemia",
+    "result": "PASS",
+    "opened": true,
+    "scrollPerformed": true
+  },
+  {
+    "topic": "Nosebleed",
+    "result": "PASS",
+    "opened": true,
+    "scrollPerformed": true
+  },
+  {
+    "topic": "Hyperventilation",
+    "result": "PASS",
+    "opened": true,
+    "scrollPerformed": true
+  },
+  {
+    "topic": "Moving an injured person",
+    "result": "PASS",
+    "opened": true,
+    "scrollPerformed": true
+  },
+  {
+    "topic": "Basic life support (BLS) / CPR",
+    "result": "PASS",
+    "opened": true,
+    "scrollPerformed": true
+  },
+  {
+    "topic": "Choking (blocked airway)",
+    "result": "PASS",
+    "opened": true,
+    "scrollPerformed": true
+  },
+  {
+    "topic": "Bleeding and wound care",
+    "result": "PASS",
+    "opened": true,
+    "scrollPerformed": true
+  },
+  {
+    "topic": "Burns",
+    "result": "PASS",
+    "opened": true,
+    "scrollPerformed": true
+  },
+  {
+    "topic": "Fractures, sprains, dislocations & seizures",
+    "result": "PASS",
+    "opened": true,
+    "scrollPerformed": true
+  }
+]

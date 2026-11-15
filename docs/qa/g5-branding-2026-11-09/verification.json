@@ -1,0 +1,11 @@
+{
+  "apkSha256": "578930b2eb3c59d54d2a11da55b783f1c65b6b3606853a789c50400adc501b6e",
+  "displayName": "ResQme",
+  "flutterDebugRibbon": false,
+  "stagingTestModeRibbonRetained": true,
+  "launcherIconSource": "assets/App logo/resqme_logo.png",
+  "packagedLauncherDensities": 5,
+  "existingNavigationTestsPassed": 8,
+  "analysis": "No issues found",
+  "buildInstall": "debug staging; in-place PASS"
+}

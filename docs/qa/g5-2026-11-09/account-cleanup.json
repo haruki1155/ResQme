@@ -1,0 +1,8 @@
+{
+  "accountsCreated": 2,
+  "documentsCreated": 6,
+  "documentPathsAbsent": 6,
+  "authUsersAbsent": 2,
+  "cleanupVerified": true,
+  "recoveredAfterTransientTransportFailures": true
+}

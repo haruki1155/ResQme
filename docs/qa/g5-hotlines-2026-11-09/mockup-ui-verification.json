@@ -1,0 +1,11 @@
+{
+  "apkSha256": "e421a134a6c3b02cfe5418ac5506d1654c918259de6cf962a4ebbcd693aca300",
+  "focusedTestsPassed": 12,
+  "targetedAnalysis": "No issues found",
+  "device": "TECNO CN5 Android 16",
+  "heroConfirmationCancel": "PASS",
+  "numberCountPreserved": 12,
+  "mockup": "ResQme Mockup_page-0006.jpg",
+  "newDependencies": 0,
+  "actualCallsAttempted": 0
+}

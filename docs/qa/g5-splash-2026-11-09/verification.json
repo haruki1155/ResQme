@@ -1,0 +1,10 @@
+{
+  "apkSha256": "cccc7a3aaf2f427c1f886c5a57380efd41bb9ef4e722de2ce194c3737e52de8d",
+  "focusedStartupTestsPassed": 7,
+  "targetedAnalysis": "No issues found",
+  "previewType": "Flutter-rendered controlled pending-consent state, not a timed physical-device screenshot",
+  "physicalColdStart": "Entry reached with existing consent; PASS",
+  "artificialDelayAdded": false,
+  "bundledLogoBytes": 93351,
+  "sourceLogoUnchanged": true
+}

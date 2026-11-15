@@ -1,0 +1,62 @@
+[
+  {
+    "hazard": "Drought",
+    "result": "PASS",
+    "expanded": true,
+    "placeholderObserved": true
+  },
+  {
+    "hazard": "Landslides and mudslides",
+    "result": "PASS",
+    "expanded": true,
+    "placeholderObserved": true
+  },
+  {
+    "hazard": "Tsunami",
+    "result": "PASS",
+    "expanded": true,
+    "placeholderObserved": true
+  },
+  {
+    "hazard": "Severe thunderstorm",
+    "result": "PASS",
+    "expanded": true,
+    "placeholderObserved": true
+  },
+  {
+    "hazard": "Flood",
+    "result": "PASS",
+    "expanded": true,
+    "placeholderObserved": true
+  },
+  {
+    "hazard": "Extreme heatwaves",
+    "result": "PASS",
+    "expanded": true,
+    "placeholderObserved": true
+  },
+  {
+    "hazard": "Earthquake",
+    "result": "PASS",
+    "expanded": true,
+    "placeholderObserved": true
+  },
+  {
+    "hazard": "Tropical cyclone",
+    "result": "PASS",
+    "expanded": true,
+    "placeholderObserved": false
+  },
+  {
+    "hazard": "Fire",
+    "result": "PASS",
+    "expanded": true,
+    "placeholderObserved": false
+  },
+  {
+    "hazard": "Transportation accidents",
+    "result": "PASS",
+    "expanded": true,
+    "placeholderObserved": false
+  }
+]

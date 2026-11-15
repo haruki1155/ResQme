@@ -1,0 +1,13 @@
+{
+  "apkSha256": "c3644c06c5e5d63af86f319902f3c77a51d3ddd1a70c6cb316df32858d888232",
+  "device": "TECNO CN5 Android 16",
+  "focusedTestsPassed": 8,
+  "targetedAnalysis": "No issues found",
+  "originalHazardGuidanceUnchanged": true,
+  "hazardsRetained": 10,
+  "deviceEarthquakePlan": "PASS",
+  "deviceCloseAndUnderstand": "PASS",
+  "searchAndEmptyRecoveryTests": "PASS",
+  "smallScreenLargeTextTest": "320x568 at 1.8x PASS",
+  "newDependencies": 0
+}

@@ -1,0 +1,12 @@
+{
+  "apkSha256": "9c194f88d5f3e8f966668a5e688b5cb3a6e4eb62984a3506d89974c0f6d7b87f",
+  "device": "TECNO CN5 Android 16",
+  "focusedTestsPassed": 8,
+  "targetedAnalysis": "No issues found",
+  "originalGuideDataUnchanged": true,
+  "originalFullGuideImplementationUnchanged": true,
+  "searchIconReplacesCamera": true,
+  "deviceSearchResult": "Nosebleed PASS",
+  "deviceEmptyResultsAndReset": "PASS",
+  "guideCount": 10
+}
