@@ -206,7 +206,7 @@ void main() {
     },
   );
 
-  testWidgets('pending sign-in requires medical and school approval before QR', (
+  testWidgets('pending sign-in shows inert QR with medical completion action', (
     tester,
   ) async {
     final pilot = FakePilotClient()..uid = null;
@@ -228,13 +228,19 @@ void main() {
     );
     await tester.tap(find.text('Sign in'));
     await tester.pumpAndSettle();
-    expect(find.text('Medical information'), findsOneWidget);
-    expect(find.text('Required before QR activation'), findsOneWidget);
-    expect(find.text('Scan another QR'), findsNothing);
-    expect(find.text('Logout'), findsNothing);
+    expect(find.text('My ResQMe QR'), findsOneWidget);
+    expect(find.text('Pending Verification'), findsOneWidget);
+    expect(find.text('Complete Medical Information'), findsOneWidget);
+    expect(find.text('Active Tier 1 QR'), findsNothing);
+    expect(find.text('Medical information'), findsNothing);
     expect(find.text('Registration status'), findsNothing);
     expect(find.text('Synthetic Student'), findsNothing);
-    expect(pilot.qr, isNull);
+    expect(pilot.qr?['verificationStatus'], 'pending');
+    expect(pilot.medical, isNull);
+    await tester.ensureVisible(find.text('Complete Medical Information'));
+    await tester.tap(find.text('Complete Medical Information'));
+    await tester.pumpAndSettle();
+    expect(find.text('Medical information'), findsOneWidget);
   });
 
   for (final fails in [false, true]) {

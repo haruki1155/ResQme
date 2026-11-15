@@ -1,6 +1,7 @@
 import {createPublicKey,verify} from 'node:crypto';
 import {HttpsError} from 'firebase-functions/v2/https';
 import {keys,object} from './medical_contract';
+import {evaluateStudentEligibility} from '../qr/qr_eligibility';
 
 export const tier2Operation='read_medical' as const;
 export function requireRecentAuth(authTime:unknown,nowSeconds=Math.floor(Date.now()/1000),maxAge=300) {
@@ -37,9 +38,8 @@ export function verifyTier2Signature(publicKey:string,message:string,signature:s
     return verify('sha256',Buffer.from(message,'utf8'),key,Buffer.from(signature,'base64url'));
   } catch {return false;}
 }
-export function requireTier2Eligible(profile:FirebaseFirestore.DocumentData|undefined,medical:FirebaseFirestore.DocumentData|undefined) {
-  if(!profile||profile.schemaVersion!==1||profile.schoolApprovalStatus!=='approved'||profile.medicalStatus!=='complete'||
-      !medical||medical.medicalStatus!=='complete'||medical.selfReported!==true||medical.syntheticOnly===true) {
+export function requireTier2Eligible(profile:FirebaseFirestore.DocumentData|undefined,medical:FirebaseFirestore.DocumentData|undefined,context?:{uid:string;guardianAuthorization?:FirebaseFirestore.DocumentData}) {
+  if(!context||!evaluateStudentEligibility({uid:context.uid,profile,medical,guardianAuthorization:context.guardianAuthorization})) {
     throw new HttpsError('permission-denied','Tier 2 access is unavailable.');
   }
 }

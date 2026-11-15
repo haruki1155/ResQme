@@ -1,6 +1,6 @@
 # ResQMe Tier 2 completion and acceptance — 2026-11-15
 
-**Readiness: CONTROLLED_DEMO_BLOCKED.** Local client corrections are implemented. Three pending backend eligibility-contract regressions fail, one existing Flutter navigation assertion fails, and biometric/device acceptance has not been performed for these changes.
+**Latest readiness: CONTROLLED_DEMO_BLOCKED.** The three backend eligibility regressions and Flutter navigation assertion were corrected locally in the resumed execution below. The earlier failure results in this dated report are preserved as historical evidence. Deployment and physical-device acceptance for the corrections remain outstanding.
 
 ## Scope and implementation
 
@@ -88,3 +88,37 @@ Next: authorize the narrow backend eligibility amendment and targeted scanner-te
 ## Preservation and review
 
 Start: `main`, HEAD `cd5d9f2a412e3bcb6aa501a5729824ea6685dc73`, 110 Git entries including the approved plan. All original status entries are retained. All 23 backend production-source fingerprints match the pre-edit baseline. Incremental product edits are limited to the three client/native files above; test/document edits are scoped to this plan. Native incremental review was performed; independent agent review was NOT RUN under the owner's no-agent instruction. Protected-state/native prompt behavior still needs actual device acceptance; no overall correctness or school-demo readiness is claimed.
+
+## Resumed execution — reconciled baseline `7ea3b1f`
+
+The owner confirmed that the concurrent commits were intentional and authorized. The read-only audit found a clean `main` at `7ea3b1f0813893a64f26f1c4df8a7f6818310979`; no reset/revert or recovery operation was necessary. The previous 110-entry dirty baseline was committed into the intervening history, including the local biometric/session corrections and tests. Relative to `782afb4`, the new HEAD adds QA documentation plus the handler assertion that reads the actual post-operation challenge row. The older preservation statement above describes its original checkpoint only; it is not the current Git baseline. No existing commits were changed in this resumed task.
+
+Fresh baseline reruns reproduced exactly three backend eligibility failures (17 other backend checks passed) and passed all 38 focused biometric/channel/session tests. Inspection confirmed the missing checks were in the server eligibility guard, not in biometric key signing or the Flutter error corrections. The scanner-entry failure was independently reproduced before changing its test.
+
+### Corrections
+
+1. Extracted the existing trusted student eligibility policy in `functions/src/qr/qr_eligibility.ts` as `evaluateStudentEligibility`. QR eligibility still adds its separate canonical credential and lookup-status checks. Tier 2 now uses the same assigned-school, approved enrollment, valid age/schema, completed and matching medical revision, medical-form validity and independently verified guardian policy. A QR remains public Tier 1 access only; it is not authentication or a new prerequisite for an owner-authenticated Tier 2 read.
+2. `requireTier2Eligible` now needs an authenticated-owner context and trusted guardian data; absent context fails closed. Minor guardian records must match the student, name a different nonempty guardian identity, use the independent-verification method and contain a valid date. Invalid dates fail closed; adults do not require guardian authorization.
+3. Updated device enrollment, challenge issuance, biometric read and password read to load only the authenticated owner's profile/medical/guardian records. Eligibility reads are in the Firestore transaction governing enrollment/challenge creation or protected read. Biometric proof consumption remains in that transaction. Device revocation remains available without eligibility, preserving the owner's ability to disable a device.
+4. Kept recent-auth limits (300 seconds biometric/enrollment/challenge; 120 seconds password), single-use 60-second challenges, signature binding, response allowlists and five-per-ten-minute password read limits. Missing authentication now receives the normal unauthenticated guard before any database initialization on biometric read.
+5. Corrected only the obsolete scanner-entry test: sign-in displays an inert Pending Verification QR and an explicit Complete Medical Information action. The test verifies no active label or medical record, and that the explicit action opens the existing medical form. No Flutter navigation/product code was changed in this resumed task.
+6. Added authoritative-record coverage across all four Tier 2 entry points, positive adult/verified-minor fixtures, invalid/missing guardian/assignment/revision cases and unchanged password rate/fresh-auth checks. The existing diagnostic filename is preserved, but both that security suite and handler suite are now included in the normal `npm test` command. No assertion was removed to obtain a passing run; valid fixtures now include all required authoritative metadata.
+
+### Fresh final automated results
+
+| Check | Result | Boundary |
+|---|---|---|
+| Functions configured build and unit/security suite | PASS — 150 tests, zero failures/skips | Node 22.23.4, npm offline; includes former diagnostics and all handler regressions |
+| Flutter full suite | PASS — 154 tests, zero failures | `flutter test --no-pub`; includes biometric/session regressions and corrected navigation contract |
+| Flutter analysis | PASS — no issues | `flutter analyze --no-pub` |
+| Patch whitespace | PASS | `git diff --check`; existing Git LF/CRLF warnings are not failures |
+| Emulator/hosted/deployed behavior | NOT RUN | No Firebase CLI invocation, emulator, hosted read/write or deployment |
+| Physical fingerprint and updated-build acceptance | NOT RUN | Checklist prepared; no APK install/device state change |
+
+Handler database transactions are local doubles and proofs use local crypto. They establish branch/authorization behavior, not real Firestore contention, emulator HTTP metadata, deployed source identity or physical biometric behavior. No guardian provisioning workflow was implemented and no hosted guardian record was created.
+
+### Remaining gates and next action
+
+**CONTROLLED_DEMO_BLOCKED**, despite passing automated tests. The corrected backend is local only. Prepare/review the updated artifact and exact affected Functions, then obtain separate deployment authorization before testing these fixes on staging. Fresh staging metadata and build provenance need explicit bounded authorization; fictional account provisioning/use/cleanup and any APK installation are separately gated. Follow [the physical-device checklist](resqme-tier2-physical-device-checklist.md) after those prerequisites. Historical extra revoked-QR attribution and the physical privacy-confirmation evidence remain unresolved. Real-student rollout remains outside scope.
+
+Preservation: HEAD remains `7ea3b1f` on `main`; changes are uncommitted, scoped backend/test/script/document deltas. The existing committed biometric/client/native implementation is preserved. No commits, pushes, new worktrees, dependency changes, MindMate access, credential inspection, hosted configuration or device operations occurred. Independent agent review was not performed under the native/no-agent instruction.

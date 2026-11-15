@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use `superpowers:executing-plans` for native sequential implementation after owner approval. No additional agents or worktrees are authorized. Steps use checkboxes for tracking.
 
-**Status:** Owner approved native local execution on 2026-11-15. Client corrections and offline verification are recorded in `docs/qa/resqme-tier2-completion-acceptance.md`. Backend eligibility amendment and physical acceptance remain blocked; this is not overall completion.
+**Status:** Owner approved native local execution and subsequently authorized the focused backend/navigation corrections on baseline `main` / `7ea3b1f`. Local automated verification now passes (150 Functions tests, 154 Flutter tests, clean analysis). Current results are in `docs/qa/resqme-tier2-completion-acceptance.md`. Deployment and physical acceptance remain separately gated; the controlled demo is not yet ready.
 
 **Goal:** Complete the existing Tier 2 biometric flow and establish evidence-backed readiness for a fictional-data-only controlled school demonstration.
 

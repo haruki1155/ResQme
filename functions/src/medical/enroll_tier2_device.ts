@@ -7,11 +7,10 @@ export const enrollTier2Device=onCall(resqmeRuntimeOptions,async request=>{
   const uid=request.auth?.uid,db=onboardingDatabase(uid);
   requireRecentAuth(request.auth?.token.auth_time);
   const input=validateDeviceEnrollment(request.data);
-  const [profile,medical]=await Promise.all([db.doc(`studentProfiles/${uid}`).get(),db.doc(`studentMedicalRecords/${uid}`).get()]);
-  requireTier2Eligible(profile.data(),medical.data());
   const device=db.doc(`tier2Devices/${uid}`);
   await db.runTransaction(async tx=>{
-    const old=await tx.get(device);
+    const [profile,medical,guardian,old]=await Promise.all([tx.get(db.doc(`studentProfiles/${uid}`)),tx.get(db.doc(`studentMedicalRecords/${uid}`)),tx.get(db.doc(`studentGuardianAuthorizations/${uid}`)),tx.get(device)]);
+    requireTier2Eligible(profile.data(),medical.data(),{uid:uid!,guardianAuthorization:guardian.data()});
     tx.set(device,{deviceId:input.deviceId,publicKey:input.publicKey,status:'active',keyVersion:Number(old.get('keyVersion')||0)+1,enrolledAt:FieldValue.serverTimestamp()});
   });
   return {deviceId:input.deviceId,status:'active'};

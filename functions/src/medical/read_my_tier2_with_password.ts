@@ -18,8 +18,9 @@ export const readMyTier2WithPassword=onCall(resqmeRuntimeOptions,async request=>
     if(count>=5) throw new HttpsError('resource-exhausted','Try Tier 2 again later.');
     tx.set(rate,{windowStartedAt:sameWindow?started:Timestamp.fromMillis(now),attempts:count+1,updatedAt:FieldValue.serverTimestamp()});
   });
-  const [profile,medical]=await Promise.all([db.doc(`studentProfiles/${uid}`).get(),db.doc(`studentMedicalRecords/${uid}`).get()]);
-  requireTier2Eligible(profile.data(),medical.data());
-  if(!medical.exists) throw new HttpsError('permission-denied','Tier 2 access is unavailable.');
-  return sanitizeTier2Record(medical.data());
+  return db.runTransaction(async tx=>{
+    const [profile,medical,guardian]=await Promise.all([tx.get(db.doc(`studentProfiles/${uid}`)),tx.get(db.doc(`studentMedicalRecords/${uid}`)),tx.get(db.doc(`studentGuardianAuthorizations/${uid}`))]);
+    requireTier2Eligible(profile.data(),medical.data(),{uid:uid!,guardianAuthorization:guardian.data()});
+    return sanitizeTier2Record(medical.data());
+  });
 });

@@ -2,14 +2,16 @@ import assert from 'node:assert/strict';
 import {generateKeyPairSync,sign} from 'node:crypto';
 import test from 'node:test';
 import {requireRecentAuth,requireTier2Eligible,sanitizeTier2Record,tier2SignedMessage,validateChallengeRequest,validateDeviceEnrollment,validateProof,verifyTier2Signature} from '../src/medical/tier2_challenge';
+import {tier2Uid,tier2Profile,tier2Medical} from './fixtures/tier2_eligibility';
 
 test('Tier 2 requires recent authentication and approved complete records',()=>{
   requireRecentAuth(950,1000,100);
   assert.throws(()=>requireRecentAuth(899,1000,100),{code:'failed-precondition'});
   assert.throws(()=>requireRecentAuth(1010,1000),{code:'failed-precondition'});
-  requireTier2Eligible({schemaVersion:1,schoolApprovalStatus:'approved',medicalStatus:'complete'},{medicalStatus:'complete',selfReported:true});
-  assert.throws(()=>requireTier2Eligible({schoolApprovalStatus:'pending',medicalStatus:'complete'},{medicalStatus:'complete',selfReported:true}),{code:'permission-denied'});
-  assert.throws(()=>requireTier2Eligible({schoolApprovalStatus:'approved',medicalStatus:'complete'},{medicalStatus:'complete',selfReported:false}),{code:'permission-denied'});
+  requireTier2Eligible(tier2Profile,tier2Medical,{uid:tier2Uid});
+  assert.throws(()=>requireTier2Eligible({...tier2Profile,schoolApprovalStatus:'pending'},tier2Medical,{uid:tier2Uid}),{code:'permission-denied'});
+  assert.throws(()=>requireTier2Eligible(tier2Profile,{...tier2Medical,selfReported:false},{uid:tier2Uid}),{code:'permission-denied'});
+  assert.throws(()=>requireTier2Eligible(tier2Profile,tier2Medical),{code:'permission-denied'});
 });
 
 test('Tier 2 reader returns only validated medical allowlist fields',()=>{
