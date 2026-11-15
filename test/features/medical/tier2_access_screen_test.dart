@@ -38,37 +38,53 @@ void main() {
       final f = Tier2Fixture();
       addTearDown(f.auth.changes.close);
       final repo = ScreenRepository(f);
-      await tester.pumpWidget(MaterialApp(home: Tier2AccessScreen(repository: repo)));
+      await tester.pumpWidget(
+        MaterialApp(home: Tier2AccessScreen(repository: repo)),
+      );
       await tester.tap(find.text('Unlock with biometrics'));
       repo.pending.complete(record);
       await tester.pumpAndSettle();
       expect(find.text('Fictional condition'), findsOneWidget);
       if (transition == 'background') {
-        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
         await tester.pump();
-        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
       } else {
         f.auth.switchUser(transition == 'logout' ? null : TestUser('adult-b'));
       }
       await tester.pumpAndSettle();
       expect(find.text('Fictional condition'), findsNothing);
-      expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
     });
   }
-  testWidgets('inactive prompt transition alone does not invalidate authorization', (tester) async {
-    final f = Tier2Fixture();
-    addTearDown(f.auth.changes.close);
-    final repo = ScreenRepository(f);
-    await tester.pumpWidget(MaterialApp(home: Tier2AccessScreen(repository: repo)));
-    await tester.tap(find.text('Unlock with biometrics'));
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    repo.pending.complete(record);
-    await tester.pumpAndSettle();
-    expect(find.text('Fictional condition'), findsOneWidget);
-  });
+  testWidgets(
+    'inactive prompt transition alone does not invalidate authorization',
+    (tester) async {
+      final f = Tier2Fixture();
+      addTearDown(f.auth.changes.close);
+      final repo = ScreenRepository(f);
+      await tester.pumpWidget(
+        MaterialApp(home: Tier2AccessScreen(repository: repo)),
+      );
+      await tester.tap(find.text('Unlock with biometrics'));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      repo.pending.complete(record);
+      await tester.pumpAndSettle();
+      expect(find.text('Fictional condition'), findsOneWidget);
+    },
+  );
   for (final transition in [
     'pause',
     'hidden',
@@ -95,15 +111,17 @@ void main() {
             tester.binding.handleAppLifecycleStateChanged(
               AppLifecycleState.hidden,
             );
-            if (transition == 'pause')
+            if (transition == 'pause') {
               tester.binding.handleAppLifecycleStateChanged(
                 AppLifecycleState.paused,
               );
+            }
             await tester.pump();
-            if (transition == 'pause')
+            if (transition == 'pause') {
               tester.binding.handleAppLifecycleStateChanged(
                 AppLifecycleState.hidden,
               );
+            }
             tester.binding.handleAppLifecycleStateChanged(
               AppLifecycleState.inactive,
             );
@@ -147,6 +165,7 @@ void main() {
     repo.pending.complete(record);
     await tester.pumpAndSettle();
     expect(find.text('Fictional condition'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'fictional-password');
     await tester.scrollUntilVisible(
       find.text('Lock Tier 2 information'),
       200,

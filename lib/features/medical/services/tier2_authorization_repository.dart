@@ -36,8 +36,9 @@ class Tier2AuthorizationRepository {
     Future<T> Function(String uid, void Function() check) action,
   ) async {
     final uid = currentUid;
-    if (uid == null)
+    if (uid == null) {
       throw const Tier2AuthorizationFailure('Sign in to access Tier 2.');
+    }
     var invalidated = false;
     final subscription = auth.userChanges().listen((user) {
       if (user?.uid != uid) invalidated = true;

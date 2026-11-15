@@ -78,13 +78,14 @@ class TestFunctions implements FirebaseFunctions {
       TestCallable((data) async {
         calls.add(name);
         if (onCall != null) return onCall!(name, data);
-        if (name == 'issueTier2Challenge')
+        if (name == 'issueTier2Challenge') {
           return {
             'challengeId': 'fictional-challenge',
             'nonce': 'fictional-nonce',
             'deviceId': (data as Map)['deviceId'],
             'operation': 'read_medical',
           };
+        }
         return <String, dynamic>{};
       });
   @override
