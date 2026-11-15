@@ -1,5 +1,7 @@
 # ResQMe synthetic onboarding — proposed staging handoff
 
+> **SUPERSEDED — DO NOT EXECUTE.** This historical draft includes a Firestore Rules deployment. The owner now reports that deployed Firestore and Storage Rules are deny-all, while the checked-in `firestore.rules` grants owner reads. Current deployed Rules remain unverified. Deploying this draft could therefore relax the reported Firestore deny-all posture. Use [the current G3/G4 readiness review](./resqme-g3-backend-readiness-review.md) for the conditional, Functions-only proposal. No deployment or Rules change is authorized.
+
 Prepared 2026-11-06. LOCAL ONLY: resources below were neither deployed nor remotely inspected during this milestone. Owner go/no-go is required before remote operations. Project must explicitly be `resqme-943ee`; no production destinations, Hosting, indexes, IAM, billing or Auth-provider changes are included.
 
 ## Proposed deployment scope
