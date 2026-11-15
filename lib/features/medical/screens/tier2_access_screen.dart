@@ -17,6 +17,15 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
   Map<String, dynamic>? _record;
   String? _message, _loadedUid;
   bool _busy = false;
+  int _generation = 0;
+  bool _backgrounded = false;
+
+  void _clearProtectedState() {
+    _generation++;
+    _record = null;
+    _message = null;
+    _password.clear();
+  }
   @override
   void initState() {
     super.initState();
@@ -25,7 +34,7 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
     _authSubscription = widget.repository.auth.userChanges().listen((user) {
       if (user?.uid != _loadedUid && mounted) {
         setState(() {
-          _record = null;
+          _clearProtectedState();
           _loadedUid = user?.uid;
           _message = null;
         });
@@ -35,19 +44,20 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _backgrounded = false;
     if ((state == AppLifecycleState.paused ||
             state == AppLifecycleState.hidden) &&
         mounted) {
       setState(() {
-        _record = null;
-        _loadedUid = null;
-        _password.clear();
+        _backgrounded = true;
+        _clearProtectedState();
       });
     }
   }
 
   @override
   void dispose() {
+    _generation++;
     WidgetsBinding.instance.removeObserver(this);
     _authSubscription?.cancel();
     _password.dispose();
@@ -56,7 +66,8 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
   }
 
   Future<void> _run(Future<Map<String, dynamic>> Function() action) async {
-    if (_busy) return;
+    if (_busy || _backgrounded) return;
+    final generation = ++_generation;
     setState(() {
       _busy = true;
       _message = null;
@@ -65,7 +76,7 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
     final uid = widget.repository.currentUid;
     try {
       final result = await action();
-      if (!mounted || uid == null || widget.repository.currentUid != uid) {
+      if (!mounted || _backgrounded || generation != _generation || uid == null || widget.repository.currentUid != uid) {
         return;
       }
       setState(() {
@@ -74,7 +85,7 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
         _password.clear();
       });
     } catch (error) {
-      if (mounted) {
+      if (mounted && !_backgrounded && generation == _generation && uid == widget.repository.currentUid) {
         setState(
           () => _message = error is Tier2AuthorizationFailure
               ? error.message
@@ -87,7 +98,9 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
   }
 
   Future<void> _disableBiometrics() async {
-    if (_busy) return;
+    if (_busy || _backgrounded) return;
+    final generation = ++_generation;
+    final uid = widget.repository.currentUid;
     setState(() {
       _busy = true;
       _message = null;
@@ -95,7 +108,7 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
     });
     try {
       await widget.repository.revokeDeviceWithPassword(_password.text);
-      if (mounted) {
+      if (mounted && !_backgrounded && generation == _generation && uid == widget.repository.currentUid) {
         setState(() {
           _password.clear();
           _loadedUid = null;
@@ -104,7 +117,7 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
         });
       }
     } catch (error) {
-      if (mounted) {
+      if (mounted && !_backgrounded && generation == _generation && uid == widget.repository.currentUid) {
         setState(
           () => _message = error is Tier2AuthorizationFailure
               ? error.message
@@ -223,8 +236,7 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: () => setState(() {
-                _record = null;
-                _loadedUid = null;
+                _clearProtectedState();
               }),
               child: const Text('Lock Tier 2 information'),
             ),
