@@ -36,11 +36,7 @@ class PilotAccountScreen extends StatefulWidget {
 class _PilotAccountScreenState extends State<PilotAccountScreen> {
   late String step;
   String _eligibleStep(StudentRegistrationProfile profile) =>
-      profile.medicalStatus != 'complete'
-      ? 'medical'
-      : profile.schoolApprovalStatus == 'approved'
-      ? 'qr'
-      : 'approval';
+      profile.schoolApprovalStatus == 'revoked' ? 'approval' : 'qr';
   @override
   void initState() {
     super.initState();
@@ -66,7 +62,7 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
               onGuest: widget.onPublicDashboard,
               onComplete: () {
                 widget.onMedicalCompleted?.call();
-                setState(() => step = 'approval');
+                setState(() => step = 'qr');
               },
             )
           : SyntheticMedicalScreen(
@@ -129,6 +125,10 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
       onScan: () => Navigator.pushNamed(context, AppRoutes.scanner),
       onSignOut: widget.onSignOut,
       onTier2: widget.onTier2,
+      onCompleteMedical: widget.completion == null
+          ? null
+          : () => setState(() => step = 'medical'),
+      medicalComplete: widget.profile.medicalStatus == 'complete',
     ),
     _ => const SizedBox.shrink(),
   };

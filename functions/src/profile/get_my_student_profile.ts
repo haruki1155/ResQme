@@ -46,7 +46,8 @@ export function sanitizeStudentProfile(value: unknown): ProfileData {
       (value.ageYearsAtRegistration as number) < 0 ||
       (value.ageYearsAtRegistration as number) > 130 ||
       !['pending_review', 'pending_guardian'].includes(value.status as string) ||
-      (value.lrn !== undefined && value.lrn !== null)) {
+      (value.lrn !== undefined && value.lrn !== null &&
+        (typeof value.lrn!=='string'||!/^\d{12}$/.test(value.lrn)))) {
     throw new HttpsError('failed-precondition', 'Profile unavailable.');
   }
 
@@ -58,8 +59,12 @@ export function sanitizeStudentProfile(value: unknown): ProfileData {
     schoolApprovalStatus: value.schoolApprovalStatus ?? 'pending',
     medicalStatus: value.medicalStatus ?? 'not_started',
     medicalRevision: value.medicalRevision ?? 0,
+    schoolAssignmentStatus: value.schoolAssignmentStatus ?? 'unassigned',
+    schoolVerificationOutcome: value.schoolVerificationOutcome ?? 'manual_review',
   };
   if(!['pending','approved','revoked'].includes(result.schoolApprovalStatus as string)||
+     !['assigned','unassigned'].includes(result.schoolAssignmentStatus as string)||
+     !['verified','manual_review','conflict'].includes(result.schoolVerificationOutcome as string)||
      !['not_started','complete'].includes(result.medicalStatus as string)||
      !Number.isSafeInteger(result.medicalRevision)||Number(result.medicalRevision)<0) {
     throw new HttpsError('failed-precondition','Profile unavailable.');

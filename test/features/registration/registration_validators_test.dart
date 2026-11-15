@@ -6,6 +6,18 @@ void main() {
     expect(isMinor(17), isTrue);
     expect(isMinor(18), isFalse);
     expect(validateFullName(''), isNotNull);
+    expect(validateLrn('001234567890'), isNull);
+    for (final invalid in [
+      null,
+      '',
+      '12345678901',
+      '1234567890123',
+      '12345678901x',
+    ]) {
+      expect(validateLrn(invalid), isNotNull);
+    }
+    expect(validateEnrollmentCode(''), isNull);
+    expect(validateEnrollmentCode(' short '), isNull);
     expect(validateAge(-1), isNotNull);
     expect(validatePassword('12345678'), isNull);
     expect(validateConfirmation('x', 'y'), isNotNull);

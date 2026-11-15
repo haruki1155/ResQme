@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 const registrationNoticeVersion = 'tier1-registration-v1';
 const registrationPrivacyBody =
-    'To create your ResQMe student account, we will process your full name, age and email address. You may also provide your gender, personal contact number, and parent/guardian or secondary emergency-contact details. These details will be stored in your private basic profile for registration and future authorized school enrollment and emergency-contact procedures. Your password is handled by our authentication service and is not stored in your student profile. Contact numbers and registration details are not displayed in public QR results. No medical information is collected or made available by this acknowledgment.';
+    'To create your ResQMe student account, we will process your full name, age, 12-digit Learner Reference Number (LRN), and email address. You may also provide a school-issued enrollment code for automatic school matching, your gender, personal contact number, and parent/guardian or secondary emergency-contact details. The LRN is kept in the private student profile and the enrollment code is used only for verification; neither is returned by the profile service or displayed in public QR results. Your password is handled by our authentication service and is not stored in your student profile. No medical information is collected or made available by this acknowledgment.';
 const registrationPrivacyCheckbox =
     'I have read and understood the ResQMe Privacy Notice and agree to the processing of my registration information for the purposes described above.';
 const registrationPendingExplanation =

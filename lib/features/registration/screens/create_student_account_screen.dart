@@ -24,6 +24,8 @@ class _CreateStudentAccountScreenState
     for (final key in [
       'name',
       'age',
+      'lrn',
+      'enrollmentCode',
       'phone',
       'guardianName',
       'guardianPhone',
@@ -93,6 +95,8 @@ class _CreateStudentAccountScreenState
         ageYears: int.parse(fields['age']!.text),
         email: fields['email']!.text,
         password: fields['password']!.text,
+        lrn: fields['lrn']!.text.trim(),
+        enrollmentCode: fields['enrollmentCode']!.text,
         gender: gender,
         personalPhone: fields['phone']!.text,
         guardianName: fields['guardianName']!.text,
@@ -111,6 +115,8 @@ class _CreateStudentAccountScreenState
     if (result.state == RegistrationState.pending) {
       fields['password']!.clear();
       fields['confirm']!.clear();
+      fields['lrn']!.clear();
+      fields['enrollmentCode']!.clear();
       widget.onRegistered();
     }
   }
@@ -150,6 +156,22 @@ class _CreateStudentAccountScreenState
                     validator: (value) =>
                         validateAge(int.tryParse(value ?? '')),
                   ),
+                  field(
+                    'lrn',
+                    '12-digit LRN',
+                    keyboard: TextInputType.number,
+                    validator: validateLrn,
+                  ),
+                  field(
+                    'enrollmentCode',
+                    'Enrollment code (optional for manual review)',
+                    secret: true,
+                    validator: validateEnrollmentCode,
+                  ),
+                  const Text(
+                    'A valid school-issued enrollment code supports automatic matching. If you do not have one or it cannot be matched, registration continues for manual school review.',
+                  ),
+                  const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     initialValue: gender,
                     isExpanded: true,

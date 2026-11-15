@@ -69,6 +69,7 @@ void main() {
       for (final entry in {
         'Full name': 'Synthetic Student',
         'Age (years)': '17',
+        '12-digit LRN': '001234567890',
         'Email': 'synthetic@example.test',
         'Password': 'secret-password',
         'Confirm password': 'secret-password',

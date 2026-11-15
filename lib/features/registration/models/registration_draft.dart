@@ -4,6 +4,8 @@ class RegistrationDraft {
     required this.ageYears,
     required this.email,
     required this.password,
+    required this.lrn,
+    this.enrollmentCode,
     this.gender,
     this.personalPhone,
     this.guardianName,
@@ -14,6 +16,8 @@ class RegistrationDraft {
   });
   final String fullName, email, password;
   final int ageYears;
+  final String lrn;
+  final String? enrollmentCode;
   final String? gender,
       personalPhone,
       guardianName,
@@ -28,6 +32,8 @@ class RegistrationDraft {
   Map<String, dynamic> toProfilePayload() => {
     'fullName': fullName.trim(),
     'ageYears': ageYears,
+    'lrn': lrn.trim(),
+    'enrollmentCode': clean(enrollmentCode)?.toUpperCase(),
     'gender': clean(gender),
     'personalPhone': phone(personalPhone),
     'guardianName': clean(guardianName),

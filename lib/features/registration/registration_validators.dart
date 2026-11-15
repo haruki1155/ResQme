@@ -5,6 +5,12 @@ String? validateFullName(String? value) =>
     : null;
 String? validateAge(int? value) =>
     value == null || value < 0 || value > 130 ? 'Enter a valid age.' : null;
+String? validateLrn(String? value) =>
+    value != null && RegExp(r'^\d{12}$').hasMatch(value)
+    ? null
+    : 'Enter a valid 12-digit LRN.';
+// Invalid or missing codes use manual review and do not block registration.
+String? validateEnrollmentCode(String? value) => null;
 String? validatePassword(String? value) =>
     value == null || value.length < 8 ? 'Use at least 8 characters.' : null;
 String? validateConfirmation(String? value, String password) =>

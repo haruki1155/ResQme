@@ -14,7 +14,7 @@ connectFirestoreEmulator(db, endpoints.firestore.host, endpoints.firestore.port)
 const fn = getFunctions(app, 'us-central1');
 connectFunctionsEmulator(fn, endpoints.functions.host, endpoints.functions.port);
 const call = httpsCallable(fn, 'createStudentRegistration', {timeout: 8000});
-const data = {fullName: 'Synthetic Student', ageYears: 17, noticeVersion: 'tier1-registration-v1', acknowledgmentAccepted: true};
+const data = {fullName: 'Synthetic Student', ageYears: 17, lrn:'900000000901', noticeVersion: 'tier1-registration-v1', acknowledgmentAccepted: true};
 console.log('[2] Firebase test clients initialized');
 test.after(async () => {await deleteApp(app); await deleteAdmin(admin); console.log('[7] Test cleanup completed');});
 test('unauthenticated callable rejects', {timeout: 10000}, async () => {
@@ -28,6 +28,15 @@ test('unauthenticated callable rejects', {timeout: 10000}, async () => {
   console.log('[6] Assertions completed');
 });
 
+test('invalid LRN rejects before creating a student profile', {timeout:10000}, async()=>{
+  const user=(await signInAnonymously(auth)).user;
+  const profile=store.doc(`studentProfiles/${user.uid}`);
+  try{
+    await assert.rejects(()=>call({...data,lrn:'123'}),{code:'functions/invalid-argument'});
+    assert.equal((await profile.get()).exists,false);
+  }finally{await user.delete();}
+});
+
 for (const altered of [false, true]) {
   test(altered ? 'altered repeat rejects without changing records' : 'identical repeat preserves one profile and acknowledgment', {timeout: 15000}, async () => {
     const user = (await signInAnonymously(auth)).user;
@@ -38,7 +47,7 @@ for (const altered of [false, true]) {
       const acknowledgments = await profile.collection('acknowledgments').get();
       assert.equal(acknowledgments.size, 1);
       assert.equal(original?.status, 'pending_review');
-      assert.equal(original?.lrn, null);
+      assert.equal(original?.lrn, '900000000901');
       if (altered) await assert.rejects(() => call({...data, fullName: 'Altered Synthetic', ageYears: 18}), {code: 'functions/already-exists'});
       else await call(data);
       assert.deepEqual((await profile.get()).data(), original);
@@ -55,7 +64,7 @@ for (const altered of [false, true]) {
 test('approved optional fields persist privately and altered contacts cannot overwrite', {timeout: 15000}, async () => {
   const user = (await signInAnonymously(auth)).user;
   const profile = store.doc(`studentProfiles/${user.uid}`);
-  const payload = {...data, ageYears:18, gender:'Female', personalPhone:'0912 345 6789', guardianName:'Synthetic Guardian', guardianRelationship:'Parent', guardianPhone:'+63 912 345 6789', secondaryName:'Synthetic Contact', secondaryPhone:'0912-345-6789', status:'approved', lrn:'forged', password:'must-not-persist'};
+  const payload = {...data, ageYears:18, gender:'Female', personalPhone:'0912 345 6789', guardianName:'Synthetic Guardian', guardianRelationship:'Parent', guardianPhone:'+63 912 345 6789', secondaryName:'Synthetic Contact', secondaryPhone:'0912-345-6789', status:'approved', password:'must-not-persist'};
   try {
     await call(payload);
     const before = (await profile.get()).data()!;
@@ -63,11 +72,11 @@ test('approved optional fields persist privately and altered contacts cannot ove
     assert.equal(before.personalContactNumber,'09123456789');
     assert.deepEqual(before.emergencyContacts,{primary:{fullName:'Synthetic Guardian',relationship:'Parent',phoneNumber:'+639123456789'},secondary:{fullName:'Synthetic Contact',phoneNumber:'09123456789'}});
     assert.equal(before.status,'pending_review');
-    assert.equal(before.lrn,null);
+    assert.equal(before.lrn,'900000000901');
     assert.equal(before.password,undefined);
     await call(payload);
-    for (const field of ['gender','personalPhone','guardianName','guardianRelationship','guardianPhone','secondaryName','secondaryPhone']) {
-      const replacement = field.includes('Phone') ? '09999999999' : 'Different';
+    for (const field of ['lrn','gender','personalPhone','guardianName','guardianRelationship','guardianPhone','secondaryName','secondaryPhone']) {
+      const replacement = field==='lrn'?'900000000999':field.includes('Phone') ? '09999999999' : 'Different';
       await assert.rejects(() => call({...payload,[field]:replacement}), {code:'functions/already-exists'});
     }
     assert.deepEqual((await profile.get()).data(),before);

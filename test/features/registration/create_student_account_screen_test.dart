@@ -26,6 +26,7 @@ void main() {
         for (final entry in {
           'Full name': 'Synthetic Student',
           'Age (years)': '17',
+          '12-digit LRN': '001234567890',
           'Email': 'synthetic@example.test',
           'Password': 'secret-password',
           'Confirm password': 'secret-password',
@@ -76,10 +77,7 @@ void main() {
       find.text('Data Privacy & Registration Authorization'),
       findsOneWidget,
     );
-    expect(
-      find.text(registrationPendingExplanation),
-      findsOneWidget,
-    );
+    expect(find.text(registrationPendingExplanation), findsOneWidget);
     expect(
       tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
       false,
@@ -114,12 +112,17 @@ void main() {
       expect(find.text('Personal information'), findsOneWidget);
       expect(find.text('Emergency contacts (optional)'), findsOneWidget);
       expect(find.text('Account credentials'), findsOneWidget);
-      expect(find.text('LRN'), findsNothing);
+      expect(find.text('12-digit LRN'), findsOneWidget);
+      expect(
+        find.text('Enrollment code (optional for manual review)'),
+        findsOneWidget,
+      );
       expect(find.text('Student ID'), findsNothing);
       await tester.ensureVisible(find.text('Create account').last);
       await tester.tap(find.text('Create account').last);
       await tester.pumpAndSettle();
       expect(find.text('Enter a valid email.'), findsOneWidget);
+      expect(find.text('Enter a valid 12-digit LRN.'), findsOneWidget);
       expect(client.creates, 0);
     },
   );

@@ -44,6 +44,8 @@ test('returns only the approved profile response fields', () => {
     ageYearsAtRegistration: 17,
     status: 'pending_guardian',
     schoolApprovalStatus: 'pending',
+    schoolAssignmentStatus: 'unassigned',
+    schoolVerificationOutcome: 'manual_review',
     medicalStatus: 'not_started',
     medicalRevision: 0,
     gender: 'Female',
@@ -70,6 +72,8 @@ test('defaults new eligibility states for existing profiles', () => {
       ageYearsAtRegistration: 18,
       status: 'pending_review',
       schoolApprovalStatus: 'pending',
+      schoolAssignmentStatus: 'unassigned',
+      schoolVerificationOutcome: 'manual_review',
       medicalStatus: 'not_started',
       medicalRevision: 0,
       lrn: null,
@@ -80,6 +84,8 @@ test('defaults new eligibility states for existing profiles', () => {
       ageYearsAtRegistration: 18,
       status: 'pending_review',
       schoolApprovalStatus: 'pending',
+      schoolAssignmentStatus: 'unassigned',
+      schoolVerificationOutcome: 'manual_review',
       medicalStatus: 'not_started',
       medicalRevision: 0,
     },
@@ -105,6 +111,13 @@ test('rejects malformed required and optional profile values', () => {
   ]) {
     assert.throws(() => sanitizeStudentProfile({...profile, ...changes}));
   }
+});
+
+test('validates but never returns the new private LRN',()=>{
+ const response=sanitizeStudentProfile({...profile,lrn:'001234567890',schoolAssignmentStatus:'assigned',schoolVerificationOutcome:'verified'});
+ assert.equal('lrn' in response,false);
+ assert.equal(response.schoolAssignmentStatus,'assigned');
+ assert.equal(response.schoolVerificationOutcome,'verified');
 });
 
 test('profile requests cannot provide a UID or other authority fields', () => {

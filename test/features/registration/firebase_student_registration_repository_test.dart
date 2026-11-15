@@ -41,6 +41,7 @@ class FakeRegistrationClient implements RegistrationClient {
     profileReads++;
     return profile;
   }
+
   @override
   Future<void> signIn(String email, String password) async {
     if (authError != null) {
@@ -62,6 +63,7 @@ const draft = RegistrationDraft(
   ageYears: 17,
   email: 'synthetic@example.test',
   password: 'secret-password',
+  lrn: '001234567890',
 );
 
 class _BlockedClient extends FakeRegistrationClient {

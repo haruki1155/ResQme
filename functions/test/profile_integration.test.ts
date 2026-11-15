@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import test from 'node:test';
 import {initializeApp, deleteApp} from 'firebase/app';
 import {
@@ -52,7 +53,10 @@ test.after(async () => {
     }
     await profile.delete();
     await store.doc(`studentMedicalRecords/${uid}`).delete();
-    await store.doc(`studentQrCredentials/${uid}`).delete();
+    const credential=store.doc(`studentQrCredentials/${uid}`);
+    const payload=(await credential.get()).get('payload');
+    if(typeof payload==='string') await store.doc(`studentQrLookups/${createHash('sha256').update(payload).digest('hex')}`).delete();
+    await credential.delete();
     try {
       await adminAuth(admin).deleteUser(uid);
     } catch (error) {
@@ -77,6 +81,7 @@ test('profile callable authenticates, derives ownership, and filters profile dat
   const registration = await call('createStudentRegistration', {
     fullName: 'Synthetic Student',
     ageYears: 17,
+    lrn: '900000000902',
     noticeVersion: 'tier1-registration-v1',
     acknowledgmentAccepted: true,
     gender: 'Female',
@@ -110,6 +115,11 @@ test('profile callable authenticates, derives ownership, and filters profile dat
     fullName: 'Synthetic Student',
     ageYearsAtRegistration: 17,
     status: 'pending_review',
+    schoolApprovalStatus:'pending',
+    medicalStatus:'not_started',
+    medicalRevision:0,
+    schoolAssignmentStatus:'unassigned',
+    schoolVerificationOutcome:'manual_review',
     gender: 'Female',
     personalContactNumber: '09123456789',
     emergencyContacts: {
@@ -148,6 +158,7 @@ test('profile callable authenticates, derives ownership, and filters profile dat
     (firstQr.data as {payload: string}).payload,
     /^resqme:v1:[A-Za-z0-9_-]{43}$/,
   );
+  assert.equal((firstQr.data as {verificationStatus:string}).verificationStatus,'pending');
   await store.doc(`studentQrCredentials/${uid}`).update({
     privateFlag: true,
   });
