@@ -207,3 +207,7 @@ The earlier section F and readiness row H said no device screens were exercised,
 `git diff --check` passed after the test; only existing LF/CRLF conversion warnings were printed. No source change, hosted operation, commit, or push was made for this device check.
 
 **Updated device readiness:** The authorized public Tier 1 flows above were observed on a physical device, including an offline guest-dashboard spot check. Therefore the earlier “Public Tier 1 demonstration: UNVERIFIED” line is superseded for those observed screens. Registration/school verification, active QR resolution, full offline coverage, and hosted readiness remain unverified or blocked as stated.
+
+## 2026-11-15 — Tier 2 completion evidence update
+
+See `docs/qa/resqme-tier2-completion-acceptance.md` (from this QA directory: `resqme-tier2-completion-acceptance.md`) for the current local results and blockers. Preserve the historical results above: earlier emulator failures and later G6 staging successes concern different environments/dates. G6 section 14 reports active-QR/password-access/rotation staging success on 2026-11-12; physical biometric medical read remained unverified. This session made no hosted/device change and did not revalidate live configuration. Three new offline Tier 2 eligibility-contract regressions fail; no backend fix was applied. Overall readiness is CONTROLLED_DEMO_BLOCKED.

@@ -63,6 +63,6 @@ for(const scenario of ['expired','consumed','wrong-owner','wrong-device','wrong-
     const before=challenge.consumedAt;
     t.mock.method(authorization,'onboardingDatabase',()=>f.db as never);
     await assert.rejects(()=>readMyTier2Record.run(f.request),{code:scenario==='stale-auth'?'failed-precondition':'permission-denied'});
-    assert.equal(challenge.consumedAt,before);
+    assert.equal(f.rows.get(`tier2Challenges/${f.challengeId}`)?.consumedAt,before);
   });
 }

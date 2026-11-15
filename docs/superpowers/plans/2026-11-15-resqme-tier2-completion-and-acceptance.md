@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use `superpowers:executing-plans` for native sequential implementation after owner approval. No additional agents or worktrees are authorized. Steps use checkboxes for tracking.
 
-**Status:** DRAFT — awaiting the single owner plan-approval checkpoint. No product changes or acceptance execution performed.
+**Status:** Owner approved native local execution on 2026-11-15. Client corrections and offline verification are recorded in `docs/qa/resqme-tier2-completion-acceptance.md`. Backend eligibility amendment and physical acceptance remain blocked; this is not overall completion.
 
 **Goal:** Complete the existing Tier 2 biometric flow and establish evidence-backed readiness for a fictional-data-only controlled school demonstration.
 

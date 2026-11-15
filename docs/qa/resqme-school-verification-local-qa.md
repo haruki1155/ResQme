@@ -40,3 +40,7 @@ The prior G4 hosted acceptance result is historical and unchanged. This work is 
 7. Rebuild/revalidate the deployment artifact and obtain separate deployment authorization. Local tests do not validate deployed behavior.
 
 **Readiness:** The local workflow and focused tests pass, but the transactional emulator test, trusted school setup, required runtime permission, and hosted rollout prerequisites remain outstanding. Do not use this build for hosted school onboarding until those gates are resolved.
+
+## 2026-11-15 — Tier 2 completion evidence update
+
+See `docs/qa/resqme-tier2-completion-acceptance.md` (from this QA directory: `resqme-tier2-completion-acceptance.md`) for the current local results and blockers. Preserve the historical results above: earlier emulator failures and later G6 staging successes concern different environments/dates. G6 section 14 reports active-QR/password-access/rotation staging success on 2026-11-12; physical biometric medical read remained unverified. This session made no hosted/device change and did not revalidate live configuration. Three new offline Tier 2 eligibility-contract regressions fail; no backend fix was applied. Overall readiness is CONTROLLED_DEMO_BLOCKED.

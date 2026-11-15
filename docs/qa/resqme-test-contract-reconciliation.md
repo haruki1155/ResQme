@@ -78,3 +78,7 @@ Baseline was `main`, HEAD `cd5d9f2a412e3bcb6aa501a5729824ea6685dc73`, with 100 e
 Expected added status entries are the newly modified tracked onboarding integration test and this new report; the other edited tests already had status entries in the original 100. The original untracked five-student test remains untracked.
 
 **Readiness:** test-contract reconciliation is ready for review and a separately authorized isolated integration run after profile clearance. It is not an integration PASS. Resolve any newly exposed backend/privacy failure with separate application-change authorization; do not edit production behavior to force these tests green. Legacy production migration, trusted school provisioning, guardian authority, runtime IAM, deployment, and device acceptance remain outside this task.
+
+## 2026-11-15 — Tier 2 completion evidence update
+
+See `docs/qa/resqme-tier2-completion-acceptance.md` (from this QA directory: `resqme-tier2-completion-acceptance.md`) for the current local results and blockers. Preserve the historical results above: earlier emulator failures and later G6 staging successes concern different environments/dates. G6 section 14 reports active-QR/password-access/rotation staging success on 2026-11-12; physical biometric medical read remained unverified. This session made no hosted/device change and did not revalidate live configuration. Three new offline Tier 2 eligibility-contract regressions fail; no backend fix was applied. Overall readiness is CONTROLLED_DEMO_BLOCKED.

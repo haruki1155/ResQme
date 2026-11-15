@@ -264,3 +264,7 @@ All disposable resources were removed after testing and verified absent: 15 Fire
 ### To resume testing
 
 Re-provision with the same Route A sequence: register a fictional adult student in the app, create a reviewer Auth account, run `scratchpad/provision-g6.sh <studentUid> <reviewerUid>` for the two operator writes, approve via `approveStudentQr`, complete the medical form in-app, then verify activation. The only step needing a person present is the Tier 2 biometric prompt.
+
+## 2026-11-15 — Local completion audit (no hosted execution)
+
+Section 14 remains the latest recorded G6 staging execution result; the original proposal/OPEN headings are historical snapshots, not a new deployment gate or fresh live inventory. Current local completion results are in `qa/resqme-tier2-completion-acceptance.md`. Client errors/session invalidation were corrected locally and Kotlin compilation passed; no APK was installed. Tier 2's shared eligibility guard has three failing offline contract regressions (school assignment, revision consistency, minor guardian authorization), requiring separate backend amendment approval. This does not establish a hosted exploit or invalidate the historical adult staging successes. New physical biometric read and privacy-confirmation evidence remain absent. No staging state, runtime IAM, Rules or App Check was queried or changed. CONTROLLED_DEMO_BLOCKED.
