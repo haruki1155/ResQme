@@ -60,7 +60,8 @@ void main() {
     await tester.tap(find.text('Unlock with biometrics'));
     repo.pending.complete(record); await tester.pumpAndSettle();
     expect(find.text('Fictional condition'), findsOneWidget);
-    await tester.ensureVisible(find.text('Lock Tier 2 information'));
+    await tester.scrollUntilVisible(find.text('Lock Tier 2 information'),200,
+      scrollable:find.descendant(of:find.byType(ListView),matching:find.byType(Scrollable)).first);
     await tester.tap(find.text('Lock Tier 2 information')); await tester.pump();
     expect(find.text('Fictional condition'), findsNothing);
     expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);

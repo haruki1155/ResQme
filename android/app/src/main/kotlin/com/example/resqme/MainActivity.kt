@@ -14,10 +14,23 @@ import java.security.KeyStore
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
+import android.os.CancellationSignal
 
 private const val TIER2_CHANNEL = "resqme/tier2_key"
 
 class MainActivity : FlutterActivity() {
+    private var biometricCancellation: CancellationSignal? = null
+
+    override fun onStop() {
+        biometricCancellation?.cancel()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        biometricCancellation?.cancel()
+        super.onDestroy()
+    }
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TIER2_CHANNEL)
@@ -69,6 +82,17 @@ class MainActivity : FlutterActivity() {
     private fun keyStore(): KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
     private fun sign(deviceId: String?, message: String?, result: MethodChannel.Result) {
+        if (biometricCancellation != null) {
+            result.error("biometric_busy", "Biometric confirmation is already in progress.", null)
+            return
+        }
+        val completed = AtomicBoolean(false)
+        fun fail(code: String, text: String) {
+            if (completed.compareAndSet(false, true)) {
+                biometricCancellation = null
+                result.error(code, text, null)
+            }
+        }
         try {
             val keyAlias = alias(deviceId)
             require(!message.isNullOrBlank() && message.length <= 2048)
@@ -78,35 +102,45 @@ class MainActivity : FlutterActivity() {
             signature.initSign(privateKey)
             val crypto = BiometricPrompt.CryptoObject(signature)
             val executor: Executor = mainExecutor
+            val signal = CancellationSignal()
+            biometricCancellation = signal
             BiometricPrompt.Builder(this)
                 .setTitle("Unlock Tier 2 information")
                 .setSubtitle("Confirm with your device biometrics")
-                .setNegativeButton("Cancel", executor) { _, _ -> result.error("cancelled", "Biometric confirmation cancelled.", null) }
+                .setNegativeButton("Cancel", executor) { _, _ -> fail("cancelled", "Biometric confirmation cancelled.") }
                 .build()
-                .authenticate(crypto, cancellationSignal(), executor, object : BiometricPrompt.AuthenticationCallback() {
+                .authenticate(crypto, signal, executor, object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
                         try {
                             val authenticatedSignature = authResult.cryptoObject?.signature
                                 ?: throw IllegalStateException("Biometric key unavailable.")
                             authenticatedSignature.update(message.toByteArray(Charsets.UTF_8))
                             val proof = authenticatedSignature.sign()
-                            result.success(Base64.encodeToString(proof, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING))
+                            if (completed.compareAndSet(false, true)) {
+                                biometricCancellation = null
+                                result.success(Base64.encodeToString(proof, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING))
+                            }
                         } catch (error: Exception) {
-                            result.error("sign_failed", "Biometric confirmation could not be verified.", null)
+                            fail("sign_failed", "Biometric confirmation could not be verified.")
                         }
                     }
 
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        result.error("biometric_unavailable", "Biometric confirmation is unavailable.", null)
+                        val code = when (errorCode) {
+                            BiometricPrompt.BIOMETRIC_ERROR_CANCELED,
+                            BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED -> "cancelled"
+                            BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT,
+                            BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT_PERMANENT -> "biometric_lockout"
+                            else -> "biometric_unavailable"
+                        }
+                        fail(code, "Biometric confirmation did not complete.")
                     }
 
                     override fun onAuthenticationFailed() { }
                 })
         } catch (error: Exception) {
-            result.error("key_unavailable", "Biometric access is unavailable on this device.", null)
+            fail("key_unavailable", "Biometric access is unavailable on this device.")
         }
     }
 
-    @Suppress("DEPRECATION")
-    private fun cancellationSignal(): android.os.CancellationSignal = android.os.CancellationSignal()
 }
