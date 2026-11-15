@@ -14,6 +14,15 @@ import 'package:resqme/features/registration/services/firebase_student_registrat
 import '../registration/firebase_student_registration_repository_test.dart'
     show FakeRegistrationClient;
 
+class _CountingQrClient extends FakePilotClient {
+  final calls = <String>[];
+  @override
+  Future<Map<String,dynamic>> invoke(String name,Map<String,dynamic> payload) {
+    calls.add(name);
+    return super.invoke(name,payload);
+  }
+}
+
 class _Consent implements ConsentRepository {
   @override
   Future<bool> hasAcceptedTerms() async => true;
@@ -48,6 +57,29 @@ class _RegisteringClient extends FakeRegistrationClient {
 }
 
 void main() {
+  testWidgets('rapid QR replacement taps open one confirmation and cancel never rotates', (tester) async {
+    final client=_CountingQrClient();
+    await tester.pumpWidget(MaterialApp(home:MyUnverifiedQrScreen(repository:Tier1QrRepository(client),onDashboard:(){})));
+    await tester.pumpAndSettle();
+    final replace=find.widgetWithText(OutlinedButton,'Replace QR');
+    await tester.ensureVisible(replace);
+    await tester.tap(replace); await tester.tap(replace); await tester.pumpAndSettle();
+    expect(find.text('Replace this QR?'),findsOneWidget);
+    await tester.tap(find.text('Cancel')); await tester.pumpAndSettle();
+    expect(client.calls,['ensureMyTier1Qr']);
+  });
+  testWidgets('one confirmed QR replacement sends one request; rebuild does not rotate', (tester) async {
+    final client=_CountingQrClient();
+    final repository=Tier1QrRepository(client);
+    Widget screen()=>MaterialApp(home:MyUnverifiedQrScreen(repository:repository,onDashboard:(){}));
+    await tester.pumpWidget(screen()); await tester.pumpAndSettle();
+    await tester.pumpWidget(screen()); await tester.pumpAndSettle();
+    expect(client.calls,['ensureMyTier1Qr']);
+    final replace=find.widgetWithText(OutlinedButton,'Replace QR');
+    await tester.ensureVisible(replace); await tester.tap(replace); await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton,'Replace QR')); await tester.pumpAndSettle();
+    expect(client.calls,['ensureMyTier1Qr','replaceMyTier1Qr']);
+  });
   testWidgets('QA test save leads to the same QR on restart', (tester) async {
     final client = FakePilotClient();
     final profile = StudentRegistrationProfile.fromFirestore({
