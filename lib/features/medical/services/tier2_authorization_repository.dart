@@ -32,18 +32,24 @@ class Tier2AuthorizationRepository {
   final PlatformTier2Key keyProvider;
   String? get currentUid => auth.currentUser?.uid;
 
-  Future<T> _withOwner<T>(Future<T> Function(String uid, void Function() check) action) async {
+  Future<T> _withOwner<T>(
+    Future<T> Function(String uid, void Function() check) action,
+  ) async {
     final uid = currentUid;
-    if (uid == null) throw const Tier2AuthorizationFailure('Sign in to access Tier 2.');
+    if (uid == null)
+      throw const Tier2AuthorizationFailure('Sign in to access Tier 2.');
     var invalidated = false;
     final subscription = auth.userChanges().listen((user) {
       if (user?.uid != uid) invalidated = true;
     });
     void check() {
       if (invalidated || currentUid != uid) {
-        throw const Tier2AuthorizationFailure('Account changed. Reopen Tier 2.');
+        throw const Tier2AuthorizationFailure(
+          'Account changed. Reopen Tier 2.',
+        );
       }
     }
+
     try {
       check();
       final result = await action(uid, check);
@@ -62,30 +68,40 @@ class Tier2AuthorizationRepository {
     if (error is PlatformException) {
       return Tier2AuthorizationFailure(switch (error.code) {
         'cancelled' => 'Biometric confirmation cancelled.',
-        'biometric_lockout' => 'Biometrics are locked. Use your account password to continue.',
-        'key_unavailable' => 'Set up biometrics again using your account password.',
-        'sign_failed' => 'Biometric verification failed. Try again or use your account password.',
-        _ => 'Biometric access is unavailable. Use your account password to continue.',
+        'biometric_lockout' =>
+          'Biometrics are locked. Use your account password to continue.',
+        'key_unavailable' =>
+          'Set up biometrics again using your account password.',
+        'sign_failed' =>
+          'Biometric verification failed. Try again or use your account password.',
+        _ =>
+          'Biometric access is unavailable. Use your account password to continue.',
       });
     }
     if (error is FirebaseFunctionsException) {
       return Tier2AuthorizationFailure(switch (error.code) {
         'resource-exhausted' => 'Too many Tier 2 attempts. Try again later.',
-        'failed-precondition' || 'unauthenticated' => 'Please reauthenticate to access Tier 2.',
+        'failed-precondition' ||
+        'unauthenticated' => 'Please reauthenticate to access Tier 2.',
         'permission-denied' => 'Tier 2 access is unavailable for this account.',
         _ => 'Tier 2 could not be reached. Try again later.',
       });
     }
     if (error is FirebaseAuthException) {
       return Tier2AuthorizationFailure(switch (error.code) {
-        'wrong-password' || 'invalid-credential' || 'invalid-login-credentials' =>
+        'wrong-password' ||
+        'invalid-credential' ||
+        'invalid-login-credentials' =>
           'Password verification failed. Check your password and try again.',
         'too-many-requests' => 'Too many Tier 2 attempts. Try again later.',
-        'network-request-failed' => 'Tier 2 could not be reached. Try again later.',
+        'network-request-failed' =>
+          'Tier 2 could not be reached. Try again later.',
         _ => 'Account verification failed. Sign in again to access Tier 2.',
       });
     }
-    return const Tier2AuthorizationFailure('Tier 2 access could not be verified.');
+    return const Tier2AuthorizationFailure(
+      'Tier 2 access could not be verified.',
+    );
   }
 
   String _newDeviceId() => base64Url
@@ -153,61 +169,65 @@ class Tier2AuthorizationRepository {
     }, check);
   }
 
-  Future<Map<String, dynamic>> readWithBiometrics() => _withOwner((uid, check) async {
-    return _readWithDevice(uid, await _deviceId(uid, check), check);
-  });
+  Future<Map<String, dynamic>> readWithBiometrics() =>
+      _withOwner((uid, check) async {
+        return _readWithDevice(uid, await _deviceId(uid, check), check);
+      });
 
-  Future<Map<String, dynamic>> enrollWithPassword(String password) => _withOwner((uid, check) async {
-    final user = auth.currentUser;
-    if (user == null || user.email == null || password.isEmpty) {
-      throw const Tier2AuthorizationFailure('Enter your account password.');
-    }
-      await user.reauthenticateWithCredential(
-        EmailAuthProvider.credential(email: user.email!, password: password),
-      );
-      check();
-      await user.getIdToken(true);
-      check();
-      final deviceId = await _deviceId(uid, check);
-      await keyProvider.deleteKey(deviceId);
-      check();
-      final publicKey = await keyProvider.createKey(deviceId);
-      check();
-      await _call('enrollTier2Device', {
-        'deviceId': deviceId,
-        'publicKey': publicKey,
-      }, check);
-      return _readWithDevice(uid, deviceId, check);
-  });
+  Future<Map<String, dynamic>> enrollWithPassword(String password) =>
+      _withOwner((uid, check) async {
+        final user = auth.currentUser;
+        if (user == null || user.email == null || password.isEmpty) {
+          throw const Tier2AuthorizationFailure('Enter your account password.');
+        }
+        await user.reauthenticateWithCredential(
+          EmailAuthProvider.credential(email: user.email!, password: password),
+        );
+        check();
+        await user.getIdToken(true);
+        check();
+        final deviceId = await _deviceId(uid, check);
+        await keyProvider.deleteKey(deviceId);
+        check();
+        final publicKey = await keyProvider.createKey(deviceId);
+        check();
+        await _call('enrollTier2Device', {
+          'deviceId': deviceId,
+          'publicKey': publicKey,
+        }, check);
+        return _readWithDevice(uid, deviceId, check);
+      });
 
-  Future<Map<String, dynamic>> readWithPassword(String password) => _withOwner((uid, check) async {
-    final user = auth.currentUser;
-    if (user == null || user.email == null || password.isEmpty) {
-      throw const Tier2AuthorizationFailure('Enter your account password.');
-    }
-      await user.reauthenticateWithCredential(
-        EmailAuthProvider.credential(email: user.email!, password: password),
-      );
-      check();
-      await user.getIdToken(true);
-      check();
-      return _call('readMyTier2WithPassword', {}, check);
-  });
+  Future<Map<String, dynamic>> readWithPassword(String password) =>
+      _withOwner((uid, check) async {
+        final user = auth.currentUser;
+        if (user == null || user.email == null || password.isEmpty) {
+          throw const Tier2AuthorizationFailure('Enter your account password.');
+        }
+        await user.reauthenticateWithCredential(
+          EmailAuthProvider.credential(email: user.email!, password: password),
+        );
+        check();
+        await user.getIdToken(true);
+        check();
+        return _call('readMyTier2WithPassword', {}, check);
+      });
 
-  Future<void> revokeDeviceWithPassword(String password) => _withOwner((uid, check) async {
-    final user = auth.currentUser;
-    if (user == null || user.email == null || password.isEmpty) {
-      throw const Tier2AuthorizationFailure('Enter your account password.');
-    }
-      await user.reauthenticateWithCredential(
-        EmailAuthProvider.credential(email: user.email!, password: password),
-      );
-      check();
-      await user.getIdToken(true);
-      check();
-      await _call('revokeMyTier2Device', {}, check);
-      await _deleteLocalDeviceKey(uid, check);
-  });
+  Future<void> revokeDeviceWithPassword(String password) =>
+      _withOwner((uid, check) async {
+        final user = auth.currentUser;
+        if (user == null || user.email == null || password.isEmpty) {
+          throw const Tier2AuthorizationFailure('Enter your account password.');
+        }
+        await user.reauthenticateWithCredential(
+          EmailAuthProvider.credential(email: user.email!, password: password),
+        );
+        check();
+        await user.getIdToken(true);
+        check();
+        await _call('revokeMyTier2Device', {}, check);
+        await _deleteLocalDeviceKey(uid, check);
+      });
 
   Future<void> deleteLocalDeviceKey() async {
     if (currentUid == null) return;

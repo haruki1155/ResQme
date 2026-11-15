@@ -26,6 +26,7 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
     _message = null;
     _password.clear();
   }
+
   @override
   void initState() {
     super.initState();
@@ -76,7 +77,11 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
     final uid = widget.repository.currentUid;
     try {
       final result = await action();
-      if (!mounted || _backgrounded || generation != _generation || uid == null || widget.repository.currentUid != uid) {
+      if (!mounted ||
+          _backgrounded ||
+          generation != _generation ||
+          uid == null ||
+          widget.repository.currentUid != uid) {
         return;
       }
       setState(() {
@@ -85,7 +90,10 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
         _password.clear();
       });
     } catch (error) {
-      if (mounted && !_backgrounded && generation == _generation && uid == widget.repository.currentUid) {
+      if (mounted &&
+          !_backgrounded &&
+          generation == _generation &&
+          uid == widget.repository.currentUid) {
         setState(
           () => _message = error is Tier2AuthorizationFailure
               ? error.message
@@ -108,7 +116,10 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
     });
     try {
       await widget.repository.revokeDeviceWithPassword(_password.text);
-      if (mounted && !_backgrounded && generation == _generation && uid == widget.repository.currentUid) {
+      if (mounted &&
+          !_backgrounded &&
+          generation == _generation &&
+          uid == widget.repository.currentUid) {
         setState(() {
           _password.clear();
           _loadedUid = null;
@@ -117,7 +128,10 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
         });
       }
     } catch (error) {
-      if (mounted && !_backgrounded && generation == _generation && uid == widget.repository.currentUid) {
+      if (mounted &&
+          !_backgrounded &&
+          generation == _generation &&
+          uid == widget.repository.currentUid) {
         setState(
           () => _message = error is Tier2AuthorizationFailure
               ? error.message

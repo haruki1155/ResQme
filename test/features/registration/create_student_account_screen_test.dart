@@ -7,9 +7,10 @@ import 'firebase_student_registration_repository_test.dart'
     show FakeRegistrationClient;
 
 void main() {
-  for (final accept in [false, true]) {
+  for (final choice in ['decline', 'accept', 'dismiss']) {
+    final accept = choice == 'accept';
     testWidgets(
-      'valid form ${accept ? 'accepts once' : 'declines without writes'}',
+      'valid form ${accept ? 'accepts once' : '$choice without writes'}',
       (tester) async {
         final client = FakeRegistrationClient();
         var completed = 0;
@@ -47,6 +48,8 @@ void main() {
           await tester.tap(find.byType(CheckboxListTile));
           await tester.pumpAndSettle();
           await tester.tap(find.text('Agree & Create Account'));
+        } else if (choice == 'dismiss') {
+          await tester.tapAt(const Offset(5, 5));
         } else {
           await tester.tap(find.text('Decline'));
         }
