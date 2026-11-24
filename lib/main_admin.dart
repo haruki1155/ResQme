@@ -4,29 +4,32 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:resqme/core/config/app_environment.dart';
 import 'package:resqme/core/config/firebase_environment.dart';
 import 'package:resqme/core/data/account_operation_lock.dart';
 import 'package:resqme/features/admin/admin_app.dart';
+import 'package:resqme/features/admin/config/admin_backend_config.dart';
 import 'package:resqme/features/admin/screens/staff_device_setup_screen.dart';
 import 'package:resqme/features/admin/screens/staff_tier2_scanner_screen.dart';
 import 'package:resqme/features/admin/services/staff_access_repository.dart';
 import 'package:resqme/features/admin/services/staff_tier2_repository.dart';
 import 'package:resqme/features/medical/services/platform_tier2_key.dart';
-import 'package:resqme/firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final backend = BackendSelection.resolve(
-    const String.fromEnvironment('RESQME_BACKEND'),
+  final backend = AdminBackendConfig.resolve(
+    mode: const String.fromEnvironment('RESQME_BACKEND'),
     isDebugBuild: kDebugMode,
+    stagingAppId: const String.fromEnvironment('RESQME_ADMIN_FIREBASE_APP_ID'),
+    stagingApiKey: const String.fromEnvironment('RESQME_ADMIN_FIREBASE_API_KEY'),
   );
   if (backend == null) {
     runApp(
       const MaterialApp(
         home: Scaffold(
           body: Center(
-            child: Text('ResQMe Admin requires an approved backend mode.'),
+            child: Text(
+              'ResQMe Admin requires an approved backend configuration.',
+            ),
           ),
         ),
       ),
@@ -36,14 +39,7 @@ Future<void> main() async {
   try {
     final app = await Firebase.initializeApp(
       name: 'resqme-admin-${backend.mode}',
-      options: backend.isEmulator
-          ? const FirebaseOptions(
-              apiKey: 'AIzaSyDemoResqmeLocalOnly000000000000000',
-              appId: '1:1234567890:android:0000000000000000000000',
-              messagingSenderId: '1234567890',
-              projectId: 'demo-resqme',
-            )
-          : DefaultFirebaseOptions.currentPlatform,
+      options: backend.options,
     );
     if (app.options.projectId != backend.projectId) {
       throw StateError('Unexpected Firebase project.');

@@ -10,7 +10,7 @@
 
 ### Current Status
 - **Status:** **BLOCKED / NOT RUN** in this session.
-- **Reason:** Per `docs/qa/resqme-reviewer-firestore-contention-pass.md`, emulator startups must run under an isolated temporary profile with verified CIM process ownership, listener allowlist guards, empty initial Auth/ADC stores, and exact post-run deletion readback. The existing contention runner targets the 18-export reviewer package and has not yet been updated for the 24-export Phase 1 package (`staffAccounts`, `staffEnrollmentChallenges`, `staffTier2Devices`, `staffTier2Challenges`, `tier2AccessAudits`). No emulator was launched in this session.
+- **Reason:** Per `docs/qa/resqme-reviewer-firestore-contention-pass.md`, emulator startups must run under an isolated temporary profile with verified CIM process ownership, listener allowlist guards, empty initial Auth/ADC stores, and exact post-run deletion readback. The Phase 1.7 emulator integration suite (`functions/test/staff_tier2_emulator_integration.test.ts`, script `npm run test:integration:phase1`) is compiled and ready for the 24-export committed package, but no emulator was launched because separate credential-safety startup authorization is required.
 
 ### Exact Emulator Verification Steps (Once Approved Isolated Runner Is Prepared)
 1. **Preflight:**
@@ -58,8 +58,9 @@
 
 ## 3. Staging Rollout Prerequisites (No Hosted Actions Performed)
 
-1. **Firebase Android App Registration:**
-   - Register Android app `com.example.resqme.admin` in Firebase project `resqme-943ee` (with debug/approved SHA-256 fingerprint) and replace the local demo-only `android/app/src/admin/google-services.json` before staging APK builds.
+1. **Firebase Android App Registration & Explicit Staging Config:**
+   - Register Android app `com.example.resqme.admin` in Firebase project `resqme-943ee` (with approved signing SHA-256 fingerprint) and replace the local demo-only `android/app/src/admin/google-services.json`.
+   - Build the staging Admin APK with explicit `--dart-define=RESQME_BACKEND=staging`, `--dart-define=RESQME_ADMIN_FIREBASE_APP_ID=<admin-app-id>`, and `--dart-define=RESQME_ADMIN_FIREBASE_API_KEY=<admin-api-key>`. `AdminBackendConfig.resolve` fails closed if either define is missing, malformed, or reuses the Student Android `appId`.
 2. **Callable Exports (24 total in `functions/src/index.ts`, Node.js 22 runtime, dedicated runtime service account):**
    - Existing 16 + 8 new Phase 1 callables:
      - `getMyMedicalRecordStatus`, `getMySyntheticMedicalRecord`
@@ -67,10 +68,11 @@
 3. **Firestore Rules Deployment:**
    - Deploy hardened `firestore.rules` denying all direct client reads/writes on `studentMedicalRecords/{uid}` and keeping all `staff*` / `tier2AccessAudits` collections denied by default catch-all.
    - Confirm staging Rules posture remains strictly least-privilege (no client writes, no broad staff reads).
-4. **Runtime Permissions & IAM:**
+4. **Runtime Permissions & Environment Configuration:**
    - Existing dedicated Cloud Functions runtime service account (`resqmeRuntimeOptions`) requires Firestore read/write on `staffAccounts`, `staffEnrollmentChallenges`, `staffTier2Devices`, `staffTier2Challenges`, `tier2AccessAudits`, `studentProfiles`, `studentMedicalRecords`, `studentQrCredentials`, `studentQrLookups`, `studentGuardianAuthorizations`. No Auth admin IAM is needed in Phase 1.
-5. **Hardware Attestation Production Gate:**
-   - Verify Google Hardware Attestation Root SPKI hashes against target Android devices during staging acceptance.
-   - Before real-school production rollout, implement online revocation checking against Google's key attestation status list (`https://android.googleapis.com/attestation/status`) with bounded caching and fail-closed error handling.
+   - Configure Cloud Functions environment variable `RESQME_ADMIN_SIGNING_CERT_SHA256` with the approved `com.example.resqme.admin` APK signing certificate SHA-256 hex digest (fail-closed if unset).
+   - Optionally configure `RESQME_ATTESTATION_ROOT_SHA256` for rotated Google Hardware Attestation Root SPKI SHA-256 digests.
+5. **Hardware Attestation & Revocation Status Verification:**
+   - `staff_attestation.ts` enforces hardware security level (`TrustedEnvironment` / `StrongBox`), `com.example.resqme.admin` package name, approved signing-certificate SHA-256 digest, `KM_ORIGIN_GENERATED`, `SIGN` purpose, Verified Boot (`deviceLocked && Verified`), per-use strong biometric policy, and Google's `https://android.googleapis.com/attestation/status` revocation list with a 1-hour bounded cache and fail-closed behavior on both enrollment and every subsequent Tier 2 challenge/read.
 6. **Synthetic Staging Accounts & Deployment Sequence:**
    - Deploy Functions first, then deploy updated `firestore.rules`, verify active `nodejs22` revisions, provision disposable fictional accounts (`studentProfiles`, `staffAccounts/{uid}` via operator Admin SDK), execute two-device acceptance, and run exact cleanup deleting every test-created Auth user and Firestore document with readback confirmation (`0` remaining test resources).
