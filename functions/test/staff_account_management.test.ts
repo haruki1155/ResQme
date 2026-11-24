@@ -372,3 +372,37 @@ test('suspend, reset password, revoke device, and permanent revoke invalidate de
   const synced = await syncMasterAdminEmail.run(req('master-a', {}, {emailVerified: true, email: 'NewOwner@School.EDU.PH'}));
   assert.equal(synced.email, 'newowner@school.edu.ph');
 });
+
+test('non-master admin is denied all Master Admin-only personnel management callables', async (t) => {
+  const s = makeStore();
+  s.rows.set('staffAccounts/non-master-admin', {
+    role: 'admin',
+    isMasterAdmin: false,
+    active: true,
+    status: 'active',
+    schoolId: 'school-a',
+    mustChangePassword: false,
+    requiresEmailVerification: true,
+  });
+  s.rows.set('staffAccounts/auth-a', {
+    role: 'authorized',
+    isMasterAdmin: false,
+    active: true,
+    status: 'active',
+    schoolId: 'school-a',
+    mustChangePassword: false,
+    requiresEmailVerification: false,
+    fullName: 'Staff A',
+    position: 'Nurse',
+    loginId: 'AUTH-AAAA1111',
+  });
+  t.mock.method(staffManagementDeps, 'db', () => s.db as never);
+  t.mock.method(staffManagementDeps, 'auth', () => s.auth);
+
+  await assert.rejects(() => createAuthorizedAccount.run(req('non-master-admin', {fullName: 'X Y', position: 'Guard'})), /Master Admin access is required/);
+  await assert.rejects(() => listAuthorizedAccounts.run(req('non-master-admin', {})), /Master Admin access is required/);
+  await assert.rejects(() => updateAuthorizedAccount.run(req('non-master-admin', {targetUid: 'auth-a', fullName: 'New Name', position: 'Lead'})), /Master Admin access is required/);
+  await assert.rejects(() => setAuthorizedAccountStatus.run(req('non-master-admin', {targetUid: 'auth-a', action: 'suspend'})), /Master Admin access is required/);
+  await assert.rejects(() => resetAuthorizedPassword.run(req('non-master-admin', {targetUid: 'auth-a'})), /Master Admin access is required/);
+  await assert.rejects(() => revokeAuthorizedDevice.run(req('non-master-admin', {targetUid: 'auth-a'})), /Master Admin access is required/);
+});

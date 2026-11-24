@@ -118,6 +118,25 @@ function auditRecord(input: {
   };
 }
 
+async function requireMasterAdmin(
+  db: Firestore,
+  uid: string,
+  emailVerified: boolean,
+  tx?: FirebaseFirestore.Transaction,
+) {
+  const staff = await requireStaff(db, uid, ['admin'], tx, {emailVerified});
+  if (!staff.isMasterAdmin) {
+    throw new HttpsError('permission-denied', 'Master Admin access is required.');
+  }
+  if (!staff.emailVerified) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Email verification is required before continuing.',
+    );
+  }
+  return staff;
+}
+
 async function invalidateOutstandingChallenges(db: Firestore, staffUid: string): Promise<void> {
   for (const col of ['staffTier2Challenges', 'staffEnrollmentChallenges']) {
     const snap = await db.collection(col).where('staffUid', '==', staffUid).get();
@@ -222,7 +241,7 @@ export const createAuthorizedAccount = onCall(resqmeRuntimeOptions, async (reque
   const emailVerified = request.auth?.token.email_verified === true;
 
   const db = staffManagementDeps.db(adminUid);
-  const admin = await requireStaff(db, adminUid, ['admin'], undefined, {emailVerified});
+  const admin = await requireMasterAdmin(db, adminUid, emailVerified);
 
   const authPort = staffManagementDeps.auth();
   let loginId = '';
@@ -258,7 +277,7 @@ export const createAuthorizedAccount = onCall(resqmeRuntimeOptions, async (reque
 
   try {
     await db.runTransaction(async (tx) => {
-      const liveAdmin = await requireStaff(db, adminUid, ['admin'], tx, {emailVerified});
+      const liveAdmin = await requireMasterAdmin(db, adminUid, emailVerified, tx);
       const loginRef = db.doc(`staffLoginIds/${loginId.toLowerCase()}`);
       const loginSnap = await tx.get(loginRef);
       if (loginSnap.exists) {
@@ -330,9 +349,11 @@ export const listAuthorizedAccounts = onCall(resqmeRuntimeOptions, async (reques
   }
 
   const db = staffManagementDeps.db(adminUid);
-  const admin = await requireStaff(db, adminUid, ['admin'], undefined, {
-    emailVerified: request.auth?.token.email_verified === true,
-  });
+  const admin = await requireMasterAdmin(
+    db,
+    adminUid,
+    request.auth?.token.email_verified === true,
+  );
 
   const snap = await db
     .collection('staffAccounts')
@@ -392,7 +413,7 @@ export const updateAuthorizedAccount = onCall(resqmeRuntimeOptions, async (reque
 
   const db = staffManagementDeps.db(adminUid);
   await db.runTransaction(async (tx) => {
-    const admin = await requireStaff(db, adminUid, ['admin'], tx, {emailVerified});
+    const admin = await requireMasterAdmin(db, adminUid, emailVerified, tx);
     const targetRef = db.doc(`staffAccounts/${targetUid}`);
     const targetSnap = await tx.get(targetRef);
     const target = targetSnap.data();
@@ -452,7 +473,7 @@ export const setAuthorizedAccountStatus = onCall(resqmeRuntimeOptions, async (re
   const nextActive = action === 'reactivate';
 
   await db.runTransaction(async (tx) => {
-    const admin = await requireStaff(db, adminUid, ['admin'], tx, {emailVerified});
+    const admin = await requireMasterAdmin(db, adminUid, emailVerified, tx);
     const targetRef = db.doc(`staffAccounts/${targetUid}`);
     const deviceRef = db.doc(`staffTier2Devices/${targetUid}`);
     const [targetSnap, deviceSnap] = await Promise.all([tx.get(targetRef), tx.get(deviceRef)]);
@@ -533,7 +554,7 @@ export const resetAuthorizedPassword = onCall(resqmeRuntimeOptions, async (reque
   const temporaryPassword = generateSecurePassword(16);
 
   const loginId = await db.runTransaction(async (tx) => {
-    const admin = await requireStaff(db, adminUid, ['admin'], tx, {emailVerified});
+    const admin = await requireMasterAdmin(db, adminUid, emailVerified, tx);
     const targetRef = db.doc(`staffAccounts/${targetUid}`);
     const targetSnap = await tx.get(targetRef);
     const target = targetSnap.data();
@@ -583,7 +604,7 @@ export const revokeAuthorizedDevice = onCall(resqmeRuntimeOptions, async (reques
   const db = staffManagementDeps.db(adminUid);
 
   await db.runTransaction(async (tx) => {
-    const admin = await requireStaff(db, adminUid, ['admin'], tx, {emailVerified});
+    const admin = await requireMasterAdmin(db, adminUid, emailVerified, tx);
     const targetSnap = await tx.get(db.doc(`staffAccounts/${targetUid}`));
     const target = targetSnap.data();
     if (
