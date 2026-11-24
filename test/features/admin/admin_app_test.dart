@@ -198,7 +198,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ResQMe Portal'), findsOneWidget);
-    expect(find.text('Staff email or Login ID'), findsOneWidget);
+    expect(find.text('Email or Login ID'), findsOneWidget);
     expect(find.text('Scan Student QR'), findsNothing);
   });
 
@@ -208,7 +208,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Staff email or Login ID'),
+      find.widgetWithText(TextField, 'Email or Login ID'),
       'student@example.test',
     );
     await tester.enterText(
@@ -245,7 +245,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Staff email or Login ID'),
+      find.widgetWithText(TextField, 'Email or Login ID'),
       'master@school.edu.ph',
     );
     await tester.enterText(
@@ -282,7 +282,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Staff email or Login ID'),
+      find.widgetWithText(TextField, 'Email or Login ID'),
       'AUTH-1111AAAA',
     );
     await tester.enterText(
@@ -320,7 +320,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.widgetWithText(TextField, 'Staff email or Login ID'),
+      find.widgetWithText(TextField, 'Email or Login ID'),
       'master@school.edu.ph',
     );
     await tester.enterText(

@@ -204,7 +204,7 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      'Institution-provisioned Admin (email) and Authorized staff (Login ID) sign in here. Student accounts cannot access staff emergency Tier 2 tools.',
+                      'Sign in with your Admin email or Authorized Login ID.',
                     ),
                     const SizedBox(height: 20),
                     TextField(
@@ -212,7 +212,7 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
                       enabled: !_busy,
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(
-                        labelText: 'Staff email or Login ID',
+                        labelText: 'Email or Login ID',
                         hintText: 'admin@school.edu or AUTH-XXXXXXXX',
                         border: OutlineInputBorder(),
                       ),

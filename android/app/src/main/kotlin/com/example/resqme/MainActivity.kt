@@ -3,9 +3,11 @@ package com.example.resqme
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
 import android.content.Context
 import android.util.Base64
+import android.util.Log
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
@@ -178,41 +180,57 @@ class MainActivity : FlutterActivity() {
             val executor: Executor = mainExecutor
             val signal = CancellationSignal()
             biometricCancellation = signal
-            BiometricPrompt.Builder(this)
-                .setTitle(title)
-                .setSubtitle("Confirm with your device biometrics")
-                .setNegativeButton("Cancel", executor) { _, _ -> fail("cancelled", "Biometric confirmation cancelled.") }
-                .build()
-                .authenticate(crypto, signal, executor, object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
-                        try {
-                            val authenticatedSignature = authResult.cryptoObject?.signature
-                                ?: throw IllegalStateException("Biometric key unavailable.")
-                            authenticatedSignature.update(message.toByteArray(Charsets.UTF_8))
-                            val proof = authenticatedSignature.sign()
-                            if (completed.compareAndSet(false, true)) {
-                                biometricCancellation = null
-                                result.success(Base64.encodeToString(proof, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING))
+            runOnUiThread {
+                try {
+                    val promptBuilder = BiometricPrompt.Builder(this)
+                        .setTitle(title)
+                        .setSubtitle("Confirm with your device biometrics")
+                        .setNegativeButton("Cancel", executor) { _, _ ->
+                            fail("cancelled", "Biometric confirmation cancelled.")
+                        }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        promptBuilder.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                    }
+                    promptBuilder
+                        .build()
+                        .authenticate(crypto, signal, executor, object : BiometricPrompt.AuthenticationCallback() {
+                            override fun onAuthenticationSucceeded(authResult: BiometricPrompt.AuthenticationResult) {
+                                try {
+                                    val authenticatedSignature = authResult.cryptoObject?.signature
+                                        ?: throw IllegalStateException("Biometric key unavailable.")
+                                    authenticatedSignature.update(message.toByteArray(Charsets.UTF_8))
+                                    val proof = authenticatedSignature.sign()
+                                    if (completed.compareAndSet(false, true)) {
+                                        biometricCancellation = null
+                                        result.success(Base64.encodeToString(proof, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING))
+                                    }
+                                } catch (error: Exception) {
+                                    Log.w("ResQMeBiometric", "sign proof failed: ${error.javaClass.simpleName}")
+                                    fail("sign_failed", "Biometric confirmation could not be verified.")
+                                }
                             }
-                        } catch (error: Exception) {
-                            fail("sign_failed", "Biometric confirmation could not be verified.")
-                        }
-                    }
 
-                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        val code = when (errorCode) {
-                            BiometricPrompt.BIOMETRIC_ERROR_CANCELED,
-                            BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED -> "cancelled"
-                            BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT,
-                            BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT_PERMANENT -> "biometric_lockout"
-                            else -> "biometric_unavailable"
-                        }
-                        fail(code, "Biometric confirmation did not complete.")
-                    }
+                            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                Log.w("ResQMeBiometric", "auth error code=$errorCode")
+                                val code = when (errorCode) {
+                                    BiometricPrompt.BIOMETRIC_ERROR_CANCELED,
+                                    BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED -> "cancelled"
+                                    BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT,
+                                    BiometricPrompt.BIOMETRIC_ERROR_LOCKOUT_PERMANENT -> "biometric_lockout"
+                                    else -> "biometric_unavailable"
+                                }
+                                fail(code, "Biometric confirmation did not complete.")
+                            }
 
-                    override fun onAuthenticationFailed() { }
-                })
+                            override fun onAuthenticationFailed() { }
+                        })
+                } catch (error: Exception) {
+                    Log.w("ResQMeBiometric", "prompt launch failed: ${error.javaClass.simpleName}: ${error.message}")
+                    fail("key_unavailable", "Biometric access is unavailable on this device.")
+                }
+            }
         } catch (error: Exception) {
+            Log.w("ResQMeBiometric", "sign init failed: ${error.javaClass.simpleName}: ${error.message}")
             fail("key_unavailable", "Biometric access is unavailable on this device.")
         }
     }
