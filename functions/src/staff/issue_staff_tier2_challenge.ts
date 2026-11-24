@@ -8,6 +8,7 @@ import {assertAttestationSerialsNotRevoked} from './staff_attestation';
 import {requireStaff} from './staff_authorization';
 import {
   allowStaffTier2Challenge,
+  STAFF_ENROLLMENT_PROOF_VERSION,
   staffTier2Operation,
   validateStaffChallengeRequest,
 } from './staff_tier2_contract';
@@ -42,6 +43,12 @@ export const issueStaffTier2Challenge = onCall(resqmeRuntimeOptions, async (requ
       !Number.isSafeInteger(deviceSnap.get('keyVersion'))
     ) {
       throw new HttpsError('permission-denied', 'Emergency Tier 2 access is unavailable.');
+    }
+    if (deviceSnap.get('enrollmentProofVersion') !== STAFF_ENROLLMENT_PROOF_VERSION) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Biometric device re-enrollment is required.',
+      );
     }
     await assertAttestationSerialsNotRevoked(deviceSnap.get('attestationSerials'));
     const targetUid = lookupSnap.get('uid');

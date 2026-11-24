@@ -3,6 +3,16 @@ import {keys, object} from '../medical/medical_contract';
 import {isQrPayload} from '../qr/ensure_my_tier1_qr';
 
 export const staffTier2Operation = 'staff_read_medical' as const;
+export const STAFF_ENROLLMENT_PROOF_VERSION = 2 as const;
+
+export function staffEnrollmentSignedMessage(input: {
+  staffUid: string;
+  deviceId: string;
+  challengeId: string;
+  nonce: string;
+}): string {
+  return `resqme:staff-enroll:v2\n${input.staffUid}\n${input.deviceId}\n${input.challengeId}\n${input.nonce}`;
+}
 
 export const STAFF_TIER2_PURPOSES = [
   'emergency_response',

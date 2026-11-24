@@ -28,24 +28,28 @@ function makePayload(): {payload: string; qrHash: string} {
   return {payload, qrHash};
 }
 
-function makeFixture(opts?: {role?: 'admin' | 'authorized'; studentAge?: number; guardianVerified?: boolean; failAudit?: boolean}) {
+function makeFixture(opts?: {role?: 'admin' | 'authorized'; studentAge?: number; guardianVerified?: boolean; failAudit?: boolean; enrollmentProofVersion?: number | null}) {
   const {payload, qrHash} = makePayload();
   const {publicKey, privateKey} = generateKeyPairSync('ec', {namedCurve: 'prime256v1'});
   const staffUid = 'staff-uid-1';
   const studentUid = 'student-uid-1';
   const deviceId = 'staff_device_0123456789abc';
   const schoolId = 'pilot-school-1';
+  const deviceDoc: Record<string, unknown> = {
+    staffUid,
+    schoolId,
+    deviceId,
+    publicKey: publicKey.export({type: 'spki', format: 'der'}).toString('base64url'),
+    attestationSerials: ['a1b2c3d4', 'deadbeef'],
+    status: 'active',
+    keyVersion: 1,
+  };
+  if (opts?.enrollmentProofVersion !== null) {
+    deviceDoc.enrollmentProofVersion = opts?.enrollmentProofVersion ?? 2;
+  }
   const rows = new Map<string, Record<string, unknown>>([
     [`staffAccounts/${staffUid}`, {role: opts?.role ?? 'authorized', active: true, schoolId}],
-    [`staffTier2Devices/${staffUid}`, {
-      staffUid,
-      schoolId,
-      deviceId,
-      publicKey: publicKey.export({type: 'spki', format: 'der'}).toString('base64url'),
-      attestationSerials: ['a1b2c3d4', 'deadbeef'],
-      status: 'active',
-      keyVersion: 1,
-    }],
+    [`staffTier2Devices/${staffUid}`, deviceDoc],
     [`studentQrLookups/${qrHash}`, {uid: studentUid, status: 'active'}],
     [`studentQrCredentials/${studentUid}`, {payload, verificationStatus: 'active'}],
     [`studentProfiles/${studentUid}`, {
@@ -159,6 +163,7 @@ function makeFixture(opts?: {role?: 'admin' | 'authorized'; studentAge?: number;
     setFailAudit: (v: boolean) => {
       failAudit = v;
     },
+    privateKey,
   };
 }
 
@@ -329,4 +334,62 @@ test('previously enrolled device is denied immediately when its attestation cert
     deviceId: f.deviceId,
     purpose: 'emergency_response',
   })), {code: 'permission-denied'});
+});
+
+test('older unproven device enrollments require biometric re-enrollment and enrollment signatures cannot authorize Tier 2 reads', async (t) => {
+  // 1. Legacy device without enrollmentProofVersion is rejected with failed-precondition
+  const legacy = makeFixture({enrollmentProofVersion: null});
+  t.mock.method(authorization, 'onboardingDatabase', () => legacy.db as never);
+  await assert.rejects(
+    () =>
+      issueStaffTier2Challenge.run(
+        req(legacy.staffUid, {
+          payload: legacy.payload,
+          deviceId: legacy.deviceId,
+          purpose: 'emergency_response',
+        }),
+      ),
+    {code: 'failed-precondition'},
+  );
+
+  // 2. If a device downgrades/lacks proof version at readStudentTier2 time, deny with failed-precondition
+  const f = makeFixture({enrollmentProofVersion: 2});
+  t.mock.method(authorization, 'onboardingDatabase', () => f.db as never);
+  const issued = (await issueStaffTier2Challenge.run(
+    req(f.staffUid, {
+      payload: f.payload,
+      deviceId: f.deviceId,
+      purpose: 'emergency_response',
+    }),
+  )) as {challengeId: string; nonce: string};
+  f.rows.get(`staffTier2Challenges/${issued.challengeId}`)!.expiresAt = Timestamp.fromMillis(Date.now() + 60_000);
+
+  delete f.rows.get(`staffTier2Devices/${f.staffUid}`)!.enrollmentProofVersion;
+  await assert.rejects(
+    () =>
+      readStudentTier2.run(
+        req(f.staffUid, {
+          challengeId: issued.challengeId,
+          deviceId: f.deviceId,
+          signature: f.signChallenge(issued),
+        }),
+      ),
+    {code: 'failed-precondition'},
+  );
+
+  // 3. Restore proof version; enrollment-domain signature cannot satisfy readStudentTier2
+  f.rows.get(`staffTier2Devices/${f.staffUid}`)!.enrollmentProofVersion = 2;
+  const enrollDomainMsg = `resqme:staff-enroll:v2\n${f.staffUid}\n${f.deviceId}\n${issued.challengeId}\n${issued.nonce}`;
+  const enrollSig = sign('sha256', Buffer.from(enrollDomainMsg, 'utf8'), f.privateKey).toString('base64url');
+  await assert.rejects(
+    () =>
+      readStudentTier2.run(
+        req(f.staffUid, {
+          challengeId: issued.challengeId,
+          deviceId: f.deviceId,
+          signature: enrollSig,
+        }),
+      ),
+    {code: 'permission-denied'},
+  );
 });

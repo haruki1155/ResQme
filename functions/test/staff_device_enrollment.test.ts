@@ -236,9 +236,21 @@ function makeChain(opts: {
   const rootHash = createHash('sha256').update(rootSpki).digest('hex');
   return {
     publicKey: leafSpki.toString('base64url'),
+    privateKey: leaf.privateKey,
     attestationChain: [leafCert.toString('base64url'), rootCert.toString('base64url')],
     rootHash,
   };
+}
+
+function signEnrollmentProof(input: {
+  privateKey: ReturnType<typeof generateKeyPairSync>['privateKey'];
+  staffUid: string;
+  deviceId: string;
+  challengeId: string;
+  nonce: string;
+}): string {
+  const msg = `resqme:staff-enroll:v2\n${input.staffUid}\n${input.deviceId}\n${input.challengeId}\n${input.nonce}`;
+  return sign('sha256', Buffer.from(msg, 'utf8'), input.privateKey).toString('base64url');
 }
 
 function mockDb(entries: Array<[string, Record<string, unknown>]>) {
@@ -443,9 +455,10 @@ test('resolveAttestationStatusUrl permits loopback override strictly in demo-res
   );
 });
 
-test('staff enrollment requires fresh auth, active staff, one-time attested challenge, and replaces prior key atomically', async (t) => {
+test('staff enrollment requires fresh auth, active staff, one-time attested challenge, cryptographic biometric proof, and replaces prior key atomically for Admin and Authorized', async (t) => {
   const state = mockDb([
     ['staffAccounts/staff-1', {role: 'authorized', active: true, schoolId: 'pilot-school-1'}],
+    ['staffAccounts/master-1', {role: 'admin', isMasterAdmin: true, active: true, schoolId: 'pilot-school-1', requiresEmailVerification: true}],
     ['staffAccounts/inactive-1', {role: 'authorized', active: false, schoolId: 'pilot-school-1'}],
   ]);
   t.mock.method(authorization, 'onboardingDatabase', () => state.db as never);
@@ -458,31 +471,138 @@ test('staff enrollment requires fresh auth, active staff, one-time attested chal
   const issued = await issueStaffEnrollmentChallenge.run(req('staff-1', {})) as {challengeId: string; nonce: string};
   assert.ok(issued.challengeId.length >= 32);
   const storedChallenge = state.rows.get(`staffEnrollmentChallenges/${issued.challengeId}`)!;
-  // Simulate Firestore Timestamp stored by Admin SDK
   storedChallenge.expiresAt = Timestamp.fromMillis(Date.now() + 60_000);
 
+  const deviceId = 'staff_device_0123456789abc';
   const chain1 = makeChain({challenge: Buffer.from(issued.nonce, 'base64url')});
   setTrustedAttestationRootHashesForTest([chain1.rootHash]);
   setApprovedSigningDigestsForTest([TEST_SIGNING_DIGEST_HEX]);
   setAttestationStatusFetcherForTest(async () => ({entries: {}}));
   resetAttestationStatusCacheForTest();
   try {
-    const enrolled = await enrollStaffTier2Device.run(req('staff-1', {
+    // 1. Missing biometric signature proof must be denied and must NOT activate device
+    await assert.rejects(
+      () =>
+        enrollStaffTier2Device.run(
+          req('staff-1', {
+            challengeId: issued.challengeId,
+            deviceId,
+            publicKey: chain1.publicKey,
+            attestationChain: chain1.attestationChain,
+          }),
+        ),
+      {code: 'invalid-argument'},
+    );
+    assert.equal(state.rows.has('staffTier2Devices/staff-1'), false);
+
+    // 2. Client-supplied biometricPassed boolean must be rejected
+    const validSig = signEnrollmentProof({
+      privateKey: chain1.privateKey,
+      staffUid: 'staff-1',
+      deviceId,
       challengeId: issued.challengeId,
-      deviceId: 'staff_device_0123456789abc',
-      publicKey: chain1.publicKey,
-      attestationChain: chain1.attestationChain,
-    }));
-    assert.deepEqual(enrolled, {deviceId: 'staff_device_0123456789abc', status: 'active', keyVersion: 1});
+      nonce: issued.nonce,
+    });
+    await assert.rejects(
+      () =>
+        enrollStaffTier2Device.run(
+          req('staff-1', {
+            challengeId: issued.challengeId,
+            deviceId,
+            publicKey: chain1.publicKey,
+            attestationChain: chain1.attestationChain,
+            signature: validSig,
+            biometricPassed: true,
+          }),
+        ),
+      {code: 'invalid-argument'},
+    );
+
+    // 3. Signature bound to wrong deviceId or wrong domain must be denied without consuming challenge
+    const wrongDeviceSig = signEnrollmentProof({
+      privateKey: chain1.privateKey,
+      staffUid: 'staff-1',
+      deviceId: 'other_device_0123456789abc',
+      challengeId: issued.challengeId,
+      nonce: issued.nonce,
+    });
+    await assert.rejects(
+      () =>
+        enrollStaffTier2Device.run(
+          req('staff-1', {
+            challengeId: issued.challengeId,
+            deviceId,
+            publicKey: chain1.publicKey,
+            attestationChain: chain1.attestationChain,
+            signature: wrongDeviceSig,
+          }),
+        ),
+      {code: 'permission-denied'},
+    );
+    assert.equal(state.rows.get(`staffEnrollmentChallenges/${issued.challengeId}`)?.consumedAt, null);
+    assert.equal(state.rows.has('staffTier2Devices/staff-1'), false);
+
+    // 4. Valid biometric-backed enrollment proof activates device with enrollmentProofVersion: 2
+    const enrolled = await enrollStaffTier2Device.run(
+      req('staff-1', {
+        challengeId: issued.challengeId,
+        deviceId,
+        publicKey: chain1.publicKey,
+        attestationChain: chain1.attestationChain,
+        signature: validSig,
+      }),
+    );
+    assert.deepEqual(enrolled, {
+      deviceId,
+      status: 'active',
+      keyVersion: 1,
+      enrollmentProofVersion: 2,
+    });
+    assert.equal(state.rows.get('staffTier2Devices/staff-1')?.enrollmentProofVersion, 2);
     assert.equal(Array.isArray(state.rows.get('staffTier2Devices/staff-1')?.attestationSerials), true);
 
-    // Replay of same challenge must fail
-    await assert.rejects(() => enrollStaffTier2Device.run(req('staff-1', {
-      challengeId: issued.challengeId,
-      deviceId: 'staff_device_0123456789abc',
-      publicKey: chain1.publicKey,
-      attestationChain: chain1.attestationChain,
-    })), {code: 'permission-denied'});
+    // 5. Replay of same challenge must fail
+    await assert.rejects(
+      () =>
+        enrollStaffTier2Device.run(
+          req('staff-1', {
+            challengeId: issued.challengeId,
+            deviceId,
+            publicKey: chain1.publicKey,
+            attestationChain: chain1.attestationChain,
+            signature: validSig,
+          }),
+        ),
+      {code: 'permission-denied'},
+    );
+
+    // 6. Verified Master Admin follows identical biometric enrollment proof requirement
+    const masterReq = (data: unknown) =>
+      ({
+        auth: {uid: 'master-1', token: {auth_time: Math.floor(Date.now() / 1000), email_verified: true}},
+        data,
+      }) as unknown as CallableRequest;
+    const mIssued = (await issueStaffEnrollmentChallenge.run(masterReq({}))) as {challengeId: string; nonce: string};
+    state.rows.get(`staffEnrollmentChallenges/${mIssued.challengeId}`)!.expiresAt = Timestamp.fromMillis(Date.now() + 60_000);
+    const mChain = makeChain({challenge: Buffer.from(mIssued.nonce, 'base64url')});
+    setTrustedAttestationRootHashesForTest([mChain.rootHash]);
+    const mSig = signEnrollmentProof({
+      privateKey: mChain.privateKey,
+      staffUid: 'master-1',
+      deviceId: 'master_device_0123456789ab',
+      challengeId: mIssued.challengeId,
+      nonce: mIssued.nonce,
+    });
+    const mEnrolled = await enrollStaffTier2Device.run(
+      masterReq({
+        challengeId: mIssued.challengeId,
+        deviceId: 'master_device_0123456789ab',
+        publicKey: mChain.publicKey,
+        attestationChain: mChain.attestationChain,
+        signature: mSig,
+      }),
+    );
+    assert.equal(mEnrolled.enrollmentProofVersion, 2);
 
     // Revoke succeeds for owner with fresh auth
     const revoked = await revokeStaffTier2Device.run(req('staff-1', {}));

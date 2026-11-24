@@ -1,14 +1,19 @@
+import {randomBytes} from 'node:crypto';
 import {FieldValue, Timestamp} from 'firebase-admin/firestore';
 import {HttpsError, onCall} from 'firebase-functions/v2/https';
 import {keys, object} from '../medical/medical_contract';
-import {requireRecentAuth} from '../medical/tier2_challenge';
+import {requireRecentAuth, verifyTier2Signature} from '../medical/tier2_challenge';
 import {onboardingDatabase, resqmeRuntimeOptions} from '../onboarding/authorization';
 import {verifyAndroidKeyAttestation} from './staff_attestation';
 import {requireStaff} from './staff_authorization';
+import {
+  STAFF_ENROLLMENT_PROOF_VERSION,
+  staffEnrollmentSignedMessage,
+} from './staff_tier2_contract';
 
 function validateStaffEnrollmentRequest(value: unknown) {
   const data = object(value);
-  keys(data, ['challengeId', 'deviceId', 'publicKey', 'attestationChain']);
+  keys(data, ['challengeId', 'deviceId', 'publicKey', 'attestationChain', 'signature']);
   if (
     typeof data.challengeId !== 'string' ||
     !/^[A-Fa-f0-9]{32,64}$/.test(data.challengeId) ||
@@ -16,7 +21,9 @@ function validateStaffEnrollmentRequest(value: unknown) {
     !/^[A-Za-z0-9_-]{20,80}$/.test(data.deviceId) ||
     typeof data.publicKey !== 'string' ||
     data.publicKey.length > 1024 ||
-    !Array.isArray(data.attestationChain)
+    !Array.isArray(data.attestationChain) ||
+    typeof data.signature !== 'string' ||
+    !/^[A-Za-z0-9_-]{80,160}$/.test(data.signature)
   ) {
     throw new HttpsError('invalid-argument', 'Invalid staff device enrollment.');
   }
@@ -25,6 +32,7 @@ function validateStaffEnrollmentRequest(value: unknown) {
     deviceId: data.deviceId,
     publicKey: data.publicKey,
     attestationChain: data.attestationChain,
+    signature: data.signature,
   };
 }
 
@@ -37,6 +45,7 @@ export const enrollStaffTier2Device = onCall(resqmeRuntimeOptions, async (reques
 
   const challengeRef = db.doc(`staffEnrollmentChallenges/${input.challengeId}`);
   const deviceRef = db.doc(`staffTier2Devices/${uid}`);
+  const auditRef = db.doc(`staffManagementAudits/${randomBytes(16).toString('hex')}`);
 
   const keyVersion = await db.runTransaction(async (tx) => {
     const staff = await requireStaff(db, uid, undefined, tx, {
@@ -72,6 +81,19 @@ export const enrollStaffTier2Device = onCall(resqmeRuntimeOptions, async (reques
       expectedChallenge: Buffer.from(challenge.nonce, 'base64url'),
     });
 
+    const expectedMessage = staffEnrollmentSignedMessage({
+      staffUid: uid,
+      deviceId: input.deviceId,
+      challengeId: input.challengeId,
+      nonce: challenge.nonce,
+    });
+    if (!verifyTier2Signature(input.publicKey, expectedMessage, input.signature)) {
+      throw new HttpsError(
+        'permission-denied',
+        'Device biometric proof could not be verified.',
+      );
+    }
+
     const nextVersion = Number(oldDevice.get('keyVersion') || 0) + 1;
     tx.update(challengeRef, {consumedAt: FieldValue.serverTimestamp()});
     tx.set(deviceRef, {
@@ -82,12 +104,28 @@ export const enrollStaffTier2Device = onCall(resqmeRuntimeOptions, async (reques
       attestationLevel: attestation.securityLevel,
       attestationSerials: attestation.certificateSerials,
       attestationVerifiedAt: FieldValue.serverTimestamp(),
+      enrollmentProofVersion: STAFF_ENROLLMENT_PROOF_VERSION,
       status: 'active',
       keyVersion: nextVersion,
       enrolledAt: FieldValue.serverTimestamp(),
     });
+    tx.create(auditRef, {
+      actorUid: uid,
+      actorRole: staff.role,
+      schoolId: staff.schoolId,
+      action: 'enroll_staff_biometric_device',
+      targetUid: uid,
+      outcome: 'allowed',
+      enrollmentProofVersion: STAFF_ENROLLMENT_PROOF_VERSION,
+      createdAt: FieldValue.serverTimestamp(),
+    });
     return nextVersion;
   });
 
-  return {deviceId: input.deviceId, status: 'active' as const, keyVersion};
+  return {
+    deviceId: input.deviceId,
+    status: 'active' as const,
+    keyVersion,
+    enrollmentProofVersion: STAFF_ENROLLMENT_PROOF_VERSION,
+  };
 });

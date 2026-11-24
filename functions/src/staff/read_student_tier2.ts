@@ -8,6 +8,7 @@ import {hashQrPayload} from '../qr/resolve_tier1_qr';
 import {assertAttestationSerialsNotRevoked} from './staff_attestation';
 import {requireStaff} from './staff_authorization';
 import {
+  STAFF_ENROLLMENT_PROOF_VERSION,
   staffTier2Operation,
   staffTier2SignedMessage,
   validateStaffProofRequest,
@@ -76,6 +77,13 @@ export const readStudentTier2 = onCall(resqmeRuntimeOptions, async (request) => 
       ) {
         denialContext.reason = 'invalid_challenge_or_device';
         throw new HttpsError('permission-denied', 'Emergency Tier 2 access is unavailable.');
+      }
+      if (deviceSnap.get('enrollmentProofVersion') !== STAFF_ENROLLMENT_PROOF_VERSION) {
+        denialContext.reason = 'device_reenrollment_required';
+        throw new HttpsError(
+          'failed-precondition',
+          'Biometric device re-enrollment is required.',
+        );
       }
       try {
         await assertAttestationSerialsNotRevoked(deviceSnap.get('attestationSerials'));

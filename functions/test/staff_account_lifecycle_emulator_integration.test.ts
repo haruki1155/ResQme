@@ -174,6 +174,7 @@ test('Phase 2.1 lifecycle: create Authorized, enforce first-login password setup
     publicKey: publicKeyB64,
     attestationLevel: 'trusted_environment',
     attestationSerials: ['aa11', 'bb22'],
+    enrollmentProofVersion: 2,
     status: 'active',
     keyVersion: 1,
   });

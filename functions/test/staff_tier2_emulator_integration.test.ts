@@ -141,6 +141,7 @@ test.before(async () => {
     deviceId,
     publicKey: publicKeyB64,
     attestationSerials: ['a1b2c3d4', 'deadbeef'],
+    enrollmentProofVersion: 2,
     status: 'active',
     keyVersion: 1,
   });
