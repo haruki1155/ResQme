@@ -169,8 +169,7 @@ class MainActivity : FlutterActivity() {
                 keyInfo.securityLevel == KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT ||
                     keyInfo.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX
             } else {
-                @Suppress("DEPRECATION")
-                keyInfo.isInsideSecurityHardware()
+                KeyInfo::class.java.getMethod("isInsideSecurityHardware").invoke(keyInfo) as? Boolean == true
             }
         } catch (error: Exception) {
             Log.w(LOG_TAG, "KeyInfo inspection failed: ${error.javaClass.simpleName}")
