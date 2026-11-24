@@ -15,6 +15,7 @@ import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
+import android.view.WindowManager
 import android.os.CancellationSignal
 
 private const val TIER2_CHANNEL = "resqme/tier2_key"
@@ -62,12 +63,40 @@ class MainActivity : FlutterActivity() {
                     } catch (error: Exception) {
                         result.error("key_unavailable", "Unable to enroll this device for biometric access.", null)
                     }
-                    "sign" -> sign(call.argument<String>("deviceId"), call.argument<String>("message"), result)
+                    "sign" -> sign(alias(call.argument<String>("deviceId")), call.argument<String>("message"), "Unlock Tier 2 information", result)
                     "deleteKey" -> try {
                         keyStore().deleteEntry(alias(call.argument<String>("deviceId")))
                         result.success(null)
                     } catch (error: Exception) {
                         result.error("key_unavailable", "Device key could not be removed.", null)
+                    }
+                    "createStaffKey" -> createStaffKey(
+                        call.argument<String>("deviceId"),
+                        call.argument<String>("challenge"),
+                        result
+                    )
+                    "signStaff" -> sign(
+                        staffAlias(call.argument<String>("deviceId")),
+                        call.argument<String>("message"),
+                        "Authorize staff Tier 2 read",
+                        result
+                    )
+                    "deleteStaffKey" -> try {
+                        keyStore().deleteEntry(staffAlias(call.argument<String>("deviceId")))
+                        result.success(null)
+                    } catch (error: Exception) {
+                        result.error("key_unavailable", "Staff device key could not be removed.", null)
+                    }
+                    "setSecureScreen" -> {
+                        val enabled = call.argument<Boolean>("enabled") == true
+                        runOnUiThread {
+                            if (enabled) {
+                                window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                            } else {
+                                window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                            }
+                            result.success(null)
+                        }
                     }
                     else -> result.notImplemented()
                 }
@@ -79,9 +108,55 @@ class MainActivity : FlutterActivity() {
         return "resqme_tier2_$deviceId"
     }
 
+    private fun staffAlias(deviceId: String?): String {
+        require(!deviceId.isNullOrBlank() && deviceId.matches(Regex("[A-Za-z0-9_-]{20,80}")))
+        return "resqme_staff_tier2_$deviceId"
+    }
+
+    private fun createStaffKey(deviceId: String?, challenge: String?, result: MethodChannel.Result) {
+        try {
+            val keyAlias = staffAlias(deviceId)
+            require(!challenge.isNullOrBlank() && challenge.length <= 256)
+            val challengeBytes = Base64.decode(challenge, Base64.URL_SAFE or Base64.NO_WRAP)
+            require(challengeBytes.size >= 16)
+            val keyStore = keyStore()
+            if (keyStore.containsAlias(keyAlias)) {
+                keyStore.deleteEntry(keyAlias)
+            }
+            val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
+            val builder = KeyGenParameterSpec.Builder(keyAlias, KeyProperties.PURPOSE_SIGN)
+                .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                .setDigests(KeyProperties.DIGEST_SHA256)
+                .setUserAuthenticationRequired(true)
+                .setInvalidatedByBiometricEnrollment(true)
+                .setAttestationChallenge(challengeBytes)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                builder.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+            } else {
+                @Suppress("DEPRECATION")
+                builder.setUserAuthenticationValidityDurationSeconds(-1)
+            }
+            generator.initialize(builder.build())
+            generator.generateKeyPair()
+            val chain = keyStore.getCertificateChain(keyAlias)
+                ?: throw IllegalStateException("Attestation chain unavailable.")
+            require(chain.size >= 2)
+            val publicKey = Base64.encodeToString(
+                chain[0].publicKey.encoded,
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            )
+            val encodedChain = chain.map { cert ->
+                Base64.encodeToString(cert.encoded, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+            }
+            result.success(mapOf("publicKey" to publicKey, "attestationChain" to encodedChain))
+        } catch (error: Exception) {
+            result.error("key_unavailable", "Unable to enroll this staff device with hardware attestation.", null)
+        }
+    }
+
     private fun keyStore(): KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
-    private fun sign(deviceId: String?, message: String?, result: MethodChannel.Result) {
+    private fun sign(keyAlias: String, message: String?, title: String, result: MethodChannel.Result) {
         if (biometricCancellation != null) {
             result.error("biometric_busy", "Biometric confirmation is already in progress.", null)
             return
@@ -94,7 +169,6 @@ class MainActivity : FlutterActivity() {
             }
         }
         try {
-            val keyAlias = alias(deviceId)
             require(!message.isNullOrBlank() && message.length <= 2048)
             val privateKey = keyStore().getKey(keyAlias, null) as? java.security.PrivateKey
                 ?: throw IllegalStateException("Device key unavailable.")
@@ -105,7 +179,7 @@ class MainActivity : FlutterActivity() {
             val signal = CancellationSignal()
             biometricCancellation = signal
             BiometricPrompt.Builder(this)
-                .setTitle("Unlock Tier 2 information")
+                .setTitle(title)
                 .setSubtitle("Confirm with your device biometrics")
                 .setNegativeButton("Cancel", executor) { _, _ -> fail("cancelled", "Biometric confirmation cancelled.") }
                 .build()
