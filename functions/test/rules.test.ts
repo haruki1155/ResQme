@@ -53,7 +53,7 @@ test('only the profile owner can read a submitted registration', async () => {
   await assertFails(getDoc(doc(owner, 'medicalRecords', 'owner')));
   await assertFails(setDoc(doc(owner, 'qrCredentials', 'owner'), {active: true}));
 });
-test('synthetic medical records and acknowledgments are owner-read-only',async()=>{
+test('medical records and acknowledgments deny all direct client reads and writes',async()=>{
   const tester=testEnvironment.authenticatedContext('medical-owner').firestore();
   await assertFails(setDoc(doc(tester,'qaTesters','medical-owner'),{enabled:true,syntheticOnly:true}));
   await assertFails(getDoc(doc(tester,'qaTesters','medical-owner')));
@@ -64,7 +64,7 @@ test('synthetic medical records and acknowledgments are owner-read-only',async()
   for(const suffix of [[],['acknowledgments','request-0001']]){
     const path=['studentMedicalRecords','medical-owner',...suffix];
     const owner=testEnvironment.authenticatedContext('medical-owner').firestore();
-    await getDoc(doc(owner,path.join('/')));
+    await assertFails(getDoc(doc(owner,path.join('/'))));
     for(const context of [testEnvironment.unauthenticatedContext(),testEnvironment.authenticatedContext('other')]) await assertFails(getDoc(doc(context.firestore(),path.join('/'))));
     await assertFails(setDoc(doc(owner,path.join('/')),{guardianVerified:true}));
     await assertFails(updateDoc(doc(owner,path.join('/')),{guardianVerified:true}));

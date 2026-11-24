@@ -37,7 +37,6 @@ class FirebasePilotClient implements PilotClient {
   Future<Map<String, dynamic>?> readMine(String collection) async {
     if (![
       'studentProfiles',
-      'studentMedicalRecords',
       'studentQrCredentials',
     ].contains(collection)) {
       throw StateError('Unsupported private collection.');
@@ -58,6 +57,8 @@ class FirebasePilotClient implements PilotClient {
         if (![
           'saveMySyntheticMedicalRecord',
           'clearMySyntheticMedicalRecord',
+          'getMySyntheticMedicalRecord',
+          'getMyMedicalRecordStatus',
           'ensureMyTier1Qr',
           'replaceMyTier1Qr',
           'completeMyMedicalRecord',

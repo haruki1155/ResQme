@@ -76,15 +76,13 @@ class SyntheticMedicalRepository {
     if (owner == null) {
       throw const MedicalFailure('Sign in to access your test record.');
     }
-    final profile = await client.readMine('studentProfiles');
-    final data = await client.readMine('studentMedicalRecords');
-    if (client.uid != owner || profile == null) {
+    final data = await client.invoke('getMySyntheticMedicalRecord', {});
+    if (client.uid != owner) {
       throw const MedicalFailure(
         'Account changed or registration unavailable.',
       );
     }
-    final contacts = profile['emergencyContacts'];
-    final primary = contacts is Map ? contacts['primary'] : null;
+    final primary = data['primaryContact'];
     final contact = <String, dynamic>{
       for (final key in ['fullName', 'relationship', 'phoneNumber'])
         key: primary is Map ? primary[key] : null,
@@ -92,19 +90,15 @@ class SyntheticMedicalRepository {
     if (contact.values.any((value) => value != null && value is! String)) {
       throw const FormatException();
     }
-    if (data != null &&
-        (data['schemaVersion'] != 1 ||
-            data['syntheticOnly'] != true ||
-            data['guardianAuthorizationStatus'] != 'not_verified' ||
-            data['revision'] is! int ||
-            ![
-              'not_started',
-              'completed_synthetic',
-            ].contains(data['medicalStatus']))) {
+    if (data['revision'] is! int ||
+        ![
+          'not_started',
+          'completed_synthetic',
+        ].contains(data['medicalStatus'])) {
       throw const FormatException();
     }
     Map<String, dynamic>? answer(String key) {
-      if (data == null || data['medicalStatus'] == 'not_started') return null;
+      if (data['medicalStatus'] == 'not_started') return null;
       final value = data[key];
       if (value is! Map ||
           !['unknown', 'none_known', 'listed'].contains(value['state']) ||
@@ -118,8 +112,8 @@ class SyntheticMedicalRepository {
 
     return MedicalSnapshot(
       ownerUid: owner,
-      revision: data?['revision'] as int? ?? 0,
-      completed: data?['medicalStatus'] == 'completed_synthetic',
+      revision: data['revision'] as int,
+      completed: data['medicalStatus'] == 'completed_synthetic',
       primaryContact: Map.unmodifiable(contact),
       conditions: answer('conditions'),
       allergies: answer('allergies'),

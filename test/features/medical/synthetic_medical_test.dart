@@ -26,17 +26,35 @@ class FakePilotClient implements PilotClient {
   };
   Map<String, dynamic>? lastPayload;
   @override
-  Future<Map<String, dynamic>?> readMine(String collection) async =>
-      collection == 'studentProfiles'
-      ? profile
-      : collection == 'studentQrCredentials'
-      ? qr
-      : medical;
+  Future<Map<String, dynamic>?> readMine(String collection) async {
+    if (collection == 'studentMedicalRecords') {
+      throw StateError('Direct medical reads are denied.');
+    }
+    return collection == 'studentProfiles'
+        ? profile
+        : collection == 'studentQrCredentials'
+        ? qr
+        : null;
+  }
+
   @override
   Future<Map<String, dynamic>> invoke(
     String name,
     Map<String, dynamic> payload,
   ) async {
+    if (name == 'getMySyntheticMedicalRecord') {
+      final primary =
+          (profile['emergencyContacts'] as Map?)?['primary'] as Map? ?? {};
+      final status = medical?['medicalStatus'] as String? ?? 'not_started';
+      return {
+        'revision': medical?['revision'] as int? ?? 0,
+        'medicalStatus': status,
+        'completed': status == 'completed_synthetic',
+        'primaryContact': Map<String, dynamic>.from(primary),
+        'conditions': status == 'not_started' ? null : medical?['conditions'],
+        'allergies': status == 'not_started' ? null : medical?['allergies'],
+      };
+    }
     writes++;
     lastPayload = payload;
     if (error != null) {
