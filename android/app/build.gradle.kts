@@ -34,12 +34,12 @@ android {
         create("student") {
             dimension = "app"
             applicationId = "com.example.resqme"
-            resValue("string", "app_name", "ResQme")
+            manifestPlaceholders["appName"] = "ResQme"
         }
         create("admin") {
             dimension = "app"
             applicationId = "com.example.resqme.admin"
-            resValue("string", "app_name", "ResQme Admin")
+            manifestPlaceholders["appName"] = "ResQme Admin"
         }
     }
 

@@ -8,7 +8,11 @@ import 'package:resqme/core/config/app_environment.dart';
 import 'package:resqme/core/config/firebase_environment.dart';
 import 'package:resqme/core/data/account_operation_lock.dart';
 import 'package:resqme/features/admin/admin_app.dart';
+import 'package:resqme/features/admin/screens/staff_device_setup_screen.dart';
+import 'package:resqme/features/admin/screens/staff_tier2_scanner_screen.dart';
 import 'package:resqme/features/admin/services/staff_access_repository.dart';
+import 'package:resqme/features/admin/services/staff_tier2_repository.dart';
+import 'package:resqme/features/medical/services/platform_tier2_key.dart';
 import 'package:resqme/firebase_options.dart';
 
 Future<void> main() async {
@@ -65,7 +69,20 @@ Future<void> main() async {
       operationLock: lock,
       expectedProjectId: backend.projectId,
     );
-    runApp(AdminApp(accessRepository: accessRepository));
+    final tier2Client = StaffTier2Repository(
+      auth: auth,
+      functions: functions,
+      keyProvider: PlatformTier2Key(),
+      expectedProjectId: backend.projectId,
+    );
+    runApp(
+      AdminApp(
+        accessRepository: accessRepository,
+        scannerBuilder: (_, _) => StaffTier2ScannerScreen(client: tier2Client),
+        deviceSetupBuilder: (_, _) =>
+            StaffDeviceSetupScreen(client: tier2Client),
+      ),
+    );
   } catch (_) {
     runApp(
       const MaterialApp(
