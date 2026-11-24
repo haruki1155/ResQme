@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../../qr/presentation/qr_scanner_screen.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import '../../qr/domain/qr_payload_parser.dart';
 import '../services/staff_tier2_repository.dart';
 import 'staff_tier2_result_screen.dart';
 
@@ -158,10 +159,9 @@ class _StaffTier2ScannerScreenState extends State<StaffTier2ScannerScreen>
               Expanded(
                 child: widget.scannerBuilder != null
                     ? widget.scannerBuilder!(_onScannedQr)
-                    : QrScannerScreen(
+                    : _StaffQrCameraView(
                         key: ValueKey(_scanSession),
-                        embedded: true,
-                        onReviewerScan: _onScannedQr,
+                        onValidQr: _onScannedQr,
                       ),
               ),
               const SizedBox(height: 12),
@@ -191,6 +191,82 @@ class _StaffTier2ScannerScreenState extends State<StaffTier2ScannerScreen>
                 textAlign: TextAlign.center,
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StaffQrCameraView extends StatefulWidget {
+  const _StaffQrCameraView({super.key, required this.onValidQr});
+
+  final ValueChanged<String> onValidQr;
+
+  @override
+  State<_StaffQrCameraView> createState() => _StaffQrCameraViewState();
+}
+
+class _StaffQrCameraViewState extends State<_StaffQrCameraView>
+    with WidgetsBindingObserver {
+  late final MobileScannerController _controller;
+  bool _captured = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _controller = MobileScannerController(
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      formats: const [BarcodeFormat.qrCode],
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    if (state == AppLifecycleState.resumed && !_captured) {
+      _controller.start();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onDetect(BarcodeCapture capture) {
+    if (_captured || !mounted) return;
+    final raw = capture.barcodes.firstOrNull?.rawValue;
+    if (raw == null || raw.isEmpty) return;
+    if (QrPayloadParser.parse(raw) is ValidResQMeQr) {
+      _captured = true;
+      _controller.stop();
+      widget.onValidQr(raw.trim());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: MobileScanner(
+        controller: _controller,
+        onDetect: _onDetect,
+        errorBuilder: (_, _) => const ColoredBox(
+          color: Color(0xFF25262A),
+          child: Center(
+            child: Text(
+              'Camera unavailable. Check camera permissions.',
+              style: TextStyle(color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
       ),
