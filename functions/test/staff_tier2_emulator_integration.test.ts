@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash, generateKeyPairSync, randomBytes, sign} from 'node:crypto';
+import {createServer, type Server} from 'node:http';
 import test from 'node:test';
 import {deleteApp, initializeApp} from 'firebase/app';
 import {connectAuthEmulator, getAuth, signInWithEmailAndPassword} from 'firebase/auth';
@@ -53,6 +54,8 @@ const clients = {
   staffOther: makeClient('p1-staff-other-client'),
 };
 const qrPayloads: string[] = [];
+let statusServer: Server | null = null;
+const statusPort = Number(process.env.RESQME_ATTESTATION_STATUS_PORT || 18199);
 
 async function deleteOwnedTree(ref: FirebaseFirestore.DocumentReference) {
   for (const sub of await ref.listCollections()) {
@@ -74,6 +77,14 @@ function signStaffChallenge(c: {challengeId: string; nonce: string; purpose: str
 }
 
 test.before(async () => {
+  statusServer = createServer((_req, res) => {
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify({entries: {}}));
+  });
+  await new Promise<void>((resolve, reject) => {
+    statusServer!.once('error', reject);
+    statusServer!.listen(statusPort, '127.0.0.1', () => resolve());
+  });
   for (const a of Object.values(actors)) {
     await adminAuth(adminApp).createUser({...a, password});
   }
@@ -157,6 +168,10 @@ test.after(async () => {
   }
   for (const c of Object.values(clients)) await deleteApp(c.app);
   await deleteAdmin(adminApp);
+  if (statusServer) {
+    await new Promise<void>((resolve) => statusServer!.close(() => resolve()));
+    statusServer = null;
+  }
 });
 
 test('direct Firestore medical reads are denied for both student owner and staff', async () => {

@@ -81,11 +81,26 @@ export function normalizeSerialHex(serial: string): string {
   return cleaned.length > 0 ? cleaned : '0';
 }
 
+export function resolveAttestationStatusUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const project = env.GCLOUD_PROJECT || env.GOOGLE_CLOUD_PROJECT;
+  const override = env.RESQME_ATTESTATION_STATUS_URL?.trim();
+  if (
+    project === 'demo-resqme' &&
+    typeof env.FIRESTORE_EMULATOR_HOST === 'string' &&
+    env.FIRESTORE_EMULATOR_HOST.startsWith('127.0.0.1:') &&
+    override &&
+    /^http:\/\/127\.0\.0\.1:\d{2,5}\/[A-Za-z0-9/_-]*$/.test(override)
+  ) {
+    return override;
+  }
+  return ATTESTATION_STATUS_URL;
+}
+
 async function defaultFetchAttestationStatus(): Promise<AttestationStatusPayload> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(ATTESTATION_STATUS_URL, {
+    const response = await fetch(resolveAttestationStatusUrl(), {
       method: 'GET',
       headers: {Accept: 'application/json'},
       signal: controller.signal,

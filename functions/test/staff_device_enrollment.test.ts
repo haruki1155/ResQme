@@ -9,6 +9,7 @@ import {revokeStaffTier2Device} from '../src/staff/revoke_staff_tier2_device';
 import {
   assertAttestationSerialsNotRevoked,
   resetAttestationStatusCacheForTest,
+  resolveAttestationStatusUrl,
   setApprovedSigningDigestsForTest,
   setAttestationStatusFetcherForTest,
   setTrustedAttestationRootHashesForTest,
@@ -413,6 +414,33 @@ test('verifyAndroidKeyAttestation enforces signing digest, revocation status, bo
     setAttestationStatusFetcherForTest(null);
     resetAttestationStatusCacheForTest();
   }
+});
+
+test('resolveAttestationStatusUrl permits loopback override strictly in demo-resqme emulator', () => {
+  assert.equal(
+    resolveAttestationStatusUrl({
+      GCLOUD_PROJECT: 'resqme-943ee',
+      FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080',
+      RESQME_ATTESTATION_STATUS_URL: 'http://127.0.0.1:18199/status',
+    }),
+    'https://android.googleapis.com/attestation/status',
+  );
+  assert.equal(
+    resolveAttestationStatusUrl({
+      GCLOUD_PROJECT: 'demo-resqme',
+      FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080',
+      RESQME_ATTESTATION_STATUS_URL: 'https://evil.example/status',
+    }),
+    'https://android.googleapis.com/attestation/status',
+  );
+  assert.equal(
+    resolveAttestationStatusUrl({
+      GCLOUD_PROJECT: 'demo-resqme',
+      FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080',
+      RESQME_ATTESTATION_STATUS_URL: 'http://127.0.0.1:18199/status',
+    }),
+    'http://127.0.0.1:18199/status',
+  );
 });
 
 test('staff enrollment requires fresh auth, active staff, one-time attested challenge, and replaces prior key atomically', async (t) => {
