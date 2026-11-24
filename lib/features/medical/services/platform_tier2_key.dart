@@ -4,10 +4,12 @@ class StaffKeyEnrollment {
   const StaffKeyEnrollment({
     required this.publicKey,
     required this.attestationChain,
+    required this.signature,
   });
 
   final String publicKey;
   final List<String> attestationChain;
+  final String signature;
 }
 
 class PlatformTier2Key {
@@ -26,26 +28,35 @@ class PlatformTier2Key {
   Future<void> deleteKey(String deviceId) =>
       _channel.invokeMethod<void>('deleteKey', {'deviceId': deviceId});
 
-  Future<StaffKeyEnrollment> createStaffKey(
-    String deviceId,
-    String challenge,
-  ) async {
+  Future<StaffKeyEnrollment> createStaffKey({
+    required String deviceId,
+    required String challenge,
+    required String message,
+  }) async {
     final result = await _channel.invokeMapMethod<String, dynamic>(
       'createStaffKey',
-      {'deviceId': deviceId, 'challenge': challenge},
+      {
+        'deviceId': deviceId,
+        'challenge': challenge,
+        'message': message,
+      },
     );
     final publicKey = result?['publicKey'];
     final chain = result?['attestationChain'];
+    final signature = result?['signature'];
     if (publicKey is! String ||
         publicKey.isEmpty ||
         chain is! List ||
         chain.length < 2 ||
-        chain.any((e) => e is! String || e.isEmpty)) {
-      throw PlatformException(code: 'key_unavailable');
+        chain.any((e) => e is! String || e.isEmpty) ||
+        signature is! String ||
+        signature.isEmpty) {
+      throw PlatformException(code: 'sign_failed');
     }
     return StaffKeyEnrollment(
       publicKey: publicKey,
       attestationChain: List<String>.from(chain),
+      signature: signature,
     );
   }
 

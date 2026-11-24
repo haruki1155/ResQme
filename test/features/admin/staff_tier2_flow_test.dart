@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:resqme/features/admin/screens/staff_device_setup_screen.dart';
 import 'package:resqme/features/admin/screens/staff_tier2_result_screen.dart';
 import 'package:resqme/features/admin/screens/staff_tier2_scanner_screen.dart';
 import 'package:resqme/features/admin/services/staff_tier2_repository.dart';
@@ -10,8 +13,10 @@ class FakeStaffTier2Client implements StaffTier2Client {
   final StreamController<String?> _uids = StreamController<String?>.broadcast();
   final List<bool> secureScreenCalls = [];
   int readCalls = 0;
+  int enrollCalls = 0;
   Completer<Map<String, dynamic>>? pendingRead;
   Object? readError;
+  Object? enrollError;
 
   @override
   String? get currentUid => uid;
@@ -25,7 +30,10 @@ class FakeStaffTier2Client implements StaffTier2Client {
   }
 
   @override
-  Future<void> enrollDeviceWithPassword(String password) async {}
+  Future<void> enrollDeviceWithPassword(String password) async {
+    enrollCalls++;
+    if (enrollError != null) throw enrollError!;
+  }
 
   @override
   Future<void> revokeDeviceWithPassword(String password) async {}
@@ -213,5 +221,65 @@ void main() {
     await tester.pump();
     expect(find.text('Fictional asthma'), findsNothing);
     expect(client.secureScreenCalls, contains(false));
+  });
+
+  test('mapStaffTier2Error produces actionable errors for biometric hardware, missing enrollment, key invalidation, and v2 re-enrollment', () {
+    expect(
+      mapStaffTier2Error(PlatformException(code: 'biometric_not_enrolled')).message,
+      contains('Enroll a fingerprint in Android Settings'),
+    );
+    expect(
+      mapStaffTier2Error(PlatformException(code: 'biometric_unsupported')).message,
+      contains('Strong hardware-backed biometrics are unavailable'),
+    );
+    expect(
+      mapStaffTier2Error(PlatformException(code: 'key_invalidated')).message,
+      contains('Biometric enrollment changed'),
+    );
+    expect(
+      mapStaffTier2Error(
+        FirebaseFunctionsException(
+          code: 'failed-precondition',
+          message: 'Biometric device re-enrollment is required.',
+        ),
+      ).message,
+      contains('Re-enroll this device'),
+    );
+  });
+
+  testWidgets('StaffDeviceSetupScreen never shows success when biometric prompt is cancelled or hardware is unsupported', (tester) async {
+    final client = FakeStaffTier2Client()
+      ..enrollError = const StaffTier2Failure('Biometric confirmation cancelled.');
+    addTearDown(client.close);
+
+    await tester.pumpWidget(
+      MaterialApp(home: StaffDeviceSetupScreen(client: client)),
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Confirm staff account password'),
+      'Strong!Pass2026',
+    );
+    await tester.tap(find.text('Enroll this device'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Trusted staff device enrolled.'), findsNothing);
+    expect(find.textContaining('Biometric confirmation cancelled'), findsOneWidget);
+
+    client.enrollError = const StaffTier2Failure(
+      'Strong hardware-backed biometrics are unavailable on this device.',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Confirm staff account password'),
+      'Strong!Pass2026',
+    );
+    await tester.tap(find.text('Enroll this device'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Trusted staff device enrolled.'), findsNothing);
+    expect(
+      find.textContaining('Strong hardware-backed biometrics are unavailable'),
+      findsOneWidget,
+    );
   });
 }
