@@ -170,7 +170,7 @@ class MainActivity : FlutterActivity() {
                     keyInfo.securityLevel == KeyProperties.SECURITY_LEVEL_STRONGBOX
             } else {
                 @Suppress("DEPRECATION")
-                keyInfo.isInsideSecurityHardware
+                keyInfo.isInsideSecurityHardware()
             }
         } catch (error: Exception) {
             Log.w(LOG_TAG, "KeyInfo inspection failed: ${error.javaClass.simpleName}")
