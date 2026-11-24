@@ -25,6 +25,7 @@ class _StaffTier2ScannerScreenState extends State<StaffTier2ScannerScreen>
   bool _inFlight = false;
   bool _backgrounded = false;
   int _generation = 0;
+  int _scanSession = 0;
   String? _statusMessage;
   String? _sessionUid;
   StreamSubscription<String?>? _uidSub;
@@ -112,7 +113,10 @@ class _StaffTier2ScannerScreenState extends State<StaffTier2ScannerScreen>
       });
     } finally {
       if (mounted && gen == _generation) {
-        setState(() => _inFlight = false);
+        setState(() {
+          _inFlight = false;
+          _scanSession++;
+        });
       }
     }
   }
@@ -155,6 +159,7 @@ class _StaffTier2ScannerScreenState extends State<StaffTier2ScannerScreen>
                 child: widget.scannerBuilder != null
                     ? widget.scannerBuilder!(_onScannedQr)
                     : QrScannerScreen(
+                        key: ValueKey(_scanSession),
                         embedded: true,
                         onReviewerScan: _onScannedQr,
                       ),

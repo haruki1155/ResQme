@@ -1,7 +1,7 @@
 # ResQMe Admin App and Cross-Device Tier 2 Access — Design Specification
 
-**Date:** 2026-11-24  
-**Scope:** Phase 1 — Secure Cross-Device Tier 2 Access (separate Student/Admin builds, staff role boundaries, biometric-backed staff device enrollment, QR-bound cross-device medical read, audit logging, and protected display).  
+**Date:** 2026-11-24
+**Scope:** Phase 1 — Secure Cross-Device Tier 2 Access (separate Student/Admin builds, staff role boundaries, biometric-backed staff device enrollment, QR-bound cross-device medical read, audit logging, and protected display).
 **Baseline:** `main` @ `dde3ca5` (branch `feat/resqme-admin-tier2-access`).
 
 ---

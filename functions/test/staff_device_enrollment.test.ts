@@ -98,11 +98,36 @@ function buildAttestationExtension(opts: {
   noAuthRequired?: boolean;
   userAuthType?: number;
   authTimeout?: number;
+  origin?: number;
+  purpose?: number;
+  deviceLocked?: boolean;
+  verifiedBootState?: number;
+  packageName?: string;
 }): Buffer {
   const teeTags: Buffer[] = [];
+  teeTags.push(derContext(1, derTag(0x31, derInt(opts.purpose ?? 2)))); // purpose: SIGN (2)
   if (opts.noAuthRequired) teeTags.push(derContext(503, derTag(0x05, Buffer.alloc(0))));
   if (opts.userAuthType !== undefined) teeTags.push(derContext(504, derInt(opts.userAuthType)));
   if (opts.authTimeout !== undefined) teeTags.push(derContext(505, derInt(opts.authTimeout)));
+  teeTags.push(derContext(702, derInt(opts.origin ?? 0))); // origin: GENERATED (0)
+  const rootOfTrust = derSeq([
+    derOctet(Buffer.alloc(32, 1)), // verifiedBootKey
+    derTag(0x01, Buffer.from([opts.deviceLocked === false ? 0x00 : 0xff])), // deviceLocked
+    derEnum(opts.verifiedBootState ?? 0), // verifiedBootState: Verified (0)
+    derOctet(Buffer.alloc(32, 2)), // verifiedBootHash
+  ]);
+  teeTags.push(derContext(704, rootOfTrust));
+
+  const swTags: Buffer[] = [];
+  if (opts.packageName !== '') {
+    const pkg = opts.packageName ?? 'com.example.resqme.admin';
+    const appId = derSeq([
+      derTag(0x31, derSeq([derOctet(Buffer.from(pkg, 'utf8')), derInt(1)])),
+      derTag(0x31, derOctet(Buffer.alloc(32, 3))),
+    ]);
+    swTags.push(derContext(709, derOctet(appId)));
+  }
+
   const keyDescription = derSeq([
     derInt(4), // attestationVersion
     derEnum(opts.attestationLevel),
@@ -110,7 +135,7 @@ function buildAttestationExtension(opts: {
     derEnum(opts.keymasterLevel),
     derOctet(opts.challenge),
     derOctet(Buffer.alloc(0)), // uniqueId
-    derSeq([]), // softwareEnforced
+    derSeq(swTags), // softwareEnforced
     derSeq(teeTags), // teeEnforced
   ]);
   return derSeq([derOid('1.3.6.1.4.1.11129.2.1.17'), derOctet(keyDescription)]);
@@ -151,6 +176,11 @@ function makeChain(opts: {
   noAuthRequired?: boolean;
   userAuthType?: number;
   authTimeout?: number;
+  origin?: number;
+  purpose?: number;
+  deviceLocked?: boolean;
+  verifiedBootState?: number;
+  packageName?: string;
   tamperRoot?: boolean;
 }) {
   const root = generateKeyPairSync('ec', {namedCurve: 'prime256v1'});
@@ -173,6 +203,11 @@ function makeChain(opts: {
     noAuthRequired: opts.noAuthRequired,
     userAuthType: opts.userAuthType ?? 2,
     authTimeout: opts.authTimeout,
+    origin: opts.origin,
+    purpose: opts.purpose,
+    deviceLocked: opts.deviceLocked,
+    verifiedBootState: opts.verifiedBootState,
+    packageName: opts.packageName,
   });
   const leafCert = buildSignedCert({
     subjectCn: 'Android Keystore Key',
@@ -277,6 +312,35 @@ test('verifyAndroidKeyAttestation rejects software keys, wrong challenge, invali
     setTrustedAttestationRootHashesForTest(['0'.repeat(64)]);
     assert.throws(
       () => verifyAndroidKeyAttestation({publicKey: valid.publicKey, attestationChain: valid.attestationChain, expectedChallenge: challenge}),
+      {code: 'permission-denied'},
+    );
+
+    // Security review hardening: wrong application ID, imported key origin, unlocked bootloader, wrong purpose
+    const wrongApp = makeChain({challenge, packageName: 'com.evil.otherapp'});
+    setTrustedAttestationRootHashesForTest([wrongApp.rootHash]);
+    assert.throws(
+      () => verifyAndroidKeyAttestation({publicKey: wrongApp.publicKey, attestationChain: wrongApp.attestationChain, expectedChallenge: challenge}),
+      {code: 'permission-denied'},
+    );
+
+    const importedKey = makeChain({challenge, origin: 2});
+    setTrustedAttestationRootHashesForTest([importedKey.rootHash]);
+    assert.throws(
+      () => verifyAndroidKeyAttestation({publicKey: importedKey.publicKey, attestationChain: importedKey.attestationChain, expectedChallenge: challenge}),
+      {code: 'permission-denied'},
+    );
+
+    const unlockedBoot = makeChain({challenge, deviceLocked: false});
+    setTrustedAttestationRootHashesForTest([unlockedBoot.rootHash]);
+    assert.throws(
+      () => verifyAndroidKeyAttestation({publicKey: unlockedBoot.publicKey, attestationChain: unlockedBoot.attestationChain, expectedChallenge: challenge}),
+      {code: 'permission-denied'},
+    );
+
+    const wrongPurpose = makeChain({challenge, purpose: 1});
+    setTrustedAttestationRootHashesForTest([wrongPurpose.rootHash]);
+    assert.throws(
+      () => verifyAndroidKeyAttestation({publicKey: wrongPurpose.publicKey, attestationChain: wrongPurpose.attestationChain, expectedChallenge: challenge}),
       {code: 'permission-denied'},
     );
   } finally {

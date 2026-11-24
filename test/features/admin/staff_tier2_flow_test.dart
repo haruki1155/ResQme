@@ -124,6 +124,13 @@ void main() {
     expect(find.text('Fictional asthma'), findsNothing);
     expect(find.textContaining('Biometric confirmation cancelled'), findsOneWidget);
     expect(find.textContaining('password'), findsNothing);
+
+    // Subsequent scan after failure must be allowed (scanner resets cleanly)
+    client.readError = null;
+    triggerScan!('resqme:v1:${'B' * 43}');
+    await tester.pumpAndSettle();
+    expect(client.readCalls, 2);
+    expect(find.text('Fictional asthma'), findsOneWidget);
   });
 
   testWidgets('late response after background or account switch is ignored', (tester) async {

@@ -150,13 +150,15 @@ export function verifyAndroidKeyAttestation(input: {
     const leafSpki = certs[0].x509.publicKey.export({type: 'spki', format: 'der'});
     if (!leafSpki.equals(submittedDer)) throw new Error('leaf-mismatch');
 
-    // 2. Verify certificate chain signatures
+    // 2. Verify certificate chain signatures and self-signed root
     for (let i = 0; i < certs.length - 1; i++) {
       if (!certs[i].x509.verify(certs[i + 1].x509.publicKey)) throw new Error('chain-sig');
     }
+    const rootCert = certs[certs.length - 1].x509;
+    if (!rootCert.verify(rootCert.publicKey)) throw new Error('root-sig');
 
     // 3. Verify root trust anchor
-    const rootSpki = certs[certs.length - 1].x509.publicKey.export({type: 'spki', format: 'der'});
+    const rootSpki = rootCert.publicKey.export({type: 'spki', format: 'der'});
     const rootHash = createHash('sha256').update(rootSpki).digest('hex');
     const trustedRoots = testRootOverrides ?? DEFAULT_TRUSTED_ROOT_SPKI_SHA256;
     if (!trustedRoots.includes(rootHash)) throw new Error('untrusted-root');
@@ -185,15 +187,45 @@ export function verifyAndroidKeyAttestation(input: {
       throw new Error('challenge-mismatch');
     }
 
-    // 5. Verify hardware-enforced (teeEnforced) per-use strong biometric policy
+    // 5. Verify application identity (softwareEnforced tag 709 == com.example.resqme.admin)
+    const swEnforced = fields[6];
+    if (swEnforced.tagClass !== 0 || swEnforced.tagNumber !== 16) throw new Error('bad-sw');
+    let matchedPackage = false;
+    for (const tag of readDerChildren(swEnforced.content)) {
+      if (tag.tagClass === 2 && tag.tagNumber === 709) {
+        const octet = readDerNode(tag.content, 0);
+        if (octet.tagClass !== 0 || octet.tagNumber !== 4) throw new Error('bad-app-id');
+        const appIdSeq = readDerNode(octet.content, 0);
+        const appIdFields = readDerChildren(appIdSeq.content);
+        if (appIdFields.length < 1) throw new Error('bad-app-id-seq');
+        for (const pkgInfo of readDerChildren(appIdFields[0].content)) {
+          const pkgFields = readDerChildren(pkgInfo.content);
+          if (pkgFields.length >= 1 && pkgFields[0].content.toString('utf8') === 'com.example.resqme.admin') {
+            matchedPackage = true;
+          }
+        }
+      }
+    }
+    if (!matchedPackage) throw new Error('wrong-app-id');
+
+    // 6. Verify hardware-enforced (teeEnforced) origin, purpose, verified boot, and per-use strong biometric policy
     const teeEnforced = fields[7];
     if (teeEnforced.tagClass !== 0 || teeEnforced.tagNumber !== 16) throw new Error('bad-tee');
     const teeTags = readDerChildren(teeEnforced.content);
     let hasNoAuthRequired = false;
     let userAuthType: number | null = null;
     let authTimeout: number | null = null;
+    let hasSignPurpose = false;
+    let keyOrigin: number | null = null;
+    let verifiedBootOk = false;
     for (const tag of teeTags) {
       if (tag.tagClass !== 2) continue;
+      if (tag.tagNumber === 1) {
+        const purposeSet = readDerNode(tag.content, 0);
+        for (const p of readDerChildren(purposeSet.content)) {
+          if (derSmallInt(p.content) === 2) hasSignPurpose = true;
+        }
+      }
       if (tag.tagNumber === 503) hasNoAuthRequired = true;
       if (tag.tagNumber === 504) {
         const inner = readDerNode(tag.content, 0);
@@ -203,10 +235,29 @@ export function verifyAndroidKeyAttestation(input: {
         const inner = readDerNode(tag.content, 0);
         authTimeout = derSmallInt(inner.content);
       }
+      if (tag.tagNumber === 702) {
+        const inner = readDerNode(tag.content, 0);
+        keyOrigin = derSmallInt(inner.content);
+      }
+      if (tag.tagNumber === 704) {
+        const rot = readDerNode(tag.content, 0);
+        const rotFields = readDerChildren(rot.content);
+        if (rotFields.length >= 3) {
+          const deviceLocked = rotFields[1].content.length === 1 && rotFields[1].content[0] !== 0;
+          const bootState = derSmallInt(rotFields[2].content);
+          verifiedBootOk = deviceLocked && bootState === 0;
+        }
+      }
     }
-    // Tag 503 (noAuthRequired) forbidden; tag 504 must include HW_BIOMETRIC (bit 2);
-    // tag 505 (authTimeout) must be absent or 0 (per-use auth).
-    if (hasNoAuthRequired || userAuthType === null || (userAuthType & 2) === 0 || (authTimeout !== null && authTimeout > 0)) {
+    if (
+      !hasSignPurpose ||
+      keyOrigin !== 0 ||
+      !verifiedBootOk ||
+      hasNoAuthRequired ||
+      userAuthType === null ||
+      (userAuthType & 2) === 0 ||
+      (authTimeout !== null && authTimeout > 0)
+    ) {
       throw new Error('weak-auth-policy');
     }
 
