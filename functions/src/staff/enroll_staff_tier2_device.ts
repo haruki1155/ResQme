@@ -39,7 +39,9 @@ export const enrollStaffTier2Device = onCall(resqmeRuntimeOptions, async (reques
   const deviceRef = db.doc(`staffTier2Devices/${uid}`);
 
   const keyVersion = await db.runTransaction(async (tx) => {
-    const staff = await requireStaff(db, uid, undefined, tx);
+    const staff = await requireStaff(db, uid, undefined, tx, {
+      emailVerified: request.auth?.token.email_verified === true,
+    });
     const [challengeSnap, oldDevice] = await Promise.all([
       tx.get(challengeRef),
       tx.get(deviceRef),

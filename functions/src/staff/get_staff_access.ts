@@ -10,5 +10,20 @@ export const getStaffAccess = onCall(resqmeRuntimeOptions, async (request) => {
   }
   keys(object(request.data), []);
   const db = onboardingDatabase(uid);
-  return requireStaff(db, uid);
+  const scope = await requireStaff(db, uid, undefined, undefined, {
+    requireSetupComplete: false,
+    emailVerified: request.auth?.token.email_verified === true,
+  });
+  return {
+    role: scope.role,
+    schoolId: scope.schoolId,
+    active: scope.active,
+    isMasterAdmin: scope.isMasterAdmin,
+    mustChangePassword: scope.mustChangePassword,
+    requiresEmailVerification: scope.requiresEmailVerification,
+    emailVerified: scope.emailVerified,
+    fullName: scope.fullName,
+    position: scope.position,
+    loginId: scope.loginId,
+  };
 });

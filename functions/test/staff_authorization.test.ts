@@ -31,11 +31,33 @@ function req(uid: string | undefined, data: unknown = {}) {
 test('assertStaffAccount accepts active admin and authorized within allowed roles', () => {
   assert.deepEqual(
     assertStaffAccount({role: 'admin', active: true, schoolId: 'pilot-school-1'}),
-    {role: 'admin', schoolId: 'pilot-school-1', active: true},
+    {
+      role: 'admin',
+      schoolId: 'pilot-school-1',
+      active: true,
+      isMasterAdmin: false,
+      mustChangePassword: false,
+      requiresEmailVerification: false,
+      emailVerified: false,
+      fullName: null,
+      position: null,
+      loginId: null,
+    },
   );
   assert.deepEqual(
     assertStaffAccount({role: 'authorized', active: true, schoolId: 'pilot-school-1'}, ['admin', 'authorized']),
-    {role: 'authorized', schoolId: 'pilot-school-1', active: true},
+    {
+      role: 'authorized',
+      schoolId: 'pilot-school-1',
+      active: true,
+      isMasterAdmin: false,
+      mustChangePassword: false,
+      requiresEmailVerification: false,
+      emailVerified: false,
+      fullName: null,
+      position: null,
+      loginId: null,
+    },
   );
 });
 
@@ -72,10 +94,24 @@ test('getStaffAccess denies unauthenticated, students, inactive staff, and forge
     role: 'admin',
     schoolId: 'pilot-school-1',
     active: true,
+    isMasterAdmin: false,
+    mustChangePassword: false,
+    requiresEmailVerification: false,
+    emailVerified: false,
+    fullName: null,
+    position: null,
+    loginId: null,
   });
   assert.deepEqual(await getStaffAccess.run(req('auth-1', {})), {
     role: 'authorized',
     schoolId: 'pilot-school-1',
     active: true,
+    isMasterAdmin: false,
+    mustChangePassword: false,
+    requiresEmailVerification: false,
+    emailVerified: false,
+    fullName: null,
+    position: null,
+    loginId: null,
   });
 });

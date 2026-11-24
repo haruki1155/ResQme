@@ -27,7 +27,9 @@ export const issueStaffTier2Challenge = onCall(resqmeRuntimeOptions, async (requ
   const expiresAtMs = Date.now() + 60_000;
 
   await db.runTransaction(async (tx) => {
-    const staff = await requireStaff(db, staffUid, ['admin', 'authorized'], tx);
+    const staff = await requireStaff(db, staffUid, ['admin', 'authorized'], tx, {
+      emailVerified: request.auth?.token.email_verified === true,
+    });
     const [deviceSnap, lookupSnap] = await Promise.all([
       tx.get(db.doc(`staffTier2Devices/${staffUid}`)),
       tx.get(db.doc(`studentQrLookups/${qrHash}`)),

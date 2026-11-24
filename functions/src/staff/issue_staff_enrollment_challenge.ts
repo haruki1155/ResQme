@@ -18,7 +18,9 @@ export const issueStaffEnrollmentChallenge = onCall(resqmeRuntimeOptions, async 
   const expiresAtMs = Date.now() + 60_000;
 
   await db.runTransaction(async (tx) => {
-    const staff = await requireStaff(db, uid, undefined, tx);
+    const staff = await requireStaff(db, uid, undefined, tx, {
+      emailVerified: request.auth?.token.email_verified === true,
+    });
     tx.create(db.doc(`staffEnrollmentChallenges/${challengeId}`), {
       staffUid: uid,
       schoolId: staff.schoolId,

@@ -32,7 +32,9 @@ export const readStudentTier2 = onCall(resqmeRuntimeOptions, async (request) => 
 
   try {
     return await db.runTransaction(async (tx) => {
-      const staff = await requireStaff(db, staffUid, ['admin', 'authorized'], tx);
+      const staff = await requireStaff(db, staffUid, ['admin', 'authorized'], tx, {
+        emailVerified: request.auth?.token.email_verified === true,
+      });
       denialContext.schoolId = staff.schoolId;
 
       const [deviceSnap, challengeSnap] = await Promise.all([

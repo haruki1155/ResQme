@@ -20,3 +20,17 @@ export {enrollStaffTier2Device} from './staff/enroll_staff_tier2_device';
 export {revokeStaffTier2Device} from './staff/revoke_staff_tier2_device';
 export {issueStaffTier2Challenge} from './staff/issue_staff_tier2_challenge';
 export {readStudentTier2} from './staff/read_student_tier2';
+
+
+export {
+  changeMyStaffPassword,
+  syncMasterAdminEmail,
+  createAuthorizedAccount,
+  listAuthorizedAccounts,
+  updateAuthorizedAccount,
+  setAuthorizedAccountStatus,
+  resetAuthorizedPassword,
+  revokeAuthorizedDevice,
+} from './staff/staff_account_management';
+
+
