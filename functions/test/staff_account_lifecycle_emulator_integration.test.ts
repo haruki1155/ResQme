@@ -181,7 +181,7 @@ test('Phase 2.1 lifecycle: create Authorized, enforce first-login password setup
     await staffClient.call('issueStaffTier2Challenge', {
       payload: qrPayload,
       deviceId,
-      purpose: 'emergency_medical_care',
+      purpose: 'emergency_response',
     })
   ).data as {challengeId: string; nonce: string; purpose: string};
   const msg = staffTier2SignedMessage({
