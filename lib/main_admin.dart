@@ -29,7 +29,7 @@ Future<void> main() async {
         home: Scaffold(
           body: Center(
             child: Text(
-              'ResQMe Admin requires an approved backend configuration.',
+              'ResQMe Portal requires an approved backend configuration.',
             ),
           ),
         ),
@@ -91,7 +91,7 @@ Future<void> main() async {
     runApp(
       const MaterialApp(
         home: Scaffold(
-          body: Center(child: Text('ResQMe Admin is unavailable.')),
+          body: Center(child: Text('ResQMe Portal is unavailable.')),
         ),
       ),
     );

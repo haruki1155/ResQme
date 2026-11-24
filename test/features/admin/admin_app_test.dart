@@ -197,7 +197,7 @@ void main() {
     await tester.pumpWidget(AdminApp(accessRepository: repo));
     await tester.pumpAndSettle();
 
-    expect(find.text('ResQMe Staff Sign In'), findsOneWidget);
+    expect(find.text('ResQMe Portal'), findsOneWidget);
     expect(find.text('Staff email or Login ID'), findsOneWidget);
     expect(find.text('Scan Student QR'), findsNothing);
   });

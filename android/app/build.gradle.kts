@@ -39,7 +39,7 @@ android {
         create("admin") {
             dimension = "app"
             applicationId = "com.example.resqme.admin"
-            manifestPlaceholders["appName"] = "ResQme Admin"
+            manifestPlaceholders["appName"] = "ResQMe Portal"
         }
     }
 

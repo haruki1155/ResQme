@@ -25,7 +25,7 @@ class AdminApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ResQMe Admin',
+      title: 'ResQMe Portal',
       debugShowCheckedModeBanner: false,
       theme: ResQMeTheme.light,
       home: _StaffAccessShell(
@@ -193,7 +193,7 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
     final access = _access;
     if (access == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('ResQMe Staff Sign In')),
+        appBar: AppBar(title: const Text('ResQMe Portal')),
         body: SafeArea(
           child: Center(
             child: ConstrainedBox(
@@ -275,7 +275,7 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
     final roleLabel = access.isAdmin ? 'Admin' : 'Authorized';
     return Scaffold(
       appBar: AppBar(
-        title: Text('ResQMe $roleLabel'),
+        title: const Text('ResQMe Portal'),
         actions: [
           IconButton(
             tooltip: 'Sign out',
