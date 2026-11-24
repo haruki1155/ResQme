@@ -7,6 +7,10 @@ import {issueStaffEnrollmentChallenge} from '../src/staff/issue_staff_enrollment
 import {enrollStaffTier2Device} from '../src/staff/enroll_staff_tier2_device';
 import {revokeStaffTier2Device} from '../src/staff/revoke_staff_tier2_device';
 import {
+  assertAttestationSerialsNotRevoked,
+  resetAttestationStatusCacheForTest,
+  setApprovedSigningDigestsForTest,
+  setAttestationStatusFetcherForTest,
   setTrustedAttestationRootHashesForTest,
   verifyAndroidKeyAttestation,
 } from '../src/staff/staff_attestation';
@@ -91,6 +95,9 @@ function derUtcTime(date: Date): Buffer {
     'Z';
   return derTag(0x17, Buffer.from(s, 'ascii'));
 }
+const TEST_SIGNING_DIGEST_BYTES = Buffer.alloc(32, 3);
+const TEST_SIGNING_DIGEST_HEX = TEST_SIGNING_DIGEST_BYTES.toString('hex');
+
 function buildAttestationExtension(opts: {
   challenge: Buffer;
   attestationLevel: number;
@@ -103,6 +110,7 @@ function buildAttestationExtension(opts: {
   deviceLocked?: boolean;
   verifiedBootState?: number;
   packageName?: string;
+  signingDigest?: Buffer | null;
 }): Buffer {
   const teeTags: Buffer[] = [];
   teeTags.push(derContext(1, derTag(0x31, derInt(opts.purpose ?? 2)))); // purpose: SIGN (2)
@@ -121,9 +129,13 @@ function buildAttestationExtension(opts: {
   const swTags: Buffer[] = [];
   if (opts.packageName !== '') {
     const pkg = opts.packageName ?? 'com.example.resqme.admin';
+    const digestSet =
+      opts.signingDigest === null
+        ? derTag(0x31, Buffer.alloc(0))
+        : derTag(0x31, derOctet(opts.signingDigest ?? TEST_SIGNING_DIGEST_BYTES));
     const appId = derSeq([
       derTag(0x31, derSeq([derOctet(Buffer.from(pkg, 'utf8')), derInt(1)])),
-      derTag(0x31, derOctet(Buffer.alloc(32, 3))),
+      digestSet,
     ]);
     swTags.push(derContext(709, derOctet(appId)));
   }
@@ -181,6 +193,7 @@ function makeChain(opts: {
   deviceLocked?: boolean;
   verifiedBootState?: number;
   packageName?: string;
+  signingDigest?: Buffer | null;
   tamperRoot?: boolean;
 }) {
   const root = generateKeyPairSync('ec', {namedCurve: 'prime256v1'});
@@ -208,6 +221,7 @@ function makeChain(opts: {
     deviceLocked: opts.deviceLocked,
     verifiedBootState: opts.verifiedBootState,
     packageName: opts.packageName,
+    signingDigest: opts.signingDigest,
   });
   const leafCert = buildSignedCert({
     subjectCn: 'Android Keystore Key',
@@ -269,82 +283,135 @@ function req(uid: string | undefined, data: unknown, authTime = Math.floor(Date.
   } as unknown as CallableRequest;
 }
 
-test('verifyAndroidKeyAttestation rejects software keys, wrong challenge, invalid chain, and untrusted roots', () => {
+test('verifyAndroidKeyAttestation enforces signing digest, revocation status, bounded cache, and hardware policy', async () => {
   const challenge = Buffer.from('fictional-nonce-bytes-1234567890', 'utf8');
   const valid = makeChain({challenge, attestationLevel: 1, keymasterLevel: 1, userAuthType: 2});
   setTrustedAttestationRootHashesForTest([valid.rootHash]);
+  setApprovedSigningDigestsForTest([TEST_SIGNING_DIGEST_HEX]);
+  setAttestationStatusFetcherForTest(async () => ({entries: {}}));
+  resetAttestationStatusCacheForTest();
   try {
-    const level = verifyAndroidKeyAttestation({
+    const verified = await verifyAndroidKeyAttestation({
       publicKey: valid.publicKey,
       attestationChain: valid.attestationChain,
       expectedChallenge: challenge,
     });
-    assert.equal(level, 'trusted_environment');
+    assert.equal(verified.securityLevel, 'trusted_environment');
+    assert.equal(verified.certificateSerials.length, 2);
+
+    // Wrong signing-certificate digest must deny
+    const wrongSigner = makeChain({challenge, signingDigest: Buffer.alloc(32, 9)});
+    setTrustedAttestationRootHashesForTest([wrongSigner.rootHash]);
+    await assert.rejects(
+      () => verifyAndroidKeyAttestation({publicKey: wrongSigner.publicKey, attestationChain: wrongSigner.attestationChain, expectedChallenge: challenge}),
+      {code: 'permission-denied'},
+    );
+
+    // Missing signing digest must deny
+    const noSigner = makeChain({challenge, signingDigest: null});
+    setTrustedAttestationRootHashesForTest([noSigner.rootHash]);
+    await assert.rejects(
+      () => verifyAndroidKeyAttestation({publicKey: noSigner.publicKey, attestationChain: noSigner.attestationChain, expectedChallenge: challenge}),
+      {code: 'permission-denied'},
+    );
+
+    // Revoked certificate serial in status list must deny
+    setTrustedAttestationRootHashesForTest([valid.rootHash]);
+    resetAttestationStatusCacheForTest();
+    setAttestationStatusFetcherForTest(async () => ({
+      entries: {[verified.certificateSerials[0]]: {status: 'REVOKED', reason: 'KEY_COMPROMISE'}},
+    }));
+    await assert.rejects(
+      () => verifyAndroidKeyAttestation({publicKey: valid.publicKey, attestationChain: valid.attestationChain, expectedChallenge: challenge}),
+      {code: 'permission-denied'},
+    );
+
+    // Unavailable revocation service must fail closed (even if cache was previously warm but now stale)
+    const t0 = Date.now();
+    resetAttestationStatusCacheForTest();
+    setAttestationStatusFetcherForTest(async () => ({entries: {}}));
+    await assertAttestationSerialsNotRevoked(verified.certificateSerials, t0);
+    // Still within 1h TTL -> uses cache even if fetcher would fail
+    setAttestationStatusFetcherForTest(async () => {
+      throw new Error('network-down');
+    });
+    await assertAttestationSerialsNotRevoked(verified.certificateSerials, t0 + 30 * 60_000);
+    // Beyond 1h TTL -> stale cache expires and unavailable fetcher fails closed
+    await assert.rejects(
+      () => assertAttestationSerialsNotRevoked(verified.certificateSerials, t0 + 61 * 60_000),
+      {code: 'permission-denied'},
+    );
+
+    // Reset clean fetcher for remaining checks
+    resetAttestationStatusCacheForTest();
+    setAttestationStatusFetcherForTest(async () => ({entries: {}}));
 
     const software = makeChain({challenge, attestationLevel: 0, keymasterLevel: 0, userAuthType: 2});
     setTrustedAttestationRootHashesForTest([software.rootHash]);
-    assert.throws(
+    await assert.rejects(
       () => verifyAndroidKeyAttestation({publicKey: software.publicKey, attestationChain: software.attestationChain, expectedChallenge: challenge}),
       {code: 'permission-denied'},
     );
 
     const noAuth = makeChain({challenge, noAuthRequired: true});
     setTrustedAttestationRootHashesForTest([noAuth.rootHash]);
-    assert.throws(
+    await assert.rejects(
       () => verifyAndroidKeyAttestation({publicKey: noAuth.publicKey, attestationChain: noAuth.attestationChain, expectedChallenge: challenge}),
       {code: 'permission-denied'},
     );
 
     const wrongChallenge = makeChain({challenge: Buffer.from('other-nonce')});
     setTrustedAttestationRootHashesForTest([wrongChallenge.rootHash]);
-    assert.throws(
+    await assert.rejects(
       () => verifyAndroidKeyAttestation({publicKey: wrongChallenge.publicKey, attestationChain: wrongChallenge.attestationChain, expectedChallenge: challenge}),
       {code: 'permission-denied'},
     );
 
     const badChain = makeChain({challenge, tamperRoot: true});
     setTrustedAttestationRootHashesForTest([badChain.rootHash]);
-    assert.throws(
+    await assert.rejects(
       () => verifyAndroidKeyAttestation({publicKey: badChain.publicKey, attestationChain: badChain.attestationChain, expectedChallenge: challenge}),
       {code: 'permission-denied'},
     );
 
     setTrustedAttestationRootHashesForTest(['0'.repeat(64)]);
-    assert.throws(
+    await assert.rejects(
       () => verifyAndroidKeyAttestation({publicKey: valid.publicKey, attestationChain: valid.attestationChain, expectedChallenge: challenge}),
       {code: 'permission-denied'},
     );
 
-    // Security review hardening: wrong application ID, imported key origin, unlocked bootloader, wrong purpose
     const wrongApp = makeChain({challenge, packageName: 'com.evil.otherapp'});
     setTrustedAttestationRootHashesForTest([wrongApp.rootHash]);
-    assert.throws(
+    await assert.rejects(
       () => verifyAndroidKeyAttestation({publicKey: wrongApp.publicKey, attestationChain: wrongApp.attestationChain, expectedChallenge: challenge}),
       {code: 'permission-denied'},
     );
 
     const importedKey = makeChain({challenge, origin: 2});
     setTrustedAttestationRootHashesForTest([importedKey.rootHash]);
-    assert.throws(
+    await assert.rejects(
       () => verifyAndroidKeyAttestation({publicKey: importedKey.publicKey, attestationChain: importedKey.attestationChain, expectedChallenge: challenge}),
       {code: 'permission-denied'},
     );
 
     const unlockedBoot = makeChain({challenge, deviceLocked: false});
     setTrustedAttestationRootHashesForTest([unlockedBoot.rootHash]);
-    assert.throws(
+    await assert.rejects(
       () => verifyAndroidKeyAttestation({publicKey: unlockedBoot.publicKey, attestationChain: unlockedBoot.attestationChain, expectedChallenge: challenge}),
       {code: 'permission-denied'},
     );
 
     const wrongPurpose = makeChain({challenge, purpose: 1});
     setTrustedAttestationRootHashesForTest([wrongPurpose.rootHash]);
-    assert.throws(
+    await assert.rejects(
       () => verifyAndroidKeyAttestation({publicKey: wrongPurpose.publicKey, attestationChain: wrongPurpose.attestationChain, expectedChallenge: challenge}),
       {code: 'permission-denied'},
     );
   } finally {
     setTrustedAttestationRootHashesForTest(null);
+    setApprovedSigningDigestsForTest(null);
+    setAttestationStatusFetcherForTest(null);
+    resetAttestationStatusCacheForTest();
   }
 });
 
@@ -368,6 +435,9 @@ test('staff enrollment requires fresh auth, active staff, one-time attested chal
 
   const chain1 = makeChain({challenge: Buffer.from(issued.nonce, 'base64url')});
   setTrustedAttestationRootHashesForTest([chain1.rootHash]);
+  setApprovedSigningDigestsForTest([TEST_SIGNING_DIGEST_HEX]);
+  setAttestationStatusFetcherForTest(async () => ({entries: {}}));
+  resetAttestationStatusCacheForTest();
   try {
     const enrolled = await enrollStaffTier2Device.run(req('staff-1', {
       challengeId: issued.challengeId,
@@ -376,6 +446,7 @@ test('staff enrollment requires fresh auth, active staff, one-time attested chal
       attestationChain: chain1.attestationChain,
     }));
     assert.deepEqual(enrolled, {deviceId: 'staff_device_0123456789abc', status: 'active', keyVersion: 1});
+    assert.equal(Array.isArray(state.rows.get('staffTier2Devices/staff-1')?.attestationSerials), true);
 
     // Replay of same challenge must fail
     await assert.rejects(() => enrollStaffTier2Device.run(req('staff-1', {
@@ -391,5 +462,8 @@ test('staff enrollment requires fresh auth, active staff, one-time attested chal
     assert.equal(state.rows.get('staffTier2Devices/staff-1')?.status, 'revoked');
   } finally {
     setTrustedAttestationRootHashesForTest(null);
+    setApprovedSigningDigestsForTest(null);
+    setAttestationStatusFetcherForTest(null);
+    resetAttestationStatusCacheForTest();
   }
 });

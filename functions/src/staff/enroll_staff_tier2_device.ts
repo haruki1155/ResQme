@@ -64,7 +64,7 @@ export const enrollStaffTier2Device = onCall(resqmeRuntimeOptions, async (reques
       throw new HttpsError('permission-denied', 'Enrollment challenge is invalid or expired.');
     }
 
-    const attestationLevel = verifyAndroidKeyAttestation({
+    const attestation = await verifyAndroidKeyAttestation({
       publicKey: input.publicKey,
       attestationChain: input.attestationChain,
       expectedChallenge: Buffer.from(challenge.nonce, 'base64url'),
@@ -77,7 +77,9 @@ export const enrollStaffTier2Device = onCall(resqmeRuntimeOptions, async (reques
       schoolId: staff.schoolId,
       deviceId: input.deviceId,
       publicKey: input.publicKey,
-      attestationLevel,
+      attestationLevel: attestation.securityLevel,
+      attestationSerials: attestation.certificateSerials,
+      attestationVerifiedAt: FieldValue.serverTimestamp(),
       status: 'active',
       keyVersion: nextVersion,
       enrolledAt: FieldValue.serverTimestamp(),

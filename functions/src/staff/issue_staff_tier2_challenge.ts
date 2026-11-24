@@ -4,6 +4,7 @@ import {HttpsError, onCall} from 'firebase-functions/v2/https';
 import {onboardingDatabase, resqmeRuntimeOptions} from '../onboarding/authorization';
 import {evaluateQrEligibility} from '../qr/qr_eligibility';
 import {hashQrPayload} from '../qr/resolve_tier1_qr';
+import {assertAttestationSerialsNotRevoked} from './staff_attestation';
 import {requireStaff} from './staff_authorization';
 import {
   allowStaffTier2Challenge,
@@ -40,6 +41,7 @@ export const issueStaffTier2Challenge = onCall(resqmeRuntimeOptions, async (requ
     ) {
       throw new HttpsError('permission-denied', 'Emergency Tier 2 access is unavailable.');
     }
+    await assertAttestationSerialsNotRevoked(deviceSnap.get('attestationSerials'));
     const targetUid = lookupSnap.get('uid');
     if (
       !lookupSnap.exists ||

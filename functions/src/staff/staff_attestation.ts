@@ -2,17 +2,158 @@ import {createHash, createPublicKey, timingSafeEqual, X509Certificate} from 'nod
 import {HttpsError} from 'firebase-functions/v2/https';
 
 // Google Hardware Attestation Root SPKI SHA-256 fingerprints (RSA-4096 & EC-P384 roots).
-// Production rollout also requires checking Google's attestation revocation status list.
+// Additional rotated roots can be supplied via RESQME_ATTESTATION_ROOT_SHA256 (comma-separated 64-hex).
 const DEFAULT_TRUSTED_ROOT_SPKI_SHA256: readonly string[] = [
   '2549b3923e8f618f0284c048b99dc0c11a84935455d1c08d376c6282a45269f5',
   '9a2520f2a0e7a2b561517d9a71992593263d3f9c022a7a3e640b9921d803e060',
   'f97e83f629a1f7b1f0909f74383b4a13c542b33015c0c98a6f7509d560728f8e',
 ];
 
+const ATTESTATION_STATUS_URL = 'https://android.googleapis.com/attestation/status';
+const MAX_STATUS_CACHE_AGE_MS = 60 * 60 * 1000; // 1 hour bounded cache; stale data fails closed.
+const FETCH_TIMEOUT_MS = 5000;
+const HEX64_PATTERN = /^[a-f0-9]{64}$/;
+const SERIAL_PATTERN = /^[a-f0-9]{1,64}$/;
+
+export interface AttestationStatusEntry {
+  status?: unknown;
+  reason?: unknown;
+}
+
+export interface AttestationStatusPayload {
+  entries: Record<string, AttestationStatusEntry>;
+}
+
+export type AttestationStatusFetcher = () => Promise<AttestationStatusPayload>;
+
 let testRootOverrides: readonly string[] | null = null;
+let testSigningDigestOverrides: readonly string[] | null = null;
+let testStatusFetcher: AttestationStatusFetcher | null = null;
+let cachedStatus: {entries: Record<string, AttestationStatusEntry>; fetchedAtMs: number} | null = null;
 
 export function setTrustedAttestationRootHashesForTest(hashes: readonly string[] | null): void {
   testRootOverrides = hashes;
+}
+
+export function setApprovedSigningDigestsForTest(digests: readonly string[] | null): void {
+  testSigningDigestOverrides = digests;
+}
+
+export function setAttestationStatusFetcherForTest(fetcher: AttestationStatusFetcher | null): void {
+  testStatusFetcher = fetcher;
+}
+
+export function resetAttestationStatusCacheForTest(): void {
+  cachedStatus = null;
+}
+
+function parseHex64List(raw: string | undefined): string[] {
+  if (!raw || !raw.trim()) return [];
+  const items = raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase().replace(/:/g, ''))
+    .filter(Boolean);
+  for (const item of items) {
+    if (!HEX64_PATTERN.test(item)) {
+      throw new HttpsError('failed-precondition', 'Invalid attestation trust configuration.');
+    }
+  }
+  return items;
+}
+
+function getTrustedRootHashes(): readonly string[] {
+  if (testRootOverrides !== null) return testRootOverrides;
+  const extra = parseHex64List(process.env.RESQME_ATTESTATION_ROOT_SHA256);
+  return extra.length > 0 ? [...DEFAULT_TRUSTED_ROOT_SPKI_SHA256, ...extra] : DEFAULT_TRUSTED_ROOT_SPKI_SHA256;
+}
+
+function getApprovedSigningDigests(): readonly string[] {
+  if (testSigningDigestOverrides !== null) return testSigningDigestOverrides;
+  const configured = parseHex64List(process.env.RESQME_ADMIN_SIGNING_CERT_SHA256);
+  if (configured.length === 0) {
+    throw new HttpsError('permission-denied', 'Admin signing certificate allowlist is not configured.');
+  }
+  return configured;
+}
+
+export function normalizeSerialHex(serial: string): string {
+  const cleaned = serial.trim().toLowerCase().replace(/:/g, '').replace(/^0+/, '');
+  return cleaned.length > 0 ? cleaned : '0';
+}
+
+async function defaultFetchAttestationStatus(): Promise<AttestationStatusPayload> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(ATTESTATION_STATUS_URL, {
+      method: 'GET',
+      headers: {Accept: 'application/json'},
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`status-http-${response.status}`);
+    }
+    const body = (await response.json()) as unknown;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new Error('status-malformed');
+    }
+    const entries = (body as {entries?: unknown}).entries;
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
+      throw new Error('status-no-entries');
+    }
+    return {entries: entries as Record<string, AttestationStatusEntry>};
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function getAttestationRevocationEntries(
+  nowMs = Date.now(),
+): Promise<Record<string, AttestationStatusEntry>> {
+  if (cachedStatus && nowMs >= cachedStatus.fetchedAtMs && nowMs - cachedStatus.fetchedAtMs < MAX_STATUS_CACHE_AGE_MS) {
+    return cachedStatus.entries;
+  }
+  // Cache is missing or stale: must refresh; never reuse stale cache on failure.
+  cachedStatus = null;
+  const fetcher = testStatusFetcher ?? defaultFetchAttestationStatus;
+  try {
+    const payload = await fetcher();
+    if (!payload || typeof payload !== 'object' || !payload.entries || typeof payload.entries !== 'object' || Array.isArray(payload.entries)) {
+      throw new Error('status-invalid');
+    }
+    const normalized: Record<string, AttestationStatusEntry> = {};
+    for (const [k, v] of Object.entries(payload.entries)) {
+      if (v && typeof v === 'object') {
+        normalized[normalizeSerialHex(k)] = v;
+      }
+    }
+    cachedStatus = {entries: normalized, fetchedAtMs: nowMs};
+    return normalized;
+  } catch {
+    throw new HttpsError('permission-denied', 'Device attestation revocation status is unavailable.');
+  }
+}
+
+export async function assertAttestationSerialsNotRevoked(
+  serials: unknown,
+  nowMs = Date.now(),
+): Promise<void> {
+  if (
+    !Array.isArray(serials) ||
+    serials.length < 2 ||
+    serials.length > 8 ||
+    serials.some((s) => typeof s !== 'string' || !SERIAL_PATTERN.test(normalizeSerialHex(s)))
+  ) {
+    throw new HttpsError('permission-denied', 'Device attestation state is invalid.');
+  }
+  const entries = await getAttestationRevocationEntries(nowMs);
+  for (const raw of serials) {
+    const key = normalizeSerialHex(raw);
+    const entry = entries[key];
+    if (entry && entry.status !== 'ACTIVE') {
+      throw new HttpsError('permission-denied', 'Device attestation certificate is revoked.');
+    }
+  }
 }
 
 const ANDROID_ATTESTATION_OID_DER = Buffer.from([
@@ -115,19 +256,28 @@ function extractAttestationExtensionContent(leafDer: Buffer): Buffer | null {
 
 export type AttestationSecurityLevel = 'trusted_environment' | 'strongbox';
 
-export function verifyAndroidKeyAttestation(input: {
+export interface VerifiedAttestationResult {
+  securityLevel: AttestationSecurityLevel;
+  certificateSerials: string[];
+}
+
+export async function verifyAndroidKeyAttestation(input: {
   publicKey: string;
   attestationChain: unknown;
   expectedChallenge: Buffer;
   nowMs?: number;
-}): AttestationSecurityLevel {
+}): Promise<VerifiedAttestationResult> {
   const deny = () => new HttpsError('permission-denied', 'Device key attestation could not be verified.');
   if (!Array.isArray(input.attestationChain) || input.attestationChain.length < 2 || input.attestationChain.length > 8) {
     throw deny();
   }
   const nowMs = input.nowMs ?? Date.now();
-  const certs: {x509: X509Certificate; der: Buffer}[] = [];
+  const certs: {x509: X509Certificate; der: Buffer; serial: string}[] = [];
+  let securityLevel: AttestationSecurityLevel;
   try {
+    const trustedRoots = getTrustedRootHashes();
+    const approvedSigningDigests = getApprovedSigningDigests();
+
     for (const raw of input.attestationChain) {
       if (typeof raw !== 'string' || raw.length === 0 || raw.length > 12_000) throw new Error('cert-str');
       const der = Buffer.from(raw, 'base64url');
@@ -138,7 +288,9 @@ export function verifyAndroidKeyAttestation(input: {
       if (!Number.isFinite(notBefore) || !Number.isFinite(notAfter) || nowMs < notBefore || nowMs > notAfter) {
         throw new Error('cert-expired');
       }
-      certs.push({x509, der});
+      const serial = normalizeSerialHex(x509.serialNumber);
+      if (!SERIAL_PATTERN.test(serial)) throw new Error('bad-serial');
+      certs.push({x509, der, serial});
     }
 
     // 1. Leaf public key must match submitted EC P-256 publicKey
@@ -157,10 +309,9 @@ export function verifyAndroidKeyAttestation(input: {
     const rootCert = certs[certs.length - 1].x509;
     if (!rootCert.verify(rootCert.publicKey)) throw new Error('root-sig');
 
-    // 3. Verify root trust anchor
+    // 3. Verify root trust anchor (supports root rotation via env)
     const rootSpki = rootCert.publicKey.export({type: 'spki', format: 'der'});
     const rootHash = createHash('sha256').update(rootSpki).digest('hex');
-    const trustedRoots = testRootOverrides ?? DEFAULT_TRUSTED_ROOT_SPKI_SHA256;
     if (!trustedRoots.includes(rootHash)) throw new Error('untrusted-root');
 
     // 4. Parse Android Key Attestation extension (1.3.6.1.4.1.11129.2.1.17)
@@ -187,26 +338,35 @@ export function verifyAndroidKeyAttestation(input: {
       throw new Error('challenge-mismatch');
     }
 
-    // 5. Verify application identity (softwareEnforced tag 709 == com.example.resqme.admin)
+    // 5. Verify application identity AND approved signing-certificate SHA-256 digest (softwareEnforced tag 709)
     const swEnforced = fields[6];
     if (swEnforced.tagClass !== 0 || swEnforced.tagNumber !== 16) throw new Error('bad-sw');
     let matchedPackage = false;
+    let matchedSigner = false;
     for (const tag of readDerChildren(swEnforced.content)) {
       if (tag.tagClass === 2 && tag.tagNumber === 709) {
         const octet = readDerNode(tag.content, 0);
         if (octet.tagClass !== 0 || octet.tagNumber !== 4) throw new Error('bad-app-id');
         const appIdSeq = readDerNode(octet.content, 0);
         const appIdFields = readDerChildren(appIdSeq.content);
-        if (appIdFields.length < 1) throw new Error('bad-app-id-seq');
+        if (appIdFields.length < 2) throw new Error('bad-app-id-seq');
         for (const pkgInfo of readDerChildren(appIdFields[0].content)) {
           const pkgFields = readDerChildren(pkgInfo.content);
           if (pkgFields.length >= 1 && pkgFields[0].content.toString('utf8') === 'com.example.resqme.admin') {
             matchedPackage = true;
           }
         }
+        for (const sigDigest of readDerChildren(appIdFields[1].content)) {
+          if (sigDigest.tagClass === 0 && sigDigest.tagNumber === 4 && sigDigest.content.length === 32) {
+            const hex = sigDigest.content.toString('hex');
+            if (approvedSigningDigests.includes(hex)) {
+              matchedSigner = true;
+            }
+          }
+        }
       }
     }
-    if (!matchedPackage) throw new Error('wrong-app-id');
+    if (!matchedPackage || !matchedSigner) throw new Error('wrong-app-or-signer');
 
     // 6. Verify hardware-enforced (teeEnforced) origin, purpose, verified boot, and per-use strong biometric policy
     const teeEnforced = fields[7];
@@ -261,8 +421,13 @@ export function verifyAndroidKeyAttestation(input: {
       throw new Error('weak-auth-policy');
     }
 
-    return attestationLevel === 2 && keymasterLevel === 2 ? 'strongbox' : 'trusted_environment';
+    securityLevel = attestationLevel === 2 && keymasterLevel === 2 ? 'strongbox' : 'trusted_environment';
   } catch {
     throw deny();
   }
+
+  // 7. Verify no certificate in chain is revoked (bounded cache, fail-closed)
+  const certificateSerials = certs.map((c) => c.serial);
+  await assertAttestationSerialsNotRevoked(certificateSerials, nowMs);
+  return {securityLevel, certificateSerials};
 }

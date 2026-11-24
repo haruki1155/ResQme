@@ -5,7 +5,20 @@ import {Timestamp} from 'firebase-admin/firestore';
 import type {CallableRequest} from 'firebase-functions/v2/https';
 import {issueStaffTier2Challenge} from '../src/staff/issue_staff_tier2_challenge';
 import {readStudentTier2} from '../src/staff/read_student_tier2';
+import {
+  resetAttestationStatusCacheForTest,
+  setAttestationStatusFetcherForTest,
+} from '../src/staff/staff_attestation';
 import {staffTier2Operation, staffTier2SignedMessage} from '../src/staff/staff_tier2_contract';
+
+test.beforeEach(() => {
+  resetAttestationStatusCacheForTest();
+  setAttestationStatusFetcherForTest(async () => ({entries: {}}));
+});
+test.afterEach(() => {
+  setAttestationStatusFetcherForTest(null);
+  resetAttestationStatusCacheForTest();
+});
 
 const authorization = require('../src/onboarding/authorization') as typeof import('../src/onboarding/authorization');
 
@@ -29,6 +42,7 @@ function makeFixture(opts?: {role?: 'admin' | 'authorized'; studentAge?: number;
       schoolId,
       deviceId,
       publicKey: publicKey.export({type: 'spki', format: 'der'}).toString('base64url'),
+      attestationSerials: ['a1b2c3d4', 'deadbeef'],
       status: 'active',
       keyVersion: 1,
     }],
@@ -286,4 +300,33 @@ test('concurrent duplicate consumption allows at most one read', async (t) => {
   ]);
   assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
   assert.equal(results.filter((r) => r.status === 'rejected').length, 1);
+});
+
+test('previously enrolled device is denied immediately when its attestation certificate becomes revoked', async (t) => {
+  const f = makeFixture();
+  t.mock.method(authorization, 'onboardingDatabase', () => f.db as never);
+  const issued = await issueStaffTier2Challenge.run(req(f.staffUid, {
+    payload: f.payload,
+    deviceId: f.deviceId,
+    purpose: 'emergency_response',
+  })) as {challengeId: string; nonce: string};
+  f.rows.get(`staffTier2Challenges/${issued.challengeId}`)!.expiresAt = Timestamp.fromMillis(Date.now() + 60_000);
+
+  // Attestation certificate serial becomes revoked after enrollment and challenge issuance
+  resetAttestationStatusCacheForTest();
+  setAttestationStatusFetcherForTest(async () => ({
+    entries: {a1b2c3d4: {status: 'REVOKED', reason: 'KEY_COMPROMISE'}},
+  }));
+
+  await assert.rejects(() => readStudentTier2.run(req(f.staffUid, {
+    challengeId: issued.challengeId,
+    deviceId: f.deviceId,
+    signature: f.signChallenge(issued),
+  })), {code: 'permission-denied'});
+
+  await assert.rejects(() => issueStaffTier2Challenge.run(req(f.staffUid, {
+    payload: f.payload,
+    deviceId: f.deviceId,
+    purpose: 'emergency_response',
+  })), {code: 'permission-denied'});
 });
