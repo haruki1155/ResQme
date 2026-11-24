@@ -1,26 +1,51 @@
 {
   "project_info": {
-    "project_number": "1234567890",
-    "project_id": "demo-resqme",
-    "storage_bucket": "demo-resqme.appspot.com"
+    "project_number": "519076598217",
+    "project_id": "resqme-943ee",
+    "storage_bucket": "resqme-943ee.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1234567890:android:0000000000000000000001",
+        "mobilesdk_app_id": "1:519076598217:android:d41c3237e573ac9e621818",
         "android_client_info": {
           "package_name": "com.example.resqme.admin"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "519076598217-3ncml23hm2oh7mad3too31bbovk3ofdh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.resqme.admin",
+            "certificate_hash": "462e0608a040042796d0145c5d2a3c758750ed98"
+          }
+        },
+        {
+          "client_id": "519076598217-v619c8dqjmg9o9c5tad19npmcd854lml.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyDemoResqmeLocalOnly000000000000000"
+          "current_key": "AIzaSyDfuxL94XrBlNGibP5WNwXd2uMFZSWA-pQ"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "519076598217-v619c8dqjmg9o9c5tad19npmcd854lml.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "519076598217-t98vb99agb72ra007h8k1hpp745k50mg.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.resqme"
+              }
+            }
+          ]
         }
       }
     }
