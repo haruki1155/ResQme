@@ -97,7 +97,7 @@ function validateTargetUid(raw: unknown): string {
   return raw;
 }
 
-function auditRecord(input: {
+export function auditRecord(input: {
   actorUid: string;
   actorRole: string;
   schoolId: string;
@@ -118,7 +118,7 @@ function auditRecord(input: {
   };
 }
 
-async function requireMasterAdmin(
+export async function requireMasterAdmin(
   db: Firestore,
   uid: string,
   emailVerified: boolean,

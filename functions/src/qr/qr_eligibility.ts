@@ -1,4 +1,5 @@
 import {validateMedicalCompletion} from '../medical/medical_contract';
+import {isStudentAccountDisabled} from '../onboarding/authorization';
 type Data=Record<string,unknown>|undefined;
 function canonicalPayload(value:unknown):value is string {
  if(typeof value!=='string'||!/^resqme:v1:[A-Za-z0-9_-]{43}$/.test(value)) return false;
@@ -15,7 +16,7 @@ export function evaluateStudentEligibility(input:{
  guardianAuthorization:Data;
 }):boolean {
  const {uid,profile,medical,guardianAuthorization}=input;
- if(typeof uid!=='string'||!uid||!profile||profile.schemaVersion!==1||!['pending_review','pending_guardian'].includes(profile.status as string)||
+ if(typeof uid!=='string'||!uid||!profile||isStudentAccountDisabled(profile)||profile.schemaVersion!==1||!['pending_review','pending_guardian'].includes(profile.status as string)||
    profile.schoolAssignmentStatus!=='assigned'||typeof profile.schoolId!=='string'||!/^[a-z0-9][a-z0-9_-]{1,63}$/.test(profile.schoolId)||
    profile.schoolApprovalStatus!=='approved'||!Number.isInteger(profile.ageYearsAtRegistration)||
    Number(profile.ageYearsAtRegistration)<0||Number(profile.ageYearsAtRegistration)>130||

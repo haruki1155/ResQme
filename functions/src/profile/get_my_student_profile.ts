@@ -1,5 +1,5 @@
 import {HttpsError, onCall} from 'firebase-functions/v2/https';
-import {onboardingDatabase, resqmeRuntimeOptions} from '../onboarding/authorization';
+import {isStudentAccountDisabled, onboardingDatabase, resqmeRuntimeOptions} from '../onboarding/authorization';
 import {keys, object} from '../medical/medical_contract';
 
 type ProfileData = Record<string, unknown>;
@@ -39,6 +39,7 @@ export function validateStudentProfileRequest(value: unknown): void {
 
 export function sanitizeStudentProfile(value: unknown): ProfileData {
   if (!isRecord(value) ||
+      isStudentAccountDisabled(value) ||
       value.schemaVersion !== 1 ||
       typeof value.fullName !== 'string' ||
       value.fullName.trim().length < 2 ||

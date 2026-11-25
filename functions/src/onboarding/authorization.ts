@@ -11,12 +11,15 @@ export function onboardingDatabase(uid:string|undefined) {
   if(!getApps().some(app=>app.name==='[DEFAULT]')) initializeApp();
   return getFirestore();
 }
+export function isStudentAccountDisabled(data:FirebaseFirestore.DocumentData|undefined):boolean {
+  return data?.accountDisabled===true||data?.accountStatus==='disabled';
+}
 export function requirePending(data:FirebaseFirestore.DocumentData|undefined) {
-  if(!data||data.schemaVersion!==1||!['pending_guardian','pending_review'].includes(data.status)||!Number.isInteger(data.ageYearsAtRegistration)||data.ageYearsAtRegistration<0||data.ageYearsAtRegistration>130) throw new HttpsError('failed-precondition','A pending registration is required.');
+  if(!data||isStudentAccountDisabled(data)||data.schemaVersion!==1||!['pending_guardian','pending_review'].includes(data.status)||!Number.isInteger(data.ageYearsAtRegistration)||data.ageYearsAtRegistration<0||data.ageYearsAtRegistration>130) throw new HttpsError('failed-precondition','A pending registration is required.');
   return data;
 }
 export function requireQrEligible(data:FirebaseFirestore.DocumentData|undefined) {
-  if(!data||data.schemaVersion!==1||!['pending_review','pending_guardian'].includes(data.status)||
+  if(!data||isStudentAccountDisabled(data)||data.schemaVersion!==1||!['pending_review','pending_guardian'].includes(data.status)||
     data.schoolAssignmentStatus!=='assigned'||typeof data.schoolId!=='string'||!/^[a-z0-9][a-z0-9_-]{1,63}$/.test(data.schoolId)||
     data.schoolApprovalStatus!=='approved'||data.medicalStatus!=='complete'||
     !Number.isSafeInteger(data.medicalRevision)||data.medicalRevision<1) {

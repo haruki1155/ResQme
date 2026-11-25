@@ -2,7 +2,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import {getApps, initializeApp} from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import {noticeVersion, validateRegistration} from './registration_contract';
-import {resqmeRuntimeOptions} from '../onboarding/authorization';
+import {isStudentAccountDisabled, resqmeRuntimeOptions} from '../onboarding/authorization';
 import {evaluateRosterClaim,matchingRosterSchool,rosterCodeDigest,rosterLookupId,type SchoolRosterRecord} from '../school/roster_contract';
 export const createStudentRegistration = onCall(resqmeRuntimeOptions, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in is required.');
@@ -20,6 +20,9 @@ export const createStudentRegistration = onCall(resqmeRuntimeOptions, async (req
     const rosterSnapshot=rosterRef?await tx.get(rosterRef):undefined;
     const codeClaimSnapshot=codeClaimRef?await tx.get(codeClaimRef):undefined;
     if (existing.exists) {
+      if (isStudentAccountDisabled(existing.data())) {
+        throw new HttpsError('permission-denied', 'Student account is disabled.');
+      }
       if (existing.get('fullName') !== registration.fullName || existing.get('ageYearsAtRegistration') !== registration.ageYears || existing.get('lrn')!==registration.lrn) {
         throw new HttpsError('already-exists', 'Registration already submitted.');
       }
