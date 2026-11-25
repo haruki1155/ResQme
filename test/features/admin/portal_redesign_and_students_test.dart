@@ -265,6 +265,33 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
   }
 
   @override
+  Future<QrReplacementResult> replaceStudentQrWithBiometric({
+    required String studentUid,
+    required String reason,
+    required String requestId,
+  }) async =>
+      QrReplacementResult(
+        studentUid: studentUid,
+        verificationStatus: 'active',
+        credentialVersion: 2,
+        reason: reason,
+      );
+
+  @override
+  Future<QrReplacementResult> replaceStudentQrWithPassword({
+    required String studentUid,
+    required String reason,
+    required String requestId,
+    required String password,
+  }) async =>
+      QrReplacementResult(
+        studentUid: studentUid,
+        verificationStatus: 'active',
+        credentialVersion: 2,
+        reason: reason,
+      );
+
+  @override
   Future<String> revealLrnWithBiometric({
     required String targetType,
     required String targetId,

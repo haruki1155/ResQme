@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/portal_student_repository.dart';
 import '../services/staff_access_repository.dart';
 import '../widgets/portal_widgets.dart';
+import 'lost_qr_management_screen.dart';
 
 class StudentDetailsScreen extends StatefulWidget {
   const StudentDetailsScreen({
@@ -160,6 +161,25 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _openQrReplacement(SchoolStudentDetails details) async {
+    final result = await showQrReplacementDialog(
+      context: context,
+      repository: widget.portalStudentRepository,
+      studentUid: details.uid,
+      studentName: details.fullName,
+      maskedLrn: details.maskedLrn,
+      gradeLevel: details.gradeLevel,
+      currentVersion: details.credentialVersion,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _error = null;
+      _feedbackMessage =
+          'Replaced QR credential (v${result.credentialVersion}, reason: ${result.reason}). Previous QR is permanently revoked.';
+    });
+    await _load();
   }
 
   String _formatRegistrationStatus(String raw) => switch (raw) {
@@ -373,6 +393,12 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
                                     'QR Credential Status',
                                     _formatQrStatus(details.qrStatus),
                                   ),
+                                  _detailRow(
+                                    'Credential Version',
+                                    details.credentialVersion > 0
+                                        ? 'v${details.credentialVersion}'
+                                        : 'Not Issued',
+                                  ),
                                 ],
                               ),
                             ),
@@ -438,6 +464,22 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
                                   : () => _confirmManualVerification(details),
                               icon: const Icon(Icons.verified_user_outlined),
                               label: const Text('Verify Student Account'),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          if (!details.accountDisabled &&
+                              details.schoolApprovalStatus == 'approved' &&
+                              details.medicalCompletionStatus == 'complete' &&
+                              (details.guardianAuthorizationStatus ==
+                                      'verified' ||
+                                  details.guardianAuthorizationStatus ==
+                                      'not_required_adult')) ...[
+                            OutlinedButton.icon(
+                              onPressed: _busy
+                                  ? null
+                                  : () => _openQrReplacement(details),
+                              icon: const Icon(Icons.qr_code_2_outlined),
+                              label: const Text('Replace QR Code'),
                             ),
                             const SizedBox(height: 10),
                           ],

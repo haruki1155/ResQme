@@ -8,11 +8,13 @@ class PortalDashboardScreen extends StatefulWidget {
     super.key,
     required this.access,
     required this.onScanStudentQr,
+    this.onOpenLostQrManagement,
     this.portalStudentRepository,
   });
 
   final StaffAccess access;
   final VoidCallback? onScanStudentQr;
+  final VoidCallback? onOpenLostQrManagement;
   final PortalStudentRepository? portalStudentRepository;
 
   @override
@@ -134,6 +136,59 @@ class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
                   ),
                 ),
               ),
+              if (widget.onOpenLostQrManagement != null) ...[
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: PortalColors.brandRedSoft,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.qr_code_2_outlined,
+                            color: PortalColors.brandRed,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Lost QR Management',
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: PortalColors.inkPrimary,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Replace lost, damaged, or compromised student QR codes.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: PortalColors.inkSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton(
+                          onPressed: widget.onOpenLostQrManagement,
+                          child: const Text('Open'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               if (_loading && stats == null)
                 const Padding(

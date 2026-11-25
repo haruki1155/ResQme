@@ -9,3 +9,7 @@ export {
   issueAdminLrnRevealChallenge,
   revealStudentLrn,
 } from './staff/staff_student_management';
+export {
+  issueAdminQrReplaceChallenge,
+  replaceSchoolStudentQr,
+} from './staff/staff_qr_replacement';

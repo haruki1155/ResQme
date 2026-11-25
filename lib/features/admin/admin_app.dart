@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/active_students_screen.dart';
 import 'screens/authorized_personnel_screen.dart';
 import 'screens/master_admin_email_screen.dart';
+import 'screens/lost_qr_management_screen.dart';
 import 'screens/portal_dashboard_screen.dart';
 import 'screens/staff_account_setup_screen.dart';
 import 'screens/staff_change_password_screen.dart';
@@ -598,10 +599,19 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
   Widget _buildMasterAdminTabBody(StaffAccess access) {
     switch (_selectedTab) {
       case 0:
+        final studentRepo = widget.portalStudentRepository;
         return PortalDashboardScreen(
           access: access,
-          portalStudentRepository: widget.portalStudentRepository,
+          portalStudentRepository: studentRepo,
           onScanStudentQr: _busy ? null : () => _openScanner(access),
+          onOpenLostQrManagement: studentRepo == null
+              ? null
+              : () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          LostQrManagementScreen(repository: studentRepo),
+                    ),
+                  ),
         );
       case 1:
         final studentRepo = widget.portalStudentRepository;

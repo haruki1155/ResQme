@@ -27,7 +27,7 @@ const RATE_WINDOW_MS = 10 * 60_000;
 const MAX_LRN_REVEALS_PER_WINDOW = 15;
 const MAX_EXACT_LRN_SEARCHES_PER_WINDOW = 20;
 
-async function enforceTransactionalRateLimit(
+export async function enforceTransactionalRateLimit(
   db: FirebaseFirestore.Firestore,
   docPath: string,
   maxAttempts: number,
@@ -435,6 +435,12 @@ export const getSchoolStudentDetails = onCall(resqmeRuntimeOptions, async (reque
       profile.medicalStatus === 'complete' ? 'complete' : 'not_started',
     guardianAuthorizationStatus,
     qrStatus,
+    credentialVersion: credentialSnap.exists
+      ? Number.isSafeInteger(credentialSnap.get('credentialVersion')) &&
+          Number(credentialSnap.get('credentialVersion')) >= 1
+        ? Number(credentialSnap.get('credentialVersion'))
+        : 1
+      : 0,
     canVerifyManually,
   };
 });

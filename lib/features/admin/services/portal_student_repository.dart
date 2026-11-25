@@ -92,6 +92,7 @@ class SchoolStudentDetails {
     required this.medicalCompletionStatus,
     required this.guardianAuthorizationStatus,
     required this.qrStatus,
+    this.credentialVersion = 0,
     required this.canVerifyManually,
   });
 
@@ -112,7 +113,24 @@ class SchoolStudentDetails {
   final String medicalCompletionStatus;
   final String guardianAuthorizationStatus;
   final String qrStatus;
+  final int credentialVersion;
   final bool canVerifyManually;
+}
+
+class QrReplacementResult {
+  const QrReplacementResult({
+    required this.studentUid,
+    required this.verificationStatus,
+    required this.credentialVersion,
+    required this.reason,
+    this.issuedAt,
+  });
+
+  final String studentUid;
+  final String verificationStatus;
+  final int credentialVersion;
+  final String reason;
+  final String? issuedAt;
 }
 
 class SchoolRosterEntry {
@@ -188,6 +206,17 @@ abstract interface class PortalStudentRepository {
   Future<String> revealLrnWithBiometric({
     required String targetType,
     required String targetId,
+  });
+  Future<QrReplacementResult> replaceStudentQrWithPassword({
+    required String studentUid,
+    required String reason,
+    required String requestId,
+    required String password,
+  });
+  Future<QrReplacementResult> replaceStudentQrWithBiometric({
+    required String studentUid,
+    required String reason,
+    required String requestId,
   });
   Future<void> setSecureScreen(bool enabled);
 }
@@ -355,6 +384,8 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
             guardianAuthorizationStatus:
                 row['guardianAuthorizationStatus'] as String? ?? 'pending',
             qrStatus: row['qrStatus'] as String? ?? 'not_issued',
+            credentialVersion:
+                (row['credentialVersion'] as num?)?.toInt() ?? 0,
             canVerifyManually: row['canVerifyManually'] == true,
           );
         } catch (error) {
@@ -564,6 +595,152 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
           return lrn;
         } catch (error) {
           _rethrowMapped(error, 'Unable to verify biometrics for LRN reveal.');
+        }
+      });
+
+  QrReplacementResult _parseReplacementResult(
+    Map<String, dynamic> row,
+    String fallbackUid,
+    String fallbackReason,
+  ) {
+    final version = (row['credentialVersion'] as num?)?.toInt();
+    if (version == null || version < 1) {
+      throw const PortalStudentException('Unable to replace student QR.');
+    }
+    return QrReplacementResult(
+      studentUid: row['studentUid'] as String? ?? fallbackUid,
+      verificationStatus: row['verificationStatus'] as String? ?? 'active',
+      credentialVersion: version,
+      reason: row['reason'] as String? ?? fallbackReason,
+      issuedAt: row['issuedAt'] as String?,
+    );
+  }
+
+  @override
+  Future<QrReplacementResult> replaceStudentQrWithPassword({
+    required String studentUid,
+    required String reason,
+    required String requestId,
+    required String password,
+  }) =>
+      operationLock.run(() async {
+        try {
+          final user = auth.currentUser;
+          final email = user?.email;
+          if (user == null || email == null || email.isEmpty) {
+            throw const PortalStudentException('Sign in is required.');
+          }
+          if (password.isEmpty) {
+            throw const PortalStudentException(
+              'Enter your Master Admin password.',
+            );
+          }
+          final challengeRes =
+              await _callable('issueAdminQrReplaceChallenge').call<dynamic>(
+            <String, dynamic>{
+              'studentUid': studentUid,
+              'reason': reason,
+              'deviceId': null,
+            },
+          );
+          final ch = Map<String, dynamic>.from(challengeRes.data as Map);
+          final challengeId = ch['challengeId'];
+          if (challengeId is! String || challengeId.isEmpty) {
+            throw const PortalStudentException(
+              'Unable to start QR replacement verification.',
+            );
+          }
+          await user.reauthenticateWithCredential(
+            EmailAuthProvider.credential(email: email, password: password),
+          );
+          await user.getIdToken(true);
+          final result =
+              await _callable('replaceSchoolStudentQr').call<dynamic>(
+            <String, dynamic>{
+              'studentUid': studentUid,
+              'reason': reason,
+              'requestId': requestId,
+              'challengeId': challengeId,
+              'method': 'password',
+              'deviceId': null,
+              'signature': null,
+            },
+          );
+          return _parseReplacementResult(
+            Map<String, dynamic>.from(result.data as Map),
+            studentUid,
+            reason,
+          );
+        } catch (error) {
+          _rethrowMapped(error, 'Unable to replace student QR.');
+        }
+      });
+
+  @override
+  Future<QrReplacementResult> replaceStudentQrWithBiometric({
+    required String studentUid,
+    required String reason,
+    required String requestId,
+  }) =>
+      operationLock.run(() async {
+        try {
+          final uid = auth.currentUser?.uid;
+          if (uid == null) {
+            throw const PortalStudentException('Sign in is required.');
+          }
+          final prefs = await SharedPreferences.getInstance();
+          final deviceId = prefs.getString('resqme_staff_tier2_device_$uid');
+          if (deviceId == null || deviceId.length < 20) {
+            throw const PortalStudentException(
+              'Enroll this device in Biometric Device Setup first, or confirm with your Admin password.',
+            );
+          }
+          final challengeRes =
+              await _callable('issueAdminQrReplaceChallenge').call<dynamic>(
+            <String, dynamic>{
+              'studentUid': studentUid,
+              'reason': reason,
+              'deviceId': deviceId,
+            },
+          );
+          final ch = Map<String, dynamic>.from(challengeRes.data as Map);
+          final challengeId = ch['challengeId'];
+          final nonce = ch['nonce'];
+          if (challengeId is! String || nonce is! String) {
+            throw const PortalStudentException(
+              'Unable to start biometric QR replacement.',
+            );
+          }
+          final message =
+              'resqme:staff-qr-replace:v1\n$uid\n$deviceId\nadmin_replace_student_qr\n$studentUid\n$reason\n$challengeId\n$nonce';
+          final String signature;
+          try {
+            signature = await keyProvider.signStaff(deviceId, message);
+          } catch (bioError) {
+            throw PortalStudentException(mapStaffTier2Error(bioError).message);
+          }
+          final result =
+              await _callable('replaceSchoolStudentQr').call<dynamic>(
+            <String, dynamic>{
+              'studentUid': studentUid,
+              'reason': reason,
+              'requestId': requestId,
+              'challengeId': challengeId,
+              'method': 'biometric',
+              'deviceId': deviceId,
+              'signature': signature,
+            },
+          );
+          return _parseReplacementResult(
+            Map<String, dynamic>.from(result.data as Map),
+            studentUid,
+            reason,
+          );
+        } catch (error) {
+          _rethrowMapped(
+            error,
+            'Unable to verify biometrics for QR replacement.',
+          );
         }
       });
 }

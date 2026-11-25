@@ -93,7 +93,16 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('My ResQMe QR')),
+    appBar: AppBar(
+      title: const Text('My ResQMe QR'),
+      actions: [
+        IconButton(
+          tooltip: 'Refresh QR',
+          onPressed: loading ? null : load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
+    ),
     body: SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
