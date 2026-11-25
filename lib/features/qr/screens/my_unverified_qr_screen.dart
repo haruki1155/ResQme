@@ -47,7 +47,13 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    load();
+    final cached = widget.repository.cachedCredential;
+    if (cached != null) {
+      credential = cached;
+      loading = false;
+    } else {
+      load();
+    }
     _checkBiometricStatus();
   }
 
@@ -118,19 +124,26 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen>
     }
   }
 
-  Future<void> load() async {
-    setState(() {
-      loading = true;
-      failed = false;
-      credential = null;
-    });
+  Future<void> load({bool forceRefresh = false}) async {
+    if (credential == null || forceRefresh) {
+      setState(() {
+        loading = true;
+        failed = false;
+        if (forceRefresh) credential = null;
+      });
+    }
     try {
-      final result = await widget.repository.ensureMineCredential();
+      final result = await widget.repository.ensureMineCredential(
+        forceRefresh: forceRefresh,
+      );
       if (mounted) {
-        setState(() => credential = result);
+        setState(() {
+          credential = result;
+          failed = false;
+        });
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && credential == null) {
         setState(() => failed = true);
       }
     } finally {
@@ -310,7 +323,7 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen>
       actions: [
         IconButton(
           tooltip: 'Refresh QR',
-          onPressed: loading ? null : load,
+          onPressed: loading ? null : () => load(forceRefresh: true),
           icon: const Icon(Icons.refresh),
         ),
       ],

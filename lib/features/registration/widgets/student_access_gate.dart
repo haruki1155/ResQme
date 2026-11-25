@@ -37,6 +37,7 @@ class _StudentAccessGateState extends State<StudentAccessGate>
   StreamSubscription<void>? subscription;
   bool registrationCompleted = false;
   bool registrationInProgress = false;
+  bool _wasBackgrounded = false;
   late bool showRegistration;
   @override
   void initState() {
@@ -60,9 +61,17 @@ class _StudentAccessGateState extends State<StudentAccessGate>
   void didChangeAppLifecycleState(AppLifecycleState value) {
     // Do not replace a submitted form between Auth creation and profile creation.
     if (registrationInProgress) return;
+    // Ignore transient inactive transitions (e.g. Android BiometricPrompt overlay).
+    if (value == AppLifecycleState.inactive) return;
     if (value == AppLifecycleState.resumed) {
-      if (!registrationInProgress) reload();
-    } else {
+      if (_wasBackgrounded) {
+        _wasBackgrounded = false;
+        reload();
+      }
+    } else if (value == AppLifecycleState.paused ||
+        value == AppLifecycleState.hidden ||
+        value == AppLifecycleState.detached) {
+      _wasBackgrounded = true;
       setState(() {
         state = Future.value(
           const RegistrationResult(RegistrationState.failure),

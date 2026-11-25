@@ -20,6 +20,20 @@ class Tier1QrCredential {
 class Tier1QrRepository {
   Tier1QrRepository(this.client);
   final PilotClient client;
+  String? _cachedUid;
+  Tier1QrCredential? _cachedCredential;
+
+  Tier1QrCredential? get cachedCredential {
+    final uid = client.uid;
+    if (uid == null || _cachedUid != uid) return null;
+    return _cachedCredential;
+  }
+
+  void clearCache() {
+    _cachedUid = null;
+    _cachedCredential = null;
+  }
+
   Tier1QrCredential validate(Map<String, dynamic> data) {
     if (!['pending', 'active'].contains(data['verificationStatus']) ||
         data['payload'] is! String ||
@@ -45,19 +59,37 @@ class Tier1QrRepository {
     }
   }
 
-  Future<Tier1QrCredential> ensureMineCredential() async {
+  Future<Tier1QrCredential> ensureMineCredential({
+    bool forceRefresh = false,
+  }) async {
+    final uid = client.uid;
+    if (!forceRefresh && uid != null && _cachedUid == uid && _cachedCredential != null) {
+      return _cachedCredential!;
+    }
     try {
-      return validate(await client.invoke('ensureMyTier1Qr', {}));
+      final result = validate(await client.invoke('ensureMyTier1Qr', {}));
+      if (uid != null && client.uid == uid) {
+        _cachedUid = uid;
+        _cachedCredential = result;
+      }
+      return result;
     } catch (_) {
       throw const QrFailure();
     }
   }
 
-  Future<String> ensureMine() async => (await ensureMineCredential()).payload;
+  Future<String> ensureMine() async =>
+      (await ensureMineCredential(forceRefresh: true)).payload;
 
   Future<Tier1QrCredential> replaceMineCredential() async {
+    final uid = client.uid;
     try {
-      return validate(await client.invoke('replaceMyTier1Qr', {}));
+      final result = validate(await client.invoke('replaceMyTier1Qr', {}));
+      if (uid != null && client.uid == uid) {
+        _cachedUid = uid;
+        _cachedCredential = result;
+      }
+      return result;
     } catch (_) {
       throw const QrFailure();
     }
