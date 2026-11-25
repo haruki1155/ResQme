@@ -29,10 +29,15 @@ export function allowTier1Resolution(ip:unknown,now=Date.now()):boolean {
 }
 
 export const resolveTier1Qr=onCall({...resqmeRuntimeOptions,maxInstances:4},async request=>{
-  if(!allowTier1Resolution(request.rawRequest.ip)) return {active:false};
+  const project=process.env.GCLOUD_PROJECT||process.env.GOOGLE_CLOUD_PROJECT;
+  const rawIp=request.rawRequest?.ip||request.rawRequest?.socket?.remoteAddress;
+  const clientIp=
+    (!rawIp||rawIp.length<3)&&process.env.FUNCTIONS_EMULATOR==='true'&&project==='demo-resqme'
+      ? '127.0.0.1'
+      : rawIp;
+  if(!allowTier1Resolution(clientIp)) return {active:false};
   let payload:string;
   try{payload=validateResolveQrRequest(request.data);}catch{return {active:false};}
-  const project=process.env.GCLOUD_PROJECT||process.env.GOOGLE_CLOUD_PROJECT;
   if(!['demo-resqme','resqme-943ee'].includes(project??'')) return {active:false};
   if(!getApps().some(app=>app.name==='[DEFAULT]')) initializeApp();
   const db=getFirestore();

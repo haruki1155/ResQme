@@ -24,7 +24,8 @@
     "test:integration:phase1": "npm run build && node --test --test-concurrency=1 lib/test/staff_tier2_emulator_integration.test.js",
     "test:integration:phase21": "npm run build && node --test --test-concurrency=1 lib/test/staff_account_lifecycle_emulator_integration.test.js",
     "test:integration:phase24": "npm run build && node --test --test-concurrency=1 lib/test/staff_qr_replacement_emulator_integration.test.js",
-    "test:integration:final": "npm run build && node --test --test-concurrency=1 lib/test/phase25_phase3_emulator_integration.test.js"
+    "test:integration:final": "npm run build && node --test --test-concurrency=1 lib/test/phase25_phase3_emulator_integration.test.js",
+    "test:integration:phase9": "npm run build && node --test --test-concurrency=1 lib/test/phase9_two_app_sync_emulator.test.js"
   },
   "dependencies": {
     "firebase-admin": "^14.5.0",
