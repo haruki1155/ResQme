@@ -1,6 +1,9 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/data/account_operation_lock.dart';
+import '../../medical/services/platform_tier2_key.dart';
+import 'staff_tier2_repository.dart';
 
 class PortalStudentException implements Exception {
   const PortalStudentException(this.message);
@@ -34,7 +37,8 @@ class SchoolStudentSummary {
   const SchoolStudentSummary({
     required this.uid,
     required this.fullName,
-    required this.lrn,
+    required this.maskedLrn,
+    this.hasLrn = false,
     required this.gradeLevel,
     required this.accountCategory,
     required this.schoolApprovalStatus,
@@ -43,7 +47,8 @@ class SchoolStudentSummary {
 
   final String uid;
   final String fullName;
-  final String? lrn;
+  final String? maskedLrn;
+  final bool hasLrn;
   final String gradeLevel;
   final String accountCategory; // 'registered' | 'verified' | 'disabled'
   final String schoolApprovalStatus;
@@ -72,7 +77,8 @@ class SchoolStudentDetails {
   const SchoolStudentDetails({
     required this.uid,
     required this.fullName,
-    required this.lrn,
+    required this.maskedLrn,
+    this.hasLrn = false,
     required this.gradeLevel,
     required this.sex,
     required this.birthDate,
@@ -91,7 +97,8 @@ class SchoolStudentDetails {
 
   final String uid;
   final String fullName;
-  final String? lrn;
+  final String? maskedLrn;
+  final bool hasLrn;
   final String gradeLevel;
   final String? sex;
   final String? birthDate;
@@ -112,7 +119,8 @@ class SchoolRosterEntry {
   const SchoolRosterEntry({
     required this.rosterId,
     required this.displayName,
-    required this.lrn,
+    required this.maskedLrn,
+    this.hasLrn = false,
     required this.gradeLevel,
     required this.sex,
     required this.birthDate,
@@ -122,7 +130,8 @@ class SchoolRosterEntry {
 
   final String rosterId;
   final String displayName;
-  final String? lrn;
+  final String? maskedLrn;
+  final bool hasLrn;
   final String gradeLevel;
   final String? sex;
   final String? birthDate;
@@ -170,6 +179,16 @@ abstract interface class PortalStudentRepository {
     int limit = 20,
     String? cursor,
   });
+  Future<String> revealLrnWithPassword({
+    required String targetType,
+    required String targetId,
+    required String password,
+  });
+  Future<String> revealLrnWithBiometric({
+    required String targetType,
+    required String targetId,
+  });
+  Future<void> setSecureScreen(bool enabled);
 }
 
 class FirebasePortalStudentRepository implements PortalStudentRepository {
@@ -178,7 +197,8 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
     required this.functions,
     required this.operationLock,
     required String expectedProjectId,
-  }) {
+    PlatformTier2Key? keyProvider,
+  }) : keyProvider = keyProvider ?? PlatformTier2Key() {
     if (!['demo-resqme', 'resqme-943ee'].contains(expectedProjectId) ||
         auth.app.options.projectId != expectedProjectId ||
         functions.app.options.projectId != expectedProjectId ||
@@ -190,6 +210,7 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
   final FirebaseAuth auth;
   final FirebaseFunctions functions;
   final AccountOperationLock operationLock;
+  final PlatformTier2Key keyProvider;
 
   HttpsCallable _callable(String name) => functions.httpsCallable(
         name,
@@ -197,12 +218,31 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
       );
 
   Never _rethrowMapped(Object error, String fallback) {
+    if (error is PortalStudentException) throw error;
+    if (error is FirebaseAuthException) {
+      final msg = switch (error.code) {
+        'wrong-password' ||
+        'invalid-credential' ||
+        'invalid-login-credentials' =>
+          'Admin password verification failed. Check your password and try again.',
+        'too-many-requests' => 'Too many attempts. Please wait before retrying.',
+        _ => 'Admin authentication failed. Sign in again.',
+      };
+      throw PortalStudentException(msg);
+    }
     if (error is FirebaseFunctionsException &&
         error.message != null &&
         error.message!.trim().isNotEmpty) {
       throw PortalStudentException(error.message!.trim());
     }
     throw PortalStudentException(fallback);
+  }
+
+  @override
+  Future<void> setSecureScreen(bool enabled) async {
+    try {
+      await keyProvider.setSecureScreen(enabled);
+    } catch (_) {}
   }
 
   @override
@@ -256,10 +296,12 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
           return SchoolStudentPage(
             students: items.map((item) {
               final row = Map<String, dynamic>.from(item as Map);
+              final maskedLrn = row['maskedLrn'] as String?;
               return SchoolStudentSummary(
                 uid: row['uid'] as String,
                 fullName: row['fullName'] as String? ?? '',
-                lrn: row['lrn'] as String?,
+                maskedLrn: maskedLrn,
+                hasLrn: row['hasLrn'] == true || maskedLrn != null,
                 gradeLevel: row['gradeLevel'] as String? ?? 'Unassigned Grade',
                 accountCategory:
                     row['accountCategory'] as String? ?? 'registered',
@@ -284,10 +326,12 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
           final result = await _callable('getSchoolStudentDetails')
               .call<dynamic>(<String, dynamic>{'studentUid': studentUid});
           final row = Map<String, dynamic>.from(result.data as Map);
+          final maskedLrn = row['maskedLrn'] as String?;
           return SchoolStudentDetails(
             uid: row['uid'] as String,
             fullName: row['fullName'] as String? ?? '',
-            lrn: row['lrn'] as String?,
+            maskedLrn: maskedLrn,
+            hasLrn: row['hasLrn'] == true || maskedLrn != null,
             gradeLevel: row['gradeLevel'] as String? ?? 'Unassigned Grade',
             sex: row['sex'] as String?,
             birthDate: row['birthDate'] as String?,
@@ -374,10 +418,12 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
             rosterAvailable: raw['rosterAvailable'] == true,
             entries: items.map((item) {
               final row = Map<String, dynamic>.from(item as Map);
+              final maskedLrn = row['maskedLrn'] as String?;
               return SchoolRosterEntry(
                 rosterId: row['rosterId'] as String,
                 displayName: row['displayName'] as String? ?? '',
-                lrn: row['lrn'] as String?,
+                maskedLrn: maskedLrn,
+                hasLrn: row['hasLrn'] == true || maskedLrn != null,
                 gradeLevel: row['gradeLevel'] as String? ?? 'Unassigned Grade',
                 sex: row['sex'] as String?,
                 birthDate: row['birthDate'] as String?,
@@ -392,6 +438,112 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
           );
         } catch (error) {
           _rethrowMapped(error, 'Unable to load official school roster.');
+        }
+      });
+
+  @override
+  Future<String> revealLrnWithPassword({
+    required String targetType,
+    required String targetId,
+    required String password,
+  }) =>
+      operationLock.run(() async {
+        try {
+          final user = auth.currentUser;
+          final email = user?.email;
+          if (user == null || email == null || email.isEmpty) {
+            throw const PortalStudentException('Sign in is required.');
+          }
+          if (password.isEmpty) {
+            throw const PortalStudentException(
+              'Enter your Master Admin password.',
+            );
+          }
+          await user.reauthenticateWithCredential(
+            EmailAuthProvider.credential(email: email, password: password),
+          );
+          await user.getIdToken(true);
+          final result = await _callable('revealStudentLrn').call<dynamic>(
+            <String, dynamic>{
+              'targetType': targetType,
+              'targetId': targetId,
+              'authMethod': 'password',
+            },
+          );
+          final row = Map<String, dynamic>.from(result.data as Map);
+          final lrn = row['lrn'];
+          if (lrn is! String || lrn.length != 12) {
+            throw const PortalStudentException('Unable to reveal full LRN.');
+          }
+          return lrn;
+        } catch (error) {
+          _rethrowMapped(error, 'Unable to reveal full LRN.');
+        }
+      });
+
+  @override
+  Future<String> revealLrnWithBiometric({
+    required String targetType,
+    required String targetId,
+  }) =>
+      operationLock.run(() async {
+        try {
+          final uid = auth.currentUser?.uid;
+          if (uid == null) {
+            throw const PortalStudentException('Sign in is required.');
+          }
+          final prefs = await SharedPreferences.getInstance();
+          final deviceId = prefs.getString('resqme_staff_tier2_device_$uid');
+          if (deviceId == null || deviceId.length < 20) {
+            throw const PortalStudentException(
+              'Enroll this device in Biometric Device Setup first, or confirm with your Admin password.',
+            );
+          }
+
+          final challengeRes =
+              await _callable('issueAdminLrnRevealChallenge').call<dynamic>(
+            <String, dynamic>{
+              'targetType': targetType,
+              'targetId': targetId,
+              'deviceId': deviceId,
+            },
+          );
+          final ch = Map<String, dynamic>.from(challengeRes.data as Map);
+          final challengeId = ch['challengeId'];
+          final nonce = ch['nonce'];
+          if (challengeId is! String || nonce is! String) {
+            throw const PortalStudentException(
+              'Unable to start biometric LRN verification.',
+            );
+          }
+
+          final message =
+              'resqme:admin-lrn-reveal:v1\n$uid\n$deviceId\n$targetType\n$targetId\n$challengeId\n$nonce';
+          final String signature;
+          try {
+            signature = await keyProvider.signStaff(deviceId, message);
+          } catch (bioError) {
+            throw PortalStudentException(mapStaffTier2Error(bioError).message);
+          }
+
+          final revealRes = await _callable('revealStudentLrn').call<dynamic>(
+            <String, dynamic>{
+              'targetType': targetType,
+              'targetId': targetId,
+              'authMethod': 'biometric',
+              'challengeId': challengeId,
+              'deviceId': deviceId,
+              'signature': signature,
+            },
+          );
+          final row = Map<String, dynamic>.from(revealRes.data as Map);
+          final lrn = row['lrn'];
+          if (lrn is! String || lrn.length != 12) {
+            throw const PortalStudentException('Unable to reveal full LRN.');
+          }
+          return lrn;
+        } catch (error) {
+          _rethrowMapped(error, 'Unable to verify biometrics for LRN reveal.');
         }
       });
 }

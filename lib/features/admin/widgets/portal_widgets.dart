@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../app/resqme_theme.dart';
+import '../services/portal_student_repository.dart';
 
 abstract final class PortalColors {
   static const brandRed = Color(0xFFE92B32);
@@ -469,6 +471,391 @@ class PortalBrandMark extends StatelessWidget {
         color: Colors.white,
         size: size * 0.62,
       ),
+    );
+  }
+}
+
+/// Protected LRN display row implementing 2-layer security:
+/// - Layer 1: Displays only the server-masked LRN (`XXXX••••XXXX`) by default.
+/// - Layer 2: Requires step-up verification (Hardware Biometrics OR Master Admin
+///   Password) to temporarily reveal the full 12-digit LRN, enables FLAG_SECURE
+///   against screenshots while revealed, and auto-hides after 30 seconds or when
+///   backgrounded.
+class PortalProtectedLrnRow extends StatefulWidget {
+  const PortalProtectedLrnRow({
+    super.key,
+    required this.maskedLrn,
+    required this.hasLrn,
+    required this.targetType,
+    required this.targetId,
+    required this.studentLabel,
+    required this.portalStudentRepository,
+    this.labelWidth = 148,
+  });
+
+  final String? maskedLrn;
+  final bool hasLrn;
+  final String targetType; // 'student' | 'roster'
+  final String targetId;
+  final String studentLabel;
+  final PortalStudentRepository portalStudentRepository;
+  final double labelWidth;
+
+  @override
+  State<PortalProtectedLrnRow> createState() => _PortalProtectedLrnRowState();
+}
+
+class _PortalProtectedLrnRowState extends State<PortalProtectedLrnRow>
+    with WidgetsBindingObserver {
+  String? _revealedLrn;
+  Timer? _autoHideTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && _revealedLrn != null) {
+      _hideLrn();
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoHideTimer?.cancel();
+    if (_revealedLrn != null) {
+      widget.portalStudentRepository.setSecureScreen(false);
+    }
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _hideLrn() {
+    _autoHideTimer?.cancel();
+    _autoHideTimer = null;
+    widget.portalStudentRepository.setSecureScreen(false);
+    if (mounted) {
+      setState(() => _revealedLrn = null);
+    } else {
+      _revealedLrn = null;
+    }
+  }
+
+  Future<void> _promptReveal() async {
+    final revealed = await showDialog<String>(
+      context: context,
+      builder: (_) => _PortalLrnStepUpDialog(
+        studentLabel: widget.studentLabel,
+        maskedLrn: widget.maskedLrn ?? '••••',
+        targetType: widget.targetType,
+        targetId: widget.targetId,
+        portalStudentRepository: widget.portalStudentRepository,
+      ),
+    );
+    if (revealed == null || !mounted) return;
+    await widget.portalStudentRepository.setSecureScreen(true);
+    if (!mounted) return;
+    _autoHideTimer?.cancel();
+    setState(() => _revealedLrn = revealed);
+    _autoHideTimer = Timer(const Duration(seconds: 30), _hideLrn);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isRevealed = _revealedLrn != null;
+    final displayValue = isRevealed
+        ? _revealedLrn!
+        : (widget.maskedLrn ?? 'Not recorded');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: widget.labelWidth,
+            child: const Text(
+              'LRN',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: PortalColors.inkSecondary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  displayValue,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: isRevealed ? 0.5 : 0.3,
+                    color: PortalColors.inkPrimary,
+                  ),
+                ),
+                if (widget.hasLrn)
+                  isRevealed
+                      ? InkWell(
+                          key: const Key('hide-lrn-button'),
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: _hideLrn,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: PortalColors.brandRedSoft,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.visibility_off_outlined,
+                                  size: 14,
+                                  color: PortalColors.brandRed,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Hide (30s)',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: PortalColors.brandRed,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : InkWell(
+                          key: const Key('reveal-lrn-button'),
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: _promptReveal,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: PortalColors.background,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: PortalColors.border),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.lock_outline,
+                                  size: 14,
+                                  color: PortalColors.inkPrimary,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Reveal',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: PortalColors.inkPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PortalLrnStepUpDialog extends StatefulWidget {
+  const _PortalLrnStepUpDialog({
+    required this.studentLabel,
+    required this.maskedLrn,
+    required this.targetType,
+    required this.targetId,
+    required this.portalStudentRepository,
+  });
+
+  final String studentLabel;
+  final String maskedLrn;
+  final String targetType;
+  final String targetId;
+  final PortalStudentRepository portalStudentRepository;
+
+  @override
+  State<_PortalLrnStepUpDialog> createState() => _PortalLrnStepUpDialogState();
+}
+
+class _PortalLrnStepUpDialogState extends State<_PortalLrnStepUpDialog> {
+  final _passwordController = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _verifyWithBiometrics() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final lrn = await widget.portalStudentRepository.revealLrnWithBiometric(
+        targetType: widget.targetType,
+        targetId: widget.targetId,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(lrn);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error is PortalStudentException
+            ? error.message
+            : 'Biometric verification could not complete.';
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _verifyWithPassword() async {
+    if (_busy) return;
+    final pw = _passwordController.text;
+    if (pw.isEmpty) {
+      setState(() => _error = 'Enter your Master Admin password.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final lrn = await widget.portalStudentRepository.revealLrnWithPassword(
+        targetType: widget.targetType,
+        targetId: widget.targetId,
+        password: pw,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(lrn);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error is PortalStudentException
+            ? error.message
+            : 'Admin password verification failed.';
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Verify Admin Identity'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Full LRNs are protected with 2-layer security to prevent unauthorized viewing or data theft.\n\n'
+              'Student: ${widget.studentLabel} (${widget.maskedLrn})',
+              style: const TextStyle(
+                fontSize: 13,
+                color: PortalColors.inkSecondary,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              key: const Key('reveal-lrn-biometric-button'),
+              onPressed: _busy ? null : _verifyWithBiometrics,
+              icon: const Icon(Icons.fingerprint),
+              label: const Text('Verify with Biometrics'),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(child: Divider()),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      'OR USE PASSWORD',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: PortalColors.inkSecondary,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Divider()),
+                ],
+              ),
+            ),
+            TextField(
+              key: const Key('reveal-lrn-password-input'),
+              controller: _passwordController,
+              enabled: !_busy,
+              obscureText: true,
+              onSubmitted: (_) => _verifyWithPassword(),
+              decoration: const InputDecoration(
+                labelText: 'Master Admin password',
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              key: const Key('reveal-lrn-password-button'),
+              onPressed: _busy ? null : _verifyWithPassword,
+              icon: const Icon(Icons.lock_open_outlined, size: 18),
+              label: const Text('Verify with Password'),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: PortalColors.alertBg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: PortalColors.alertFg,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
     );
   }
 }

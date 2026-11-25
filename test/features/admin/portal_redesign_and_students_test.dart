@@ -63,7 +63,9 @@ class _FakeAccessRepo implements StaffAccessRepository {
 
 class _FakeManagementRepo implements StaffManagementRepository {
   @override
-  Future<List<AuthorizedAccountSummary>> listAccounts({String search = ''}) async =>
+  Future<List<AuthorizedAccountSummary>> listAccounts({
+    String search = '',
+  }) async =>
       const [
         AuthorizedAccountSummary(
           uid: 'auth-1',
@@ -109,15 +111,38 @@ class _FakeManagementRepo implements StaffManagementRepository {
   Future<void> revokeDevice({required String targetUid}) async {}
 }
 
+String _mask(String lrn) => '${lrn.substring(0, 4)}••••${lrn.substring(8)}';
+
 class _FakePortalStudentRepo implements PortalStudentRepository {
-  _FakePortalStudentRepo({this.emptyRoster = false});
+  _FakePortalStudentRepo({
+    this.emptyRoster = false,
+    this.failNextBiometric = false,
+  });
 
   final bool emptyRoster;
+  bool failNextBiometric;
+  bool secureScreenEnabled = false;
+  int biometricRevealCalls = 0;
+  int passwordRevealCalls = 0;
+
+  final Map<String, String> _rawStudentLrns = {
+    'stu-1': '009876543210',
+    'stu-2': '000000123456',
+    'stu-3': '005555555555',
+  };
+
+  final Map<String, String> _rawRosterLrns = {
+    'r-1': '002222222222',
+    'r-2': '000000123456',
+    'r-3': '009876543210',
+  };
+
   final Map<String, SchoolStudentDetails> records = {
     'stu-1': const SchoolStudentDetails(
       uid: 'stu-1',
       fullName: 'Ana Santos',
-      lrn: '009876543210',
+      maskedLrn: '0098••••3210',
+      hasLrn: true,
       gradeLevel: 'Grade 10',
       sex: 'Female',
       birthDate: '2010-04-12',
@@ -136,7 +161,8 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
     'stu-2': const SchoolStudentDetails(
       uid: 'stu-2',
       fullName: 'Benito Reyes',
-      lrn: '000000123456',
+      maskedLrn: '0000••••3456',
+      hasLrn: true,
       gradeLevel: 'Unassigned Grade',
       sex: 'Male',
       birthDate: null,
@@ -155,7 +181,8 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
     'stu-3': const SchoolStudentDetails(
       uid: 'stu-3',
       fullName: 'Carlo Mendoza',
-      lrn: '005555555555',
+      maskedLrn: '0055••••5555',
+      hasLrn: true,
       gradeLevel: 'Grade 12',
       sex: 'Male',
       birthDate: '2007-11-03',
@@ -176,30 +203,33 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
   late final List<SchoolRosterEntry> roster = emptyRoster
       ? []
       : [
-          const SchoolRosterEntry(
+          SchoolRosterEntry(
             rosterId: 'r-1',
             displayName: 'Bautista, Zara',
-            lrn: '002222222222',
+            maskedLrn: _mask(_rawRosterLrns['r-1']!),
+            hasLrn: true,
             gradeLevel: 'Unassigned Grade',
             sex: 'Female',
             birthDate: '2009-09-01',
             registrationState: 'not_registered',
             claimedStudentUid: null,
           ),
-          const SchoolRosterEntry(
+          SchoolRosterEntry(
             rosterId: 'r-2',
             displayName: 'Reyes, Benito',
-            lrn: '000000123456',
+            maskedLrn: _mask(_rawRosterLrns['r-2']!),
+            hasLrn: true,
             gradeLevel: 'Unassigned Grade',
             sex: 'Male',
             birthDate: null,
             registrationState: 'registered',
             claimedStudentUid: 'stu-2',
           ),
-          const SchoolRosterEntry(
+          SchoolRosterEntry(
             rosterId: 'r-3',
             displayName: 'Santos, Ana',
-            lrn: '009876543210',
+            maskedLrn: _mask(_rawRosterLrns['r-3']!),
+            hasLrn: true,
             gradeLevel: 'Grade 10',
             sex: 'Female',
             birthDate: '2010-04-12',
@@ -207,6 +237,43 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
             claimedStudentUid: 'stu-1',
           ),
         ];
+
+  @override
+  Future<void> setSecureScreen(bool enabled) async {
+    secureScreenEnabled = enabled;
+  }
+
+  @override
+  Future<String> revealLrnWithPassword({
+    required String targetType,
+    required String targetId,
+    required String password,
+  }) async {
+    if (password != 'AdminStrong!2026') {
+      throw const PortalStudentException(
+        'Admin password verification failed. Check your password and try again.',
+      );
+    }
+    passwordRevealCalls += 1;
+    return targetType == 'student'
+        ? _rawStudentLrns[targetId]!
+        : _rawRosterLrns[targetId]!;
+  }
+
+  @override
+  Future<String> revealLrnWithBiometric({
+    required String targetType,
+    required String targetId,
+  }) async {
+    if (failNextBiometric) {
+      failNextBiometric = false;
+      throw const PortalStudentException('Biometric confirmation cancelled.');
+    }
+    biometricRevealCalls += 1;
+    return targetType == 'student'
+        ? _rawStudentLrns[targetId]!
+        : _rawRosterLrns[targetId]!;
+  }
 
   @override
   Future<PortalDashboardStats> loadDashboardStats() async {
@@ -238,7 +305,8 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
       return SchoolStudentSummary(
         uid: d.uid,
         fullName: d.fullName,
-        lrn: d.lrn,
+        maskedLrn: d.maskedLrn,
+        hasLrn: d.hasLrn,
         gradeLevel: d.gradeLevel,
         accountCategory: d.accountCategory,
         schoolApprovalStatus: d.schoolApprovalStatus,
@@ -255,8 +323,9 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
         return false;
       }
       if (q.isNotEmpty) {
-        if (exactLrn) return s.lrn == search.trim();
-        return s.fullName.toLowerCase().contains(q) || s.lrn == search.trim();
+        final rawLrn = _rawStudentLrns[s.uid];
+        if (exactLrn) return rawLrn == search.trim();
+        return s.fullName.toLowerCase().contains(q) || rawLrn == search.trim();
       }
       return true;
     }).toList();
@@ -283,7 +352,8 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
     records[studentUid] = SchoolStudentDetails(
       uid: cur.uid,
       fullName: cur.fullName,
-      lrn: cur.lrn,
+      maskedLrn: cur.maskedLrn,
+      hasLrn: cur.hasLrn,
       gradeLevel: cur.gradeLevel,
       sex: cur.sex,
       birthDate: cur.birthDate,
@@ -296,7 +366,6 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
       verificationOutcome: 'verified',
       medicalCompletionStatus: cur.medicalCompletionStatus,
       guardianAuthorizationStatus: cur.guardianAuthorizationStatus,
-      // Do not auto-activate pending QR when medical is incomplete!
       qrStatus: cur.qrStatus,
       canVerifyManually: false,
     );
@@ -315,7 +384,8 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
     records[studentUid] = SchoolStudentDetails(
       uid: cur.uid,
       fullName: cur.fullName,
-      lrn: cur.lrn,
+      maskedLrn: cur.maskedLrn,
+      hasLrn: cur.hasLrn,
       gradeLevel: cur.gradeLevel,
       sex: cur.sex,
       birthDate: cur.birthDate,
@@ -328,7 +398,6 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
       verificationOutcome: cur.verificationOutcome,
       medicalCompletionStatus: cur.medicalCompletionStatus,
       guardianAuthorizationStatus: cur.guardianAuthorizationStatus,
-      // Never auto-restore revoked QR on reactivation!
       qrStatus: cur.qrStatus,
       canVerifyManually: !disable && cur.schoolApprovalStatus == 'pending',
     );
@@ -360,7 +429,7 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
       }
       if (q.isNotEmpty) {
         return e.displayName.toLowerCase().contains(q) ||
-            e.lrn == search.trim();
+            _rawRosterLrns[e.rosterId] == search.trim();
       }
       return true;
     }).toList();
@@ -422,22 +491,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Primary 4 destinations
       expect(find.text('Dashboard'), findsWidgets);
       expect(find.text('Active Students'), findsOneWidget);
       expect(find.text('Student Roster'), findsOneWidget);
       expect(find.text('Authorized Personnel'), findsOneWidget);
-
-      // Prominent QR scan on Dashboard
       expect(find.text('Scan Student QR'), findsOneWidget);
 
-      // Account menu contains Biometric Device Setup, Change Password, Email Verification
       await tester.tap(find.byTooltip('Account & Security'));
       await tester.pumpAndSettle();
       expect(find.text('Biometric Device Setup'), findsOneWidget);
       expect(find.text('Change Password'), findsOneWidget);
       expect(find.text('Email Verification & Recovery'), findsOneWidget);
-      // Dismiss menu
       await tester.tapAt(const Offset(10, 10));
       await tester.pumpAndSettle();
     }
@@ -457,6 +521,90 @@ void main() {
     expect(find.text('Active Students'), findsNothing);
     expect(find.text('Student Roster'), findsNothing);
     expect(find.text('Authorized Personnel'), findsNothing);
+  });
+
+  testWidgets('LRN is masked to first 4 + last 4 digits by default and requires Biometric or Password step-up with 30s auto-hide', (tester) async {
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(412, 915);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final accessRepo = _FakeAccessRepo(access: masterAccess);
+    final studentRepo = _FakePortalStudentRepo(failNextBiometric: true);
+    await tester.pumpWidget(
+      AdminApp(
+        accessRepository: accessRepo,
+        managementRepository: _FakeManagementRepo(),
+        portalStudentRepository: studentRepo,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Active Students'));
+    await tester.pumpAndSettle();
+
+    // Default list view ONLY shows first 4 and last 4 digits — NEVER full LRN!
+    expect(find.textContaining('0098••••3210'), findsOneWidget);
+    expect(find.textContaining('0000••••3456'), findsOneWidget);
+    expect(find.textContaining('009876543210'), findsNothing);
+    expect(find.textContaining('000000123456'), findsNothing);
+
+    // Open Benito Reyes details -> still masked by default!
+    await tester.tap(find.text('Benito Reyes'));
+    await tester.pumpAndSettle();
+    expect(find.text('0000••••3456'), findsOneWidget);
+    expect(find.text('000000123456'), findsNothing);
+
+    // Tap Reveal -> cancelled biometric keeps LRN masked
+    await tester.tap(find.byKey(const Key('reveal-lrn-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('reveal-lrn-biometric-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Biometric confirmation cancelled.'), findsOneWidget);
+    expect(find.text('000000123456'), findsNothing);
+
+    // Second biometric attempt succeeds -> reveals full LRN + enables FLAG_SECURE
+    await tester.tap(find.byKey(const Key('reveal-lrn-biometric-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('000000123456'), findsOneWidget);
+    expect(studentRepo.biometricRevealCalls, 1);
+    expect(studentRepo.secureScreenEnabled, isTrue);
+
+    // Auto-hides back to masked LRN after 30 seconds and clears FLAG_SECURE
+    await tester.pump(const Duration(seconds: 31));
+    await tester.pumpAndSettle();
+    expect(find.text('000000123456'), findsNothing);
+    expect(find.text('0000••••3456'), findsOneWidget);
+    expect(studentRepo.secureScreenEnabled, isFalse);
+
+    // Password step-up also works (wrong password fails, valid password reveals)
+    await tester.tap(find.byKey(const Key('reveal-lrn-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('reveal-lrn-password-input')),
+      'WrongPass',
+    );
+    await tester.tap(find.byKey(const Key('reveal-lrn-password-button')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('password verification failed'), findsOneWidget);
+    expect(find.text('000000123456'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const Key('reveal-lrn-password-input')),
+      'AdminStrong!2026',
+    );
+    await tester.tap(find.byKey(const Key('reveal-lrn-password-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('000000123456'), findsOneWidget);
+    expect(studentRepo.passwordRevealCalls, 1);
+
+    // Manual Hide button immediately re-masks
+    await tester.tap(find.byKey(const Key('hide-lrn-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('000000123456'), findsNothing);
+    expect(find.text('0000••••3456'), findsOneWidget);
   });
 
   testWidgets('Active Students supports status filters (no Pending/Revoked categories), exact LRN search, manual verification, and account disable/enable without restoring revoked QR', (tester) async {
@@ -481,7 +629,6 @@ void main() {
     await tester.tap(find.text('Active Students'));
     await tester.pumpAndSettle();
 
-    // Visible filter chips: All, Registered, Verified, Disabled — NO Pending or Revoked chip
     expect(find.widgetWithText(ChoiceChip, 'All'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Registered'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Verified'), findsOneWidget);
@@ -489,7 +636,7 @@ void main() {
     expect(find.widgetWithText(ChoiceChip, 'Pending'), findsNothing);
     expect(find.widgetWithText(ChoiceChip, 'Revoked'), findsNothing);
 
-    // Leading-zero LRN search
+    // Search by exact LRN locates Benito while still displaying masked LRN!
     await tester.enterText(
       find.byKey(const Key('active-students-search')),
       '000000123456',
@@ -497,16 +644,19 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
     expect(find.text('Benito Reyes'), findsOneWidget);
+    expect(find.textContaining('0000••••3456'), findsOneWidget);
     expect(find.text('Ana Santos'), findsNothing);
 
-    // Open Benito Reyes details -> manual verification
     await tester.tap(find.text('Benito Reyes'));
     await tester.pumpAndSettle();
-    expect(find.text('000000123456'), findsOneWidget);
+    expect(find.text('0000••••3456'), findsOneWidget);
     expect(find.text('Unassigned Grade'), findsOneWidget);
-    expect(find.text('Verify Student Account'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Verify Student Account'));
+    await tester.scrollUntilVisible(
+      find.text('Verify Student Account'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Verify Student Account'));
     await tester.pumpAndSettle();
@@ -515,13 +665,11 @@ void main() {
 
     expect(studentRepo.records['stu-2']!.accountCategory, 'verified');
     expect(studentRepo.records['stu-2']!.verificationMethod, 'manual_admin');
-    // Pending QR was NOT auto-activated because medical record is incomplete
     expect(studentRepo.records['stu-2']!.qrStatus, 'pending');
 
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    // Clear search and filter Disabled -> Carlo Mendoza (has revoked QR)
     await tester.enterText(find.byKey(const Key('active-students-search')), '');
     await tester.tap(find.widgetWithText(ChoiceChip, 'Disabled'));
     await tester.pumpAndSettle();
@@ -529,7 +677,11 @@ void main() {
 
     await tester.tap(find.text('Carlo Mendoza'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Enable Student Account'));
+    await tester.scrollUntilVisible(
+      find.text('Enable Student Account'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Enable Student Account'));
     await tester.pumpAndSettle();
@@ -542,12 +694,10 @@ void main() {
 
     expect(accessRepo.reauthCalls, 1);
     expect(studentRepo.records['stu-3']!.accountDisabled, isFalse);
-    // Revoked QR remains revoked after reactivation!
     expect(studentRepo.records['stu-3']!.qrStatus, 'revoked');
   });
 
-  testWidgets('Student Roster shows unregistered/registered/verified records and truthful empty state without fake Import button', (tester) async {
-    // 1. Populated roster
+  testWidgets('Student Roster shows masked LRNs, registration badges, and truthful empty state without fake Import button', (tester) async {
     await tester.pumpWidget(
       AdminApp(
         accessRepository: _FakeAccessRepo(access: masterAccess),
@@ -561,11 +711,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Bautista, Zara'), findsOneWidget);
+    expect(find.textContaining('0022••••2222'), findsOneWidget);
+    expect(find.textContaining('002222222222'), findsNothing);
     expect(find.text('Not Registered'), findsOneWidget);
     expect(find.text('Santos, Ana'), findsOneWidget);
     expect(find.textContaining('Import'), findsNothing);
 
-    // 2. Empty roster truthful state (no fake Import button)
     await tester.pumpWidget(
       AdminApp(
         key: const ValueKey('empty-roster-app'),
@@ -578,8 +729,9 @@ void main() {
     await tester.tap(find.text('Student Roster'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('No official school roster records'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Import SF1'), findsNothing);
-    expect(find.widgetWithText(OutlinedButton, 'Import SF1'), findsNothing);
+    expect(
+      find.textContaining('No official school roster records'),
+      findsOneWidget,
+    );
   });
 }

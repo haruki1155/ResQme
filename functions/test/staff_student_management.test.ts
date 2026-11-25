@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {generateKeyPairSync, sign} from 'node:crypto';
 import test from 'node:test';
 import {requirePending, requireQrEligible} from '../src/onboarding/authorization';
 import {sanitizeStudentProfile} from '../src/profile/get_my_student_profile';
@@ -6,14 +7,20 @@ import {evaluateQrEligibility, evaluateStudentEligibility} from '../src/qr/qr_el
 import {hashQrPayload} from '../src/qr/resolve_tier1_qr';
 import {rosterLookupId} from '../src/school/roster_contract';
 import {staffManagementDeps, type StaffAdminAuthPort} from '../src/staff/staff_account_management';
+import {setAttestationStatusFetcherForTest} from '../src/staff/staff_attestation';
 import {
+  adminLrnRevealSignedMessage,
   getPortalDashboardStats,
   getSchoolStudentDetails,
+  issueAdminLrnRevealChallenge,
   listSchoolRoster,
   listSchoolStudents,
+  maskLrn,
+  revealStudentLrn,
   setStudentAccountStatus,
   verifySchoolStudentAccount,
 } from '../src/staff/staff_student_management';
+import {STAFF_ENROLLMENT_PROOF_VERSION} from '../src/staff/staff_tier2_contract';
 
 const TEST_QR = 'resqme:v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
@@ -390,16 +397,20 @@ test('dashboard stats, Active Students filters, LRN leading zeros, pagination, a
   assert.equal(stats.disabledStudentsCount, 1);
   assert.equal(stats.authorizedPersonnelCount, 1);
 
-  // Active Students list: alphabetical, leading zeros preserved, Unassigned Grade fallback, visible categories only
+  // Active Students list: alphabetical, masked LRN (first 4 + last 4 only, zero full LRN leaked!), Unassigned Grade fallback
+  assert.equal(maskLrn('009876543210'), '0098••••3210');
   const page1 = await listSchoolStudents.run(req('master-a', {limit: 2}));
   assert.equal(page1.students.length, 2);
   assert.equal(page1.students[0].fullName, 'Ana Santos');
   assert.equal(page1.students[0].accountCategory, 'verified');
-  assert.equal(page1.students[0].lrn, '009876543210');
+  assert.equal(page1.students[0].maskedLrn, '0098••••3210');
+  assert.equal('lrn' in page1.students[0], false);
+  assert.equal(JSON.stringify(page1).includes('009876543210'), false);
   assert.equal(page1.students[1].fullName, 'Benito Reyes');
   assert.equal(page1.students[1].accountCategory, 'registered');
   assert.equal(page1.students[1].gradeLevel, 'Unassigned Grade');
-  assert.equal(page1.students[1].lrn, '000000123456');
+  assert.equal(page1.students[1].maskedLrn, '0000••••3456');
+  assert.equal(JSON.stringify(page1).includes('000000123456'), false);
   assert.ok(page1.nextCursor);
 
   const page2 = await listSchoolStudents.run(req('master-a', {limit: 2, cursor: page1.nextCursor}));
@@ -408,10 +419,12 @@ test('dashboard stats, Active Students filters, LRN leading zeros, pagination, a
   assert.equal(page2.students[0].accountCategory, 'disabled');
   assert.equal(page2.nextCursor, null);
 
-  // Exact LRN search preserves leading zeros
+  // Exact LRN search still locates the student on the server while returning ONLY maskedLrn!
   const byLrn = await listSchoolStudents.run(req('master-a', {search: '000000123456'}));
   assert.equal(byLrn.students.length, 1);
   assert.equal(byLrn.students[0].uid, 'stu-registered');
+  assert.equal(byLrn.students[0].maskedLrn, '0000••••3456');
+  assert.equal(JSON.stringify(byLrn).includes('000000123456'), false);
 
   // Filter by Unassigned Grade
   const unassigned = await listSchoolStudents.run(req('master-a', {gradeFilter: 'Unassigned Grade'}));
@@ -422,13 +435,15 @@ test('dashboard stats, Active Students filters, LRN leading zeros, pagination, a
   await assert.rejects(() => listSchoolStudents.run(req('master-a', {statusFilter: 'pending'})));
   await assert.rejects(() => listSchoolStudents.run(req('master-a', {statusFilter: 'revoked'})));
 
-  // Student Details never exposes medical contents or QR payload
+  // Student Details never exposes medical contents, QR payload, OR unmasked full LRN!
   const details = await getSchoolStudentDetails.run(req('master-a', {studentUid: 'stu-verified'}));
   const serialized = JSON.stringify(details);
   assert.equal(serialized.includes('SECRET ASTHMA DETAILS'), false);
   assert.equal(serialized.includes('SECRET PEANUT ALLERGY'), false);
   assert.equal(serialized.includes(TEST_QR), false);
-  assert.equal(details.lrn, '009876543210');
+  assert.equal(serialized.includes('009876543210'), false);
+  assert.equal(details.maskedLrn, '0098••••3210');
+  assert.equal(details.hasLrn, true);
   assert.equal(details.gradeLevel, 'Grade 10');
   assert.equal(details.sex, 'Female');
   assert.equal(details.birthDate, '2010-04-12');
@@ -764,9 +779,158 @@ test('Student Roster lists unregistered, registered, and verified roster claims 
   assert.equal(roster.entries[0].displayName, 'Bautista, Zara');
   assert.equal(roster.entries[0].registrationState, 'not_registered');
   assert.equal(roster.entries[0].gradeLevel, 'Unassigned Grade');
+  assert.equal(roster.entries[0].maskedLrn, '0022••••2222');
+  assert.equal('lrn' in roster.entries[0], false);
   assert.equal(roster.entries[1].displayName, 'Santos, Ana');
   assert.equal(roster.entries[1].registrationState, 'verified');
-  assert.equal(roster.entries[1].lrn, '000099998888');
+  assert.equal(roster.entries[1].maskedLrn, '0000••••8888');
+  assert.equal(JSON.stringify(roster).includes('000099998888'), false);
   assert.equal(roster.entries[2].displayName, 'Tan, Marco');
   assert.equal(roster.entries[2].registrationState, 'registered');
+});
+
+test('2-layer LRN reveal enforces Master Admin + Password recent-auth OR Biometric cryptographic signature + audit', async (t) => {
+  setAttestationStatusFetcherForTest(async () => ({entries: {}}));
+  t.after(() => setAttestationStatusFetcherForTest(null));
+
+  const s = makeStore();
+  seedMasterAdmin(s.rows, 'master-a', 'school-a');
+  s.rows.set('staffAccounts/auth-a', {
+    role: 'authorized',
+    isMasterAdmin: false,
+    active: true,
+    status: 'active',
+    schoolId: 'school-a',
+    mustChangePassword: false,
+    requiresEmailVerification: false,
+  });
+  s.rows.set('studentProfiles/stu-secret', {
+    schemaVersion: 1,
+    fullName: 'Secret Learner',
+    ageYearsAtRegistration: 18,
+    lrn: '004288881357',
+    status: 'pending_review',
+    schoolAssignmentStatus: 'assigned',
+    schoolId: 'school-a',
+    schoolApprovalStatus: 'approved',
+  });
+  s.rows.set('studentProfiles/stu-other', {
+    schemaVersion: 1,
+    fullName: 'Cross School',
+    ageYearsAtRegistration: 18,
+    lrn: '009999999999',
+    status: 'pending_review',
+    schoolAssignmentStatus: 'assigned',
+    schoolId: 'school-b',
+    schoolApprovalStatus: 'approved',
+  });
+
+  const {publicKey, privateKey} = generateKeyPairSync('ec', {namedCurve: 'prime256v1'});
+  const publicKeyB64 = publicKey.export({type: 'spki', format: 'der'}).toString('base64url');
+  const deviceId = 'master_device_biometric_001';
+  s.rows.set('staffTier2Devices/master-a', {
+    deviceId,
+    publicKey: publicKeyB64,
+    status: 'active',
+    keyVersion: 1,
+    enrollmentProofVersion: STAFF_ENROLLMENT_PROOF_VERSION,
+    attestationSerials: ['aa01bb02', 'cc03dd04'],
+  });
+
+  t.mock.method(staffManagementDeps, 'db', () => s.db as never);
+  t.mock.method(staffManagementDeps, 'auth', () => s.auth);
+
+  // 1. Authorized staff (non-Master Admin) is denied
+  await assert.rejects(() =>
+    revealStudentLrn.run(
+      req('auth-a', {targetType: 'student', targetId: 'stu-secret', authMethod: 'password'}),
+    ),
+  );
+
+  // 2. Stale auth (> 60s) is denied for password reveal
+  await assert.rejects(() =>
+    revealStudentLrn.run(
+      req(
+        'master-a',
+        {targetType: 'student', targetId: 'stu-secret', authMethod: 'password'},
+        {authTime: Math.floor(Date.now() / 1000) - 120},
+      ),
+    ),
+  );
+
+  // 3. Cross-school student reveal is denied even with fresh password
+  await assert.rejects(() =>
+    revealStudentLrn.run(
+      req('master-a', {targetType: 'student', targetId: 'stu-other', authMethod: 'password'}),
+    ),
+  );
+
+  // 4. Fresh Master Admin password reauthentication succeeds and logs audit
+  const pwReveal = await revealStudentLrn.run(
+    req('master-a', {targetType: 'student', targetId: 'stu-secret', authMethod: 'password'}),
+  );
+  assert.equal(pwReveal.lrn, '004288881357');
+  assert.equal(pwReveal.maskedLrn, '0042••••1357');
+
+  // 5. Hardware Biometric challenge + ECDSA signature succeeds once and blocks replay!
+  const ch = await issueAdminLrnRevealChallenge.run(
+    req('master-a', {targetType: 'student', targetId: 'stu-secret', deviceId}),
+  );
+  const msg = adminLrnRevealSignedMessage({
+    adminUid: 'master-a',
+    deviceId,
+    targetType: 'student',
+    targetId: 'stu-secret',
+    challengeId: ch.challengeId,
+    nonce: ch.nonce,
+  });
+  const sig = sign('sha256', Buffer.from(msg, 'utf8'), privateKey).toString('base64url');
+
+  // Forged signature rejected without consuming challenge
+  await assert.rejects(() =>
+    revealStudentLrn.run(
+      req('master-a', {
+        targetType: 'student',
+        targetId: 'stu-secret',
+        authMethod: 'biometric',
+        challengeId: ch.challengeId,
+        deviceId,
+        signature: Buffer.alloc(64, 7).toString('base64url'),
+      }),
+    ),
+  );
+
+  // Valid biometric signature reveals full LRN
+  const bioReveal = await revealStudentLrn.run(
+    req('master-a', {
+      targetType: 'student',
+      targetId: 'stu-secret',
+      authMethod: 'biometric',
+      challengeId: ch.challengeId,
+      deviceId,
+      signature: sig,
+    }),
+  );
+  assert.equal(bioReveal.lrn, '004288881357');
+
+  // Replay of same biometric signature is rejected!
+  await assert.rejects(() =>
+    revealStudentLrn.run(
+      req('master-a', {
+        targetType: 'student',
+        targetId: 'stu-secret',
+        authMethod: 'biometric',
+        challengeId: ch.challengeId,
+        deviceId,
+        signature: sig,
+      }),
+    ),
+  );
+
+  const revealAudits = [...s.rows.entries()]
+    .filter(([k]) => k.startsWith('staffManagementAudits/'))
+    .map(([, v]) => v);
+  assert.equal(revealAudits.length, 2);
+  assert.ok(revealAudits.some((a) => a.action === 'reveal_student_lrn' && String(a.reason).includes('method:password')));
+  assert.ok(revealAudits.some((a) => a.action === 'reveal_student_lrn' && String(a.reason).includes('method:biometric')));
 });

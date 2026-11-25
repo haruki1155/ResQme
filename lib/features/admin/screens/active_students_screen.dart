@@ -301,7 +301,7 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  'LRN: ${student.lrn ?? 'Not recorded'} • ${student.gradeLevel}',
+                                                  'LRN: ${student.maskedLrn ?? 'Not recorded'} • ${student.gradeLevel}',
                                                   style: const TextStyle(
                                                     fontSize: 12.5,
                                                     color: PortalColors

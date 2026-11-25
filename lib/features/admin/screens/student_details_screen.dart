@@ -71,7 +71,7 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Verify Student Account'),
         content: Text(
-          'Approve school enrollment verification for ${details.fullName} (LRN: ${details.lrn ?? 'Not recorded'})?\n\n'
+          'Approve school enrollment verification for ${details.fullName} (LRN: ${details.maskedLrn ?? 'Not recorded'})?\n\n'
           'Confirm this student against official school enrollment evidence. '
           'QR credentials activate only when medical and guardian requirements are also complete.',
         ),
@@ -293,9 +293,14 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
                                     ],
                                   ),
                                   const Divider(height: 22),
-                                  _detailRow(
-                                    'LRN',
-                                    details.lrn ?? 'Not recorded',
+                                  PortalProtectedLrnRow(
+                                    maskedLrn: details.maskedLrn,
+                                    hasLrn: details.hasLrn,
+                                    targetType: 'student',
+                                    targetId: details.uid,
+                                    studentLabel: details.fullName,
+                                    portalStudentRepository:
+                                        widget.portalStudentRepository,
                                   ),
                                   _detailRow('Grade Level', details.gradeLevel),
                                   _detailRow(

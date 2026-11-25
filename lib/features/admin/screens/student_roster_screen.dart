@@ -135,7 +135,15 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                 ],
               ),
               const Divider(height: 22),
-              _rosterRow('LRN', entry.lrn ?? 'Protected HMAC Claim Record'),
+              PortalProtectedLrnRow(
+                maskedLrn: entry.maskedLrn ?? 'Protected HMAC Claim Record',
+                hasLrn: entry.hasLrn,
+                targetType: 'roster',
+                targetId: entry.rosterId,
+                studentLabel: entry.displayName,
+                portalStudentRepository: widget.portalStudentRepository,
+                labelWidth: 120,
+              ),
               _rosterRow('Grade Level', entry.gradeLevel),
               if (entry.sex != null) _rosterRow('Sex', entry.sex!),
               if (entry.birthDate != null)
@@ -352,7 +360,7 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            '${entry.lrn != null ? 'LRN: ${entry.lrn}' : 'Official Roster Claim'} • ${entry.gradeLevel}',
+                                            '${entry.maskedLrn != null ? 'LRN: ${entry.maskedLrn}' : 'Official Roster Claim'} • ${entry.gradeLevel}',
                                             style: const TextStyle(
                                               fontSize: 12.5,
                                               color: PortalColors.inkSecondary,

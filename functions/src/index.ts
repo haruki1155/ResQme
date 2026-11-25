@@ -6,4 +6,6 @@ export {
   verifySchoolStudentAccount,
   setStudentAccountStatus,
   listSchoolRoster,
+  issueAdminLrnRevealChallenge,
+  revealStudentLrn,
 } from './staff/staff_student_management';

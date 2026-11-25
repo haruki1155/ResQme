@@ -1,22 +1,43 @@
 import {randomBytes} from 'node:crypto';
-import {FieldValue} from 'firebase-admin/firestore';
+import {FieldValue, Timestamp} from 'firebase-admin/firestore';
 import {HttpsError, onCall} from 'firebase-functions/v2/https';
 import {keys, object} from '../medical/medical_contract';
-import {requireRecentAuth} from '../medical/tier2_challenge';
+import {requireRecentAuth, verifyTier2Signature} from '../medical/tier2_challenge';
 import {isStudentAccountDisabled, resqmeRuntimeOptions} from '../onboarding/authorization';
 import {isQrPayload} from '../qr/ensure_my_tier1_qr';
 import {evaluateQrEligibility} from '../qr/qr_eligibility';
 import {hashQrPayload} from '../qr/resolve_tier1_qr';
 import {rosterLookupId} from '../school/roster_contract';
 import {auditRecord, requireMasterAdmin, staffManagementDeps} from './staff_account_management';
+import {assertAttestationSerialsNotRevoked} from './staff_attestation';
+import {STAFF_ENROLLMENT_PROOF_VERSION} from './staff_tier2_contract';
 
 export type VisibleStudentCategory = 'registered' | 'verified' | 'disabled';
 export type RosterRegistrationState = 'not_registered' | 'registered' | 'verified';
+export type LrnRevealTargetType = 'student' | 'roster';
 
 export const UNASSIGNED_GRADE_LABEL = 'Unassigned Grade';
-const UID_PATTERN = /^[A-Za-z0-9_-]{3,128}$/;
+const UID_PATTERN = /^[A-Za-z0-9_-]{2,128}$/;
+const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
+const CHALLENGE_ID_PATTERN = /^[a-f0-9]{32,64}$/;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const MAX_PAGE_SIZE = 25;
+
+const lrnRevealRateBuckets = new Map<string, {startedAt: number; count: number}>();
+
+export function allowAdminLrnReveal(adminUid: string, now = Date.now()): boolean {
+  for (const [k, b] of lrnRevealRateBuckets) {
+    if (now - b.startedAt >= 60_000) lrnRevealRateBuckets.delete(k);
+  }
+  const cur = lrnRevealRateBuckets.get(adminUid);
+  if (!cur || now - cur.startedAt >= 60_000) {
+    lrnRevealRateBuckets.set(adminUid, {startedAt: now, count: 1});
+    return true;
+  }
+  if (cur.count >= 15) return false;
+  cur.count += 1;
+  return true;
+}
 
 function normalizeGradeLevel(raw: unknown): string {
   if (typeof raw !== 'string') return UNASSIGNED_GRADE_LABEL;
@@ -27,6 +48,27 @@ function normalizeGradeLevel(raw: unknown): string {
 function normalizeLrnDisplay(raw: unknown): string | null {
   if (typeof raw === 'string' && /^\d{12}$/.test(raw)) return raw;
   return null;
+}
+
+/**
+ * Masks a 12-digit LRN so only the first 4 and last 4 digits are visible
+ * (`XXXX••••XXXX`), keeping the middle 4 digits unexposed in standard reads.
+ */
+export function maskLrn(raw: unknown): string | null {
+  const valid = normalizeLrnDisplay(raw);
+  if (!valid) return null;
+  return `${valid.slice(0, 4)}••••${valid.slice(8)}`;
+}
+
+export function adminLrnRevealSignedMessage(input: {
+  adminUid: string;
+  deviceId: string;
+  targetType: LrnRevealTargetType;
+  targetId: string;
+  challengeId: string;
+  nonce: string;
+}): string {
+  return `resqme:admin-lrn-reveal:v1\n${input.adminUid}\n${input.deviceId}\n${input.targetType}\n${input.targetId}\n${input.challengeId}\n${input.nonce}`;
 }
 
 export function deriveVisibleStudentCategory(profile: Record<string, unknown>): VisibleStudentCategory {
@@ -181,7 +223,9 @@ export const listSchoolStudents = onCall(resqmeRuntimeOptions, async (request) =
   const allRows: Array<{
     uid: string;
     fullName: string;
-    lrn: string | null;
+    rawLrn: string | null;
+    maskedLrn: string | null;
+    hasLrn: boolean;
     gradeLevel: string;
     accountCategory: VisibleStudentCategory;
     schoolApprovalStatus: string;
@@ -193,10 +237,13 @@ export const listSchoolStudents = onCall(resqmeRuntimeOptions, async (request) =
     if (profile.schemaVersion !== 1 || typeof profile.fullName !== 'string') continue;
     const gradeLevel = normalizeGradeLevel(profile.gradeLevel);
     availableGradesSet.add(gradeLevel);
+    const rawLrn = normalizeLrnDisplay(profile.lrn);
     allRows.push({
       uid: doc.id,
       fullName: profile.fullName.trim(),
-      lrn: normalizeLrnDisplay(profile.lrn),
+      rawLrn,
+      maskedLrn: maskLrn(rawLrn),
+      hasLrn: rawLrn !== null,
       gradeLevel,
       accountCategory: deriveVisibleStudentCategory(profile),
       schoolApprovalStatus:
@@ -216,10 +263,10 @@ export const listSchoolStudents = onCall(resqmeRuntimeOptions, async (request) =
     if (gradeFilter && row.gradeLevel !== gradeFilter) return false;
     if (search.length > 0) {
       if (isExactLrnQuery) {
-        return row.lrn === search;
+        return row.rawLrn === search;
       }
       const matchesName = row.fullName.toLowerCase().includes(loweredSearch);
-      const matchesExactLrn = row.lrn === search;
+      const matchesExactLrn = row.rawLrn === search;
       return matchesName || matchesExactLrn;
     }
     return true;
@@ -239,9 +286,12 @@ export const listSchoolStudents = onCall(resqmeRuntimeOptions, async (request) =
     startIndex = idx + 1;
   }
 
-  const page = filtered.slice(startIndex, startIndex + limit);
+  const pageSlice = filtered.slice(startIndex, startIndex + limit);
   const hasMore = startIndex + limit < filtered.length;
-  const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].uid : null;
+  const nextCursor = hasMore && pageSlice.length > 0 ? pageSlice[pageSlice.length - 1].uid : null;
+
+  // Strip rawLrn before returning over the wire so only maskedLrn leaves the server.
+  const page = pageSlice.map(({rawLrn: _omitted, ...publicRow}) => publicRow);
 
   const availableGrades = [...availableGradesSet].sort((a, b) => {
     if (a === UNASSIGNED_GRADE_LABEL) return 1;
@@ -332,10 +382,13 @@ export const getSchoolStudentDetails = onCall(resqmeRuntimeOptions, async (reque
     schoolApprovalStatus === 'pending' &&
     verificationOutcome !== 'conflict';
 
+  const rawLrn = normalizeLrnDisplay(profile.lrn);
+
   return {
     uid: studentUid,
     fullName: profile.fullName.trim(),
-    lrn: normalizeLrnDisplay(profile.lrn),
+    maskedLrn: maskLrn(rawLrn),
+    hasLrn: rawLrn !== null,
     gradeLevel: normalizeGradeLevel(profile.gradeLevel),
     sex: sexRaw,
     birthDate,
@@ -741,7 +794,7 @@ export const listSchoolRoster = onCall(resqmeRuntimeOptions, async (request) => 
     const gradeLevel = normalizeGradeLevel(row.gradeLevel ?? linkedProfile?.gradeLevel);
     availableGradesSet.add(gradeLevel);
 
-    const lrn = normalizeLrnDisplay(row.lrn ?? linkedProfile?.lrn);
+    const rawLrn = normalizeLrnDisplay(row.lrn ?? linkedProfile?.lrn);
     const sex =
       typeof row.sex === 'string' && row.sex.trim().length > 0
         ? row.sex.trim()
@@ -756,7 +809,9 @@ export const listSchoolRoster = onCall(resqmeRuntimeOptions, async (request) => 
     return {
       rosterId: doc.id,
       displayName: formatRosterDisplayName(row),
-      lrn,
+      rawLrn,
+      maskedLrn: maskLrn(rawLrn),
+      hasLrn: rawLrn !== null,
       gradeLevel,
       sex,
       birthDate,
@@ -771,8 +826,8 @@ export const listSchoolRoster = onCall(resqmeRuntimeOptions, async (request) => 
   const filtered = allEntries.filter((entry) => {
     if (gradeFilter && entry.gradeLevel !== gradeFilter) return false;
     if (search.length > 0) {
-      if (isExactLrnQuery) return entry.lrn === search;
-      return entry.displayName.toLowerCase().includes(loweredSearch) || entry.lrn === search;
+      if (isExactLrnQuery) return entry.rawLrn === search;
+      return entry.displayName.toLowerCase().includes(loweredSearch) || entry.rawLrn === search;
     }
     return true;
   });
@@ -791,9 +846,11 @@ export const listSchoolRoster = onCall(resqmeRuntimeOptions, async (request) => 
     startIndex = idx + 1;
   }
 
-  const page = filtered.slice(startIndex, startIndex + limit);
+  const pageSlice = filtered.slice(startIndex, startIndex + limit);
   const hasMore = startIndex + limit < filtered.length;
-  const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].rosterId : null;
+  const nextCursor = hasMore && pageSlice.length > 0 ? pageSlice[pageSlice.length - 1].rosterId : null;
+
+  const page = pageSlice.map(({rawLrn: _omitted, ...publicEntry}) => publicEntry);
 
   const availableGrades = [...availableGradesSet].sort((a, b) => {
     if (a === UNASSIGNED_GRADE_LABEL) return 1;
@@ -808,4 +865,282 @@ export const listSchoolRoster = onCall(resqmeRuntimeOptions, async (request) => 
     totalMatched: filtered.length,
     availableGrades,
   };
+});
+
+async function resolveSchoolScopedTargetLrn(
+  db: FirebaseFirestore.Firestore,
+  tx: FirebaseFirestore.Transaction,
+  schoolId: string,
+  targetType: LrnRevealTargetType,
+  targetId: string,
+): Promise<string> {
+  if (targetType === 'student') {
+    const snap = await tx.get(db.doc(`studentProfiles/${targetId}`));
+    const profile = snap.data();
+    if (
+      !snap.exists ||
+      !profile ||
+      profile.schemaVersion !== 1 ||
+      profile.schoolAssignmentStatus !== 'assigned' ||
+      profile.schoolId !== schoolId
+    ) {
+      throw new HttpsError('permission-denied', 'Student LRN is unavailable for this school.');
+    }
+    const lrn = normalizeLrnDisplay(profile.lrn);
+    if (!lrn) {
+      throw new HttpsError('not-found', 'No 12-digit LRN is recorded for this account.');
+    }
+    return lrn;
+  }
+
+  const rosterSnap = await tx.get(db.doc(`schoolRosterClaims/${targetId}`));
+  const roster = rosterSnap.data();
+  if (!rosterSnap.exists || !roster || roster.schoolId !== schoolId) {
+    throw new HttpsError('permission-denied', 'Roster LRN is unavailable for this school.');
+  }
+  const directLrn = normalizeLrnDisplay(roster.lrn);
+  if (directLrn) return directLrn;
+
+  if (typeof roster.claimedByUid === 'string' && roster.claimedByUid.length > 0) {
+    const linkedSnap = await tx.get(db.doc(`studentProfiles/${roster.claimedByUid}`));
+    const linked = linkedSnap.data();
+    if (linkedSnap.exists && linked && linked.schoolId === schoolId) {
+      const linkedLrn = normalizeLrnDisplay(linked.lrn);
+      if (linkedLrn) return linkedLrn;
+    }
+  }
+
+  throw new HttpsError('not-found', 'Full LRN is not stored on this HMAC-only roster claim.');
+}
+
+function validateRevealTarget(data: Record<string, unknown>): {
+  targetType: LrnRevealTargetType;
+  targetId: string;
+} {
+  const targetType = data.targetType;
+  if (targetType !== 'student' && targetType !== 'roster') {
+    throw new HttpsError('invalid-argument', 'Invalid LRN reveal target type.');
+  }
+  if (typeof data.targetId !== 'string' || !UID_PATTERN.test(data.targetId)) {
+    throw new HttpsError('invalid-argument', 'Invalid LRN reveal target identifier.');
+  }
+  return {targetType, targetId: data.targetId};
+}
+
+export const issueAdminLrnRevealChallenge = onCall(resqmeRuntimeOptions, async (request) => {
+  const adminUid = request.auth?.uid;
+  if (!adminUid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const data = object(request.data);
+  keys(data, ['targetType', 'targetId', 'deviceId']);
+  const {targetType, targetId} = validateRevealTarget(data);
+  if (typeof data.deviceId !== 'string' || !DEVICE_ID_PATTERN.test(data.deviceId)) {
+    throw new HttpsError('invalid-argument', 'Invalid staff device identifier.');
+  }
+  const deviceId = data.deviceId;
+
+  if (!allowAdminLrnReveal(adminUid)) {
+    throw new HttpsError('resource-exhausted', 'Too many LRN reveal attempts. Please wait a minute.');
+  }
+
+  const emailVerified = request.auth?.token.email_verified === true;
+  const db = staffManagementDeps.db(adminUid);
+  const challengeId = randomBytes(24).toString('hex');
+  const nonce = randomBytes(32).toString('base64url');
+  const expiresAtMs = Date.now() + 60_000;
+
+  await db.runTransaction(async (tx) => {
+    const admin = await requireMasterAdmin(db, adminUid, emailVerified, tx);
+    const deviceSnap = await tx.get(db.doc(`staffTier2Devices/${adminUid}`));
+    if (
+      !deviceSnap.exists ||
+      deviceSnap.get('status') !== 'active' ||
+      deviceSnap.get('deviceId') !== deviceId ||
+      typeof deviceSnap.get('publicKey') !== 'string' ||
+      !Number.isSafeInteger(deviceSnap.get('keyVersion'))
+    ) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Enroll this device in Biometric Device Setup first, or confirm with your Admin password.',
+      );
+    }
+    if (deviceSnap.get('enrollmentProofVersion') !== STAFF_ENROLLMENT_PROOF_VERSION) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Biometric device re-enrollment is required before using biometric reveal.',
+      );
+    }
+    await assertAttestationSerialsNotRevoked(deviceSnap.get('attestationSerials'));
+    await resolveSchoolScopedTargetLrn(db, tx, admin.schoolId, targetType, targetId);
+
+    tx.create(db.doc(`staffLrnRevealChallenges/${challengeId}`), {
+      adminUid,
+      schoolId: admin.schoolId,
+      deviceId,
+      keyVersion: Number(deviceSnap.get('keyVersion')),
+      targetType,
+      targetId,
+      nonce,
+      expiresAt: new Date(expiresAtMs),
+      consumedAt: null,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return {
+    challengeId,
+    nonce,
+    deviceId,
+    expiresAt: expiresAtMs,
+  };
+});
+
+export const revealStudentLrn = onCall(resqmeRuntimeOptions, async (request) => {
+  const adminUid = request.auth?.uid;
+  if (!adminUid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const data = object(request.data);
+  keys(data, ['targetType', 'targetId', 'authMethod', 'challengeId', 'deviceId', 'signature']);
+  const {targetType, targetId} = validateRevealTarget(data);
+  const authMethod = data.authMethod;
+  if (authMethod !== 'password' && authMethod !== 'biometric') {
+    throw new HttpsError('invalid-argument', 'Select password or biometric step-up verification.');
+  }
+
+  if (!allowAdminLrnReveal(adminUid)) {
+    throw new HttpsError('resource-exhausted', 'Too many LRN reveal attempts. Please wait a minute.');
+  }
+
+  if (authMethod === 'password') {
+    // Layer 2A: Fresh password reauthentication within 60 seconds.
+    requireRecentAuth(request.auth?.token.auth_time, undefined, 60);
+  }
+
+  const emailVerified = request.auth?.token.email_verified === true;
+  const db = staffManagementDeps.db(adminUid);
+
+  return db.runTransaction(async (tx) => {
+    // Layer 1: Active, verified Master Admin session + strict school-scope isolation.
+    const admin = await requireMasterAdmin(db, adminUid, emailVerified, tx);
+
+    if (authMethod === 'biometric') {
+      // Layer 2B: Hardware-backed biometric signature over single-use server challenge.
+      if (
+        typeof data.challengeId !== 'string' ||
+        !CHALLENGE_ID_PATTERN.test(data.challengeId) ||
+        typeof data.deviceId !== 'string' ||
+        !DEVICE_ID_PATTERN.test(data.deviceId) ||
+        typeof data.signature !== 'string' ||
+        data.signature.length < 16 ||
+        data.signature.length > 512
+      ) {
+        throw new HttpsError('invalid-argument', 'Invalid biometric verification proof.');
+      }
+
+      const challengeRef = db.doc(`staffLrnRevealChallenges/${data.challengeId}`);
+      const deviceRef = db.doc(`staffTier2Devices/${adminUid}`);
+      const [deviceSnap, challengeSnap] = await Promise.all([
+        tx.get(deviceRef),
+        tx.get(challengeRef),
+      ]);
+      const challenge = challengeSnap.data();
+      const expiresAt = challenge?.expiresAt;
+      const expiresMs =
+        expiresAt instanceof Timestamp
+          ? expiresAt.toMillis()
+          : expiresAt instanceof Date
+            ? expiresAt.getTime()
+            : 0;
+
+      if (
+        !deviceSnap.exists ||
+        deviceSnap.get('status') !== 'active' ||
+        deviceSnap.get('deviceId') !== data.deviceId ||
+        typeof deviceSnap.get('publicKey') !== 'string' ||
+        !challengeSnap.exists ||
+        !challenge ||
+        challenge.adminUid !== adminUid ||
+        challenge.schoolId !== admin.schoolId ||
+        challenge.deviceId !== data.deviceId ||
+        challenge.keyVersion !== deviceSnap.get('keyVersion') ||
+        challenge.targetType !== targetType ||
+        challenge.targetId !== targetId ||
+        challenge.consumedAt != null ||
+        typeof challenge.nonce !== 'string' ||
+        expiresMs <= Date.now()
+      ) {
+        throw new HttpsError('permission-denied', 'Biometric LRN verification failed or expired.');
+      }
+      if (deviceSnap.get('enrollmentProofVersion') !== STAFF_ENROLLMENT_PROOF_VERSION) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Biometric device re-enrollment is required.',
+        );
+      }
+      await assertAttestationSerialsNotRevoked(deviceSnap.get('attestationSerials'));
+
+      const expectedMessage = adminLrnRevealSignedMessage({
+        adminUid,
+        deviceId: data.deviceId,
+        targetType,
+        targetId,
+        challengeId: data.challengeId,
+        nonce: challenge.nonce,
+      });
+      if (
+        !verifyTier2Signature(
+          deviceSnap.get('publicKey') as string,
+          expectedMessage,
+          data.signature,
+        )
+      ) {
+        throw new HttpsError('permission-denied', 'Biometric LRN signature verification failed.');
+      }
+
+      const fullLrn = await resolveSchoolScopedTargetLrn(
+        db,
+        tx,
+        admin.schoolId,
+        targetType,
+        targetId,
+      );
+
+      tx.update(challengeRef, {consumedAt: FieldValue.serverTimestamp()});
+      tx.create(
+        db.doc(`staffManagementAudits/${randomBytes(16).toString('hex')}`),
+        auditRecord({
+          actorUid: adminUid,
+          actorRole: admin.role,
+          schoolId: admin.schoolId,
+          action: 'reveal_student_lrn',
+          targetUid: targetId,
+          outcome: 'allowed',
+          reason: `method:biometric;targetType:${targetType}`,
+        }),
+      );
+
+      return {lrn: fullLrn, maskedLrn: maskLrn(fullLrn)!};
+    }
+
+    const fullLrn = await resolveSchoolScopedTargetLrn(
+      db,
+      tx,
+      admin.schoolId,
+      targetType,
+      targetId,
+    );
+
+    tx.create(
+      db.doc(`staffManagementAudits/${randomBytes(16).toString('hex')}`),
+      auditRecord({
+        actorUid: adminUid,
+        actorRole: admin.role,
+        schoolId: admin.schoolId,
+        action: 'reveal_student_lrn',
+        targetUid: targetId,
+        outcome: 'allowed',
+        reason: `method:password;targetType:${targetType}`,
+      }),
+    );
+
+    return {lrn: fullLrn, maskedLrn: maskLrn(fullLrn)!};
+  });
 });
