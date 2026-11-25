@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import '../../../core/widgets/feature_guide.dart';
+import '../../../core/widgets/resqme_skeleton.dart';
 import '../../medical/services/tier2_authorization_repository.dart';
 import '../services/tier1_qr_repository.dart';
 
@@ -365,7 +366,13 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen>
                       : 'Scanning confirms this QR is active for Tier 1 public emergency resources. It does not sign the holder into the student account or reveal private student information.',
                 ),
                 const SizedBox(height: 24),
-                if (loading) const Center(child: CircularProgressIndicator()),
+                if (loading && credential == null)
+                  const StudentQrCardSkeleton(),
+                if (loading && credential != null)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: LinearProgressIndicator(minHeight: 3),
+                  ),
                 if (credential != null)
                   Center(
                     child: Container(

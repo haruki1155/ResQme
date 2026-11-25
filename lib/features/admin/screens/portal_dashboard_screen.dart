@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/feature_guide.dart';
+import '../../../core/widgets/resqme_skeleton.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../services/staff_access_repository.dart';
@@ -316,10 +317,7 @@ class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
               ],
               const SizedBox(height: 20),
               if (_isInitialLoading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 36),
-                  child: Center(child: CircularProgressIndicator()),
-                )
+                const PortalDashboardSkeleton()
               else if (_error != null && stats == null)
                 PortalStateView(
                   icon: Icons.error_outline,

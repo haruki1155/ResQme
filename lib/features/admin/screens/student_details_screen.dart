@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../../core/widgets/feature_guide.dart';
+import '../../../core/widgets/resqme_skeleton.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../services/staff_access_repository.dart';
@@ -420,7 +421,7 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
       ),
       body: SafeArea(
         child: _isInitialLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const PortalDetailsSkeleton()
             : details == null
                 ? PortalStateView(
                     icon: Icons.error_outline,

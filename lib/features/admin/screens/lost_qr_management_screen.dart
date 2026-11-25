@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/widgets/feature_guide.dart';
+import '../../../core/widgets/resqme_skeleton.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../widgets/portal_widgets.dart';
@@ -568,10 +569,7 @@ class _LostQrManagementScreenState extends State<LostQrManagementScreen> {
                 const SizedBox(height: 14),
                 PortalRefreshStrip(refreshing: _isRefreshing),
                 if (_isInitialLoading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 36),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
+                  const PortalCardListSkeleton(itemCount: 3, scrollable: false)
                 else if (!_hasLoadedOnce && _error != null)
                   PortalStateView(
                     icon: Icons.error_outline,

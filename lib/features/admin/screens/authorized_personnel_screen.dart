@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/widgets/feature_guide.dart';
+import '../../../core/widgets/resqme_skeleton.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/staff_access_repository.dart';
 import '../services/staff_management_repository.dart';
@@ -124,153 +125,131 @@ class _AuthorizedPersonnelScreenState extends State<AuthorizedPersonnelScreen> {
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 680),
-          child: Column(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
             children: [
-              if (widget.embedded)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                  child: PortalSectionHeader(
-                    title: 'Authorized Personnel',
-                    subtitle:
-                        'Issue and manage school-scoped Authorized staff accounts and devices.',
-                    guide: ResQMeFeatureGuides.portalAuthorizedPersonnel,
-                    trailing: IconButton(
-                      tooltip: 'Refresh',
-                      onPressed:
-                          _isInitialLoading || _isRefreshing ? null : _load,
-                      icon: const Icon(Icons.refresh),
-                    ),
+              if (widget.embedded) ...[
+                PortalSectionHeader(
+                  title: 'Authorized Personnel',
+                  subtitle:
+                      'Issue and manage school-scoped Authorized staff accounts and devices.',
+                  guide: ResQMeFeatureGuides.portalAuthorizedPersonnel,
+                  trailing: IconButton(
+                    tooltip: 'Refresh',
+                    onPressed:
+                        _isInitialLoading || _isRefreshing ? null : _load,
+                    icon: const Icon(Icons.refresh),
                   ),
                 ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: TextField(
-                  controller: _search,
-                  onSubmitted: (_) => _load(),
-                  decoration: InputDecoration(
-                    hintText: 'Search by name, position, or Login ID',
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    suffixIcon: IconButton(
-                      tooltip: 'Search',
-                      onPressed: _load,
-                      icon: const Icon(Icons.arrow_forward, size: 18),
-                    ),
+                const SizedBox(height: 12),
+              ],
+              TextField(
+                controller: _search,
+                onSubmitted: (_) => _load(),
+                decoration: InputDecoration(
+                  hintText: 'Search by name, position, or Login ID',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: IconButton(
+                    tooltip: 'Search',
+                    onPressed: _load,
+                    icon: const Icon(Icons.arrow_forward, size: 18),
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    PortalRefreshStrip(refreshing: _isRefreshing),
-                    if (_hasLoadedOnce && _error != null)
-                      PortalInlineErrorBanner(
-                        message: _error!,
-                        onRetry: _load,
-                      ),
-                  ],
+              const SizedBox(height: 10),
+              PortalRefreshStrip(refreshing: _isRefreshing),
+              if (_hasLoadedOnce && _error != null)
+                PortalInlineErrorBanner(
+                  message: _error!,
+                  onRetry: _load,
                 ),
-              ),
-              Expanded(
-                child: _isInitialLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : !_hasLoadedOnce && _error != null
-                        ? PortalStateView(
-                            icon: Icons.error_outline,
-                            title: 'Authorized Personnel Unavailable',
-                            message: _error!,
-                            onRetry: _load,
-                          )
-                        : _accounts.isEmpty
-                            ? const PortalStateView(
-                                icon: Icons.badge_outlined,
-                                title: 'No Authorized Personnel Found',
-                                message:
-                                    'Create school-scoped Authorized accounts for clinic or DRRM staff.',
-                              )
-                            : ListView.separated(
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 8, 16, 88),
-                                itemCount: _accounts.length,
-                                separatorBuilder: (_, _) =>
-                                    const SizedBox(height: 8),
-                                itemBuilder: (ctx, index) {
-                                  final acc = _accounts[index];
-                                  final tone = acc.isRevoked
-                                      ? PortalBadgeTone.alert
-                                      : acc.active
-                                          ? PortalBadgeTone.verified
-                                          : PortalBadgeTone.neutral;
-                                  return Card(
-                                    child: ListTile(
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 6,
-                                      ),
-                                      title: Text(
-                                        acc.fullName,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          color: PortalColors.inkPrimary,
-                                        ),
-                                      ),
-                                      subtitle: Padding(
-                                        padding: const EdgeInsets.only(top: 4),
-                                        child: Text(
-                                          '${acc.position} • ${acc.loginId}${acc.mustChangePassword ? '\nPassword setup pending' : ''}',
-                                          style: const TextStyle(
-                                            fontSize: 12.5,
-                                            color: PortalColors.inkSecondary,
-                                          ),
-                                        ),
-                                      ),
-                                      trailing: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          PortalStatusBadge(
-                                            label: acc.status.toUpperCase(),
-                                            tone: tone,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          const Icon(
-                                            Icons.chevron_right,
-                                            color: PortalColors.inkSecondary,
-                                          ),
-                                        ],
-                                      ),
-                                      onTap: () async {
-                                        final scope = PortalScope.maybeOf(ctx);
-                                        await Navigator.of(ctx).push(
-                                          MaterialPageRoute<void>(
-                                            builder: (_) =>
-                                                AuthorizedAccountDetailsScreen(
-                                              account: acc,
-                                              accessRepository:
-                                                  widget.accessRepository,
-                                              managementRepository:
-                                                  widget.managementRepository,
-                                            ),
-                                          ),
-                                        );
-                                        if (scope?.notifier != null &&
-                                            scope!.notifier!.activeScopeKey ==
-                                                null) {
-                                          return;
-                                        }
-                                        if (ctx.mounted) {
-                                          PortalScope.notifyMutation(ctx);
-                                        }
-                                        if (mounted) {
-                                          await _load();
-                                        }
-                                      },
-                                    ),
-                                  );
-                                },
+              if (_isInitialLoading)
+                const PortalCardListSkeleton(itemCount: 4, scrollable: false)
+              else if (!_hasLoadedOnce && _error != null)
+                PortalStateView(
+                  icon: Icons.error_outline,
+                  title: 'Authorized Personnel Unavailable',
+                  message: _error!,
+                  onRetry: _load,
+                )
+              else if (_accounts.isEmpty)
+                const PortalStateView(
+                  icon: Icons.badge_outlined,
+                  title: 'No Authorized Personnel Found',
+                  message:
+                      'Create school-scoped Authorized accounts for clinic or DRRM staff.',
+                )
+              else
+                for (final acc in _accounts)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
+                        title: Text(
+                          acc.fullName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: PortalColors.inkPrimary,
+                          ),
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '${acc.position} • ${acc.loginId}${acc.mustChangePassword ? '\nPassword setup pending' : ''}',
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: PortalColors.inkSecondary,
+                            ),
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            PortalStatusBadge(
+                              label: acc.status.toUpperCase(),
+                              tone: acc.isRevoked
+                                  ? PortalBadgeTone.alert
+                                  : acc.active
+                                      ? PortalBadgeTone.verified
+                                      : PortalBadgeTone.neutral,
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.chevron_right,
+                              color: PortalColors.inkSecondary,
+                            ),
+                          ],
+                        ),
+                        onTap: () async {
+                          final scope = PortalScope.maybeOf(context);
+                          await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => AuthorizedAccountDetailsScreen(
+                                account: acc,
+                                accessRepository: widget.accessRepository,
+                                managementRepository:
+                                    widget.managementRepository,
                               ),
-              ),
+                            ),
+                          );
+                          if (scope?.notifier != null &&
+                              scope!.notifier!.activeScopeKey == null) {
+                            return;
+                          }
+                          if (context.mounted) {
+                            PortalScope.notifyMutation(context);
+                          }
+                          if (mounted) {
+                            await _load();
+                          }
+                        },
+                      ),
+                    ),
+                  ),
             ],
           ),
         ),

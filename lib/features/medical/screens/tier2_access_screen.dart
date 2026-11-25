@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import '../../../core/widgets/feature_guide.dart';
+import '../../../core/widgets/resqme_skeleton.dart';
 import '../../qr/services/tier1_qr_repository.dart';
 import '../../registration/models/student_registration_profile.dart';
 import '../../registration/services/student_registration_repository.dart';
@@ -258,7 +259,7 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
     if (_loadingQr && _qrCredential == null) {
       return const Padding(
         padding: EdgeInsets.only(bottom: 18),
-        child: Center(child: CircularProgressIndicator()),
+        child: StudentQrCardSkeleton(),
       );
     }
     final cred = _qrCredential;

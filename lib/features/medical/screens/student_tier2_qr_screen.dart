@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import '../../../core/widgets/feature_guide.dart';
+import '../../../core/widgets/resqme_skeleton.dart';
 import '../../qr/services/tier1_qr_repository.dart';
 import '../services/tier2_authorization_repository.dart';
 import '../widgets/tier2_profile_view.dart';
@@ -187,8 +188,8 @@ class _StudentTier2QrScreenState extends State<StudentTier2QrScreen>
 
     if (_checkingDevice && status == null && token == null) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 40),
-        child: Center(child: CircularProgressIndicator()),
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: StudentQrCardSkeleton(),
       );
     }
 

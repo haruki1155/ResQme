@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/widgets/feature_guide.dart';
+import '../../../core/widgets/resqme_skeleton.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../widgets/portal_widgets.dart';
@@ -566,9 +567,15 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
   @override
   Widget build(BuildContext context) {
     final gradeItems = <DropdownMenuItem<String>>[
-      const DropdownMenuItem(value: 'all', child: Text('All Grade Levels')),
+      const DropdownMenuItem(
+        value: 'all',
+        child: Text('All Grade Levels', overflow: TextOverflow.ellipsis),
+      ),
       for (final grade in _availableGrades)
-        DropdownMenuItem(value: grade, child: Text(grade)),
+        DropdownMenuItem(
+          value: grade,
+          child: Text(grade, overflow: TextOverflow.ellipsis),
+        ),
     ];
 
     final visibleEntries = _entries;
@@ -576,192 +583,155 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 680),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  PortalSectionHeader(
-                    title: 'Student Roster',
-                    subtitle:
-                        'Official school enrollment baseline including unregistered and registered students.',
-                    guide: ResQMeFeatureGuides.portalStudentRoster,
-                    trailing: IconButton(
-                      tooltip: 'Refresh roster',
-                      onPressed: _isInitialLoading || _isRefreshing
-                          ? null
-                          : _loadInitial,
-                      icon: const Icon(Icons.refresh),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      FilledButton.icon(
-                        onPressed: _isInitialLoading || _importing
-                            ? null
-                            : _startSf1Import,
-                        icon: _importing
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.upload_file_outlined, size: 18),
-                        label: const Text('Import Student Roster'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _isInitialLoading || _importing
-                            ? null
-                            : _showImportHistory,
-                        icon: const Icon(Icons.history_outlined, size: 18),
-                        label: const Text('Import History'),
-                      ),
-                    ],
-                  ),
-                  if (_importing && _importStageLabel != null) ...[
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: PortalColors.surface,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: PortalColors.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            _importStageLabel!,
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: PortalColors.inkPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          const LinearProgressIndicator(minHeight: 3),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+            PortalSectionHeader(
+              title: 'Student Roster',
+              subtitle:
+                  'Official school enrollment baseline including unregistered and registered students.',
+              guide: ResQMeFeatureGuides.portalStudentRoster,
+              trailing: IconButton(
+                tooltip: 'Refresh roster',
+                onPressed: _isInitialLoading || _isRefreshing
+                    ? null
+                    : _loadInitial,
+                icon: const Icon(Icons.refresh),
               ),
             ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: _isInitialLoading || _importing
+                      ? null
+                      : _startSf1Import,
+                  icon: _importing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.upload_file_outlined, size: 18),
+                  label: const Text('Import Student Roster'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _isInitialLoading || _importing
+                      ? null
+                      : _showImportHistory,
+                  icon: const Icon(Icons.history_outlined, size: 18),
+                  label: const Text('Import History'),
+                ),
+              ],
+            ),
+            if (_importing && _importStageLabel != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: PortalColors.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: PortalColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      _importStageLabel!,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: PortalColors.inkPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const LinearProgressIndicator(minHeight: 3),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
             if (_isInitialLoading)
-              const Expanded(
-                child: Center(child: CircularProgressIndicator()),
-              )
+              const PortalCardListSkeleton(itemCount: 5, scrollable: false)
             else if (!_hasLoadedOnce && _error != null)
-              Expanded(
-                child: PortalStateView(
-                  icon: Icons.error_outline,
-                  title: 'Unable to Load Roster',
+              PortalStateView(
+                icon: Icons.error_outline,
+                title: 'Unable to Load Roster',
+                message: _error!,
+                onRetry: _loadInitial,
+              )
+            else if (!_rosterAvailable) ...[
+              PortalRefreshStrip(refreshing: _isRefreshing),
+              if (_error != null)
+                PortalInlineErrorBanner(
                   message: _error!,
                   onRetry: _loadInitial,
                 ),
-              )
-            else if (!_rosterAvailable)
-              Expanded(
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          PortalRefreshStrip(refreshing: _isRefreshing),
-                          if (_error != null)
-                            PortalInlineErrorBanner(
-                              message: _error!,
-                              onRetry: _loadInitial,
-                            ),
-                        ],
-                      ),
-                    ),
-                    const Expanded(
-                      child: PortalStateView(
-                        icon: Icons.fact_check_outlined,
-                        title: 'No Official Roster Records Yet',
-                        message:
-                            'No official school roster records are on file for this school yet. '
-                            'Use Import Student Roster to upload a DepEd SF1 (.xls or .xlsx) file.',
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    PortalRefreshStrip(refreshing: _isRefreshing),
-                    if (_error != null)
-                      PortalInlineErrorBanner(
-                        message: _error!,
-                        onRetry: _loadInitial,
-                      ),
-                  ],
-                ),
+              const PortalStateView(
+                icon: Icons.fact_check_outlined,
+                title: 'No Official Roster Records Yet',
+                message:
+                    'No official school roster records are on file for this school yet. '
+                    'Use Import Student Roster to upload a DepEd SF1 (.xls or .xlsx) file.',
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: TextField(
-                  key: const Key('student-roster-search'),
-                  controller: _searchController,
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: (_) => _loadInitial(),
-                  decoration: InputDecoration(
-                    hintText: 'Search roster by name or 12-digit LRN',
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    suffixIcon: IconButton(
-                      tooltip: 'Search roster',
-                      onPressed: _loadInitial,
-                      icon: const Icon(Icons.arrow_forward, size: 18),
-                    ),
+            ] else ...[
+              PortalRefreshStrip(refreshing: _isRefreshing),
+              if (_error != null)
+                PortalInlineErrorBanner(
+                  message: _error!,
+                  onRetry: _loadInitial,
+                ),
+              TextField(
+                key: const Key('student-roster-search'),
+                controller: _searchController,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => _loadInitial(),
+                decoration: InputDecoration(
+                  hintText: 'Search roster by name or 12-digit LRN',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: IconButton(
+                    tooltip: 'Search roster',
+                    onPressed: _loadInitial,
+                    icon: const Icon(Icons.arrow_forward, size: 18),
                   ),
                 ),
               ),
               const SizedBox(height: 10),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        key: ValueKey('roster-grade-dropdown-$_gradeFilter'),
-                        initialValue: _gradeFilter,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Grade Level',
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      key: ValueKey('roster-grade-dropdown-$_gradeFilter'),
+                      initialValue: _gradeFilter,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Grade Level',
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
                         ),
-                        items: gradeItems,
-                        onChanged: (next) {
-                          if (next == null || next == _gradeFilter) return;
-                          setState(() => _gradeFilter = next);
-                          _loadInitial();
-                        },
                       ),
+                      items: gradeItems,
+                      onChanged: (next) {
+                        if (next == null || next == _gradeFilter) return;
+                        setState(() => _gradeFilter = next);
+                        _loadInitial();
+                      },
                     ),
-                    const SizedBox(width: 12),
-                    Text(
+                  ),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
                       '$_totalMatched ${_totalMatched == 1 ? 'student' : 'students'}',
                       style: const TextStyle(
                         fontSize: 12.5,
@@ -769,111 +739,98 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                         color: PortalColors.inkSecondary,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    for (final f in const [
-                      (id: 'all', label: 'All'),
-                      (id: 'not_registered', label: 'Not Registered'),
-                      (id: 'registered', label: 'Registered'),
-                      (id: 'verified', label: 'Verified'),
-                    ])
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(f.label),
-                          selected: _registrationFilter == f.id,
-                          onSelected: (_) {
-                            if (_registrationFilter == f.id) return;
-                            setState(() => _registrationFilter = f.id);
-                            _loadInitial();
-                          },
-                        ),
-                      ),
-                  ],
-                ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  for (final f in const [
+                    (id: 'all', label: 'All'),
+                    (id: 'not_registered', label: 'Not Registered'),
+                    (id: 'registered', label: 'Registered'),
+                    (id: 'verified', label: 'Verified'),
+                  ])
+                    ChoiceChip(
+                      label: Text(f.label),
+                      selected: _registrationFilter == f.id,
+                      onSelected: (_) {
+                        if (_registrationFilter == f.id) return;
+                        setState(() => _registrationFilter = f.id);
+                        _loadInitial();
+                      },
+                    ),
+                ],
               ),
               const SizedBox(height: 10),
-              Expanded(
-                child: visibleEntries.isEmpty
-                    ? const PortalStateView(
-                        icon: Icons.search_off_outlined,
-                        title: 'No Matching Roster Entries',
-                        message:
-                            'No official roster entries match the current search, grade, or registration filter.',
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                        itemCount:
-                            visibleEntries.length + (_nextCursor != null ? 1 : 0),
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (ctx, index) {
-                          if (index == visibleEntries.length) {
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: OutlinedButton(
-                                onPressed: _loadingMore ? null : _loadMore,
-                                child: Text(
-                                  _loadingMore
-                                      ? 'Loading…'
-                                      : 'Load More Roster Entries',
-                                ),
-                              ),
-                            );
-                          }
-                          final entry = visibleEntries[index];
-                          return Card(
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(14),
-                              onTap: () => _showRosterDetails(entry),
-                              child: Padding(
-                                padding: const EdgeInsets.all(14),
-                                child: Row(
+              if (visibleEntries.isEmpty)
+                const PortalStateView(
+                  icon: Icons.search_off_outlined,
+                  title: 'No Matching Roster Entries',
+                  message:
+                      'No official roster entries match the current search, grade, or registration filter.',
+                )
+              else ...[
+                for (final entry in visibleEntries)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Card(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => _showRosterDetails(entry),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            entry.displayName,
-                                            style: const TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w700,
-                                              color: PortalColors.inkPrimary,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            '${entry.maskedLrn != null ? 'LRN: ${entry.maskedLrn}' : 'Official Roster Claim'} • ${entry.gradeLevel}',
-                                            style: const TextStyle(
-                                              fontSize: 12.5,
-                                              color: PortalColors.inkSecondary,
-                                            ),
-                                          ),
-                                        ],
+                                    Text(
+                                      entry.displayName,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: PortalColors.inkPrimary,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    PortalStatusBadge.forRosterState(
-                                      entry.registrationState,
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${entry.maskedLrn != null ? 'LRN: ${entry.maskedLrn}' : 'Official Roster Claim'} • ${entry.gradeLevel}',
+                                      style: const TextStyle(
+                                        fontSize: 12.5,
+                                        color: PortalColors.inkSecondary,
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ),
-                          );
-                        },
+                              const SizedBox(width: 8),
+                              PortalStatusBadge.forRosterState(
+                                entry.registrationState,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-              ),
+                    ),
+                  ),
+                if (_nextCursor != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: OutlinedButton(
+                      onPressed: _loadingMore ? null : _loadMore,
+                      child: Text(
+                        _loadingMore ? 'Loading…' : 'Load More Roster Entries',
+                      ),
+                    ),
+                  ),
+              ],
             ],
           ],
+          ),
         ),
       ),
     );
