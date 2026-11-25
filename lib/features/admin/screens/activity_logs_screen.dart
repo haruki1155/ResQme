@@ -17,6 +17,21 @@ class ActivityLogsScreen extends StatefulWidget {
 }
 
 class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
+  static const _monthNames = <String>[
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+
   final _searchController = TextEditingController();
   Timer? _debounce;
   String _category = 'all';
@@ -52,6 +67,20 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
     super.didChangeDependencies();
     final coordinator = PortalScope.maybeOf(context)?.notifier;
     if (coordinator != null) {
+      if (!_hasLoadedOnce) {
+        final cached = coordinator.peekCached<ActivityLogPage>(
+          'listSchoolActivityLogs:cat=$_category|out=$_outcome|act=|s=${_searchController.text.trim()}|sd=${_fmtDate(_dateRange?.start) ?? ''}|ed=${_fmtDate(_dateRange?.end) ?? ''}|l=25|c=',
+        );
+        if (cached != null) {
+          _hasLoadedOnce = true;
+          _entries = cached.entries;
+          _nextCursor = cached.nextCursor;
+          _totalMatched = cached.totalMatched;
+          _status = cached.entries.isEmpty
+              ? PortalLoadStatus.empty
+              : PortalLoadStatus.loaded;
+        }
+      }
       final currentMutation = coordinator.mutationVersion;
       if (_lastObservedMutationVersion != null &&
           _lastObservedMutationVersion != currentMutation) {
@@ -73,6 +102,59 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
   String? _fmtDate(DateTime? d) => d == null
       ? null
       : '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Converts an entry timestamp into `Asia/Manila` (`UTC+08:00`) date and time.
+  (String dateKey, String dateHeader, String timeLabel) _formatManila(
+    ActivityLogEntry entry,
+  ) {
+    final parsed = DateTime.tryParse(entry.timestamp);
+    if (parsed == null) {
+      final fallbackDate = entry.manilaDate ?? 'Unknown Date';
+      return (
+        fallbackDate,
+        fallbackDate,
+        entry.manilaTimeLabel ?? entry.timestamp,
+      );
+    }
+    final pht = parsed.toUtc().add(const Duration(hours: 8));
+    final y = pht.year;
+    final m = pht.month;
+    final d = pht.day;
+    final dateKey = entry.manilaDate ??
+        '${y.toString().padLeft(4, '0')}-${m.toString().padLeft(2, '0')}-${d.toString().padLeft(2, '0')}';
+    final monthName = _monthNames[m - 1];
+    final dateHeader = '$monthName $d, $y (Asia/Manila)';
+    final rawHour = pht.hour;
+    final min = pht.minute.toString().padLeft(2, '0');
+    final ampm = rawHour >= 12 ? 'PM' : 'AM';
+    final hour12 = rawHour % 12 == 0 ? 12 : rawHour % 12;
+    return (dateKey, dateHeader, '$hour12:$min $ampm PHT');
+  }
+
+  String _actorLabel(ActivityLogEntry entry) {
+    final name = entry.actorDisplayName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return switch (entry.actorRole) {
+      'admin' => 'Master Admin (${entry.actorUid})',
+      'authorized' => 'Authorized Staff (${entry.actorUid})',
+      'student' => 'Student Account',
+      _ => entry.actorUid,
+    };
+  }
+
+  String _roleBadgeLabel(String rawRole) => switch (rawRole) {
+        'admin' => 'MASTER ADMIN',
+        'authorized' => 'AUTHORIZED STAFF',
+        'student' => 'STUDENT',
+        _ => rawRole.toUpperCase(),
+      };
+
+  (String, PortalBadgeTone) _outcomePresentation(String rawOutcome) =>
+      switch (rawOutcome) {
+        'denied' => ('Denied', PortalBadgeTone.alert),
+        'failed' => ('Failed', PortalBadgeTone.registered),
+        _ => ('Allowed', PortalBadgeTone.verified),
+      };
 
   Future<void> _loadInitial() async {
     final seq = ++_requestSeq;
@@ -202,24 +284,31 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
   }
 
   void _showDetails(ActivityLogEntry entry) {
+    final pht = _formatManila(entry);
+    final outcomeInfo = _outcomePresentation(entry.outcome);
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(entry.actionLabel),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _detailLine('Outcome', entry.outcome == 'denied' ? 'Denied' : 'Allowed'),
-            _detailLine('Category', entry.category.toUpperCase()),
-            _detailLine('Timestamp', entry.timestamp),
-            _detailLine('Actor UID', entry.actorUid),
-            _detailLine('Actor Role', entry.actorRole),
-            if (entry.targetUid != null) _detailLine('Target ID', entry.targetUid!),
-            if (entry.method != null) _detailLine('Method', entry.method!),
-            if (entry.reasonCode != null) _detailLine('Reason', entry.reasonCode!),
-            _detailLine('Source', entry.sourceCollection),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _detailLine('Outcome', outcomeInfo.$1),
+              _detailLine('Category', entry.category.toUpperCase()),
+              _detailLine('Manila Time', '${pht.$2} • ${pht.$3}'),
+              _detailLine('Actor', _actorLabel(entry)),
+              _detailLine('Actor UID', entry.actorUid),
+              _detailLine('Actor Role', _roleBadgeLabel(entry.actorRole)),
+              if (entry.targetUid != null)
+                _detailLine('Target ID', entry.targetUid!),
+              if (entry.method != null) _detailLine('Method', entry.method!),
+              if (entry.reasonCode != null)
+                _detailLine('Reason', entry.reasonCode!),
+              _detailLine('Source', entry.sourceCollection),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -260,6 +349,123 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
         ),
       );
 
+  List<Widget> _buildGroupedEntries() {
+    final widgets = <Widget>[];
+    String? currentGroupKey;
+    for (final entry in _entries) {
+      final (dateKey, dateHeader, timeLabel) = _formatManila(entry);
+      if (dateKey != currentGroupKey) {
+        currentGroupKey = dateKey;
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 8),
+            child: Text(
+              dateHeader,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: PortalColors.inkSecondary,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+        );
+      }
+      final outcomeInfo = _outcomePresentation(entry.outcome);
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Card(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => _showDetails(entry),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            entry.actionLabel,
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w700,
+                              color: PortalColors.inkPrimary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        PortalStatusBadge(
+                          label: outcomeInfo.$1,
+                          tone: outcomeInfo.$2,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          _actorLabel(entry),
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: PortalColors.inkPrimary,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: PortalColors.background,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: PortalColors.border),
+                          ),
+                          child: Text(
+                            _roleBadgeLabel(entry.actorRole),
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: PortalColors.inkSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      entry.summary,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: PortalColors.inkSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${entry.category.toUpperCase()} • $timeLabel',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: PortalColors.inkSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return widgets;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -267,7 +473,7 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
         title: const Text('Activity Logs'),
         actions: [
           IconButton(
-            tooltip: 'Filter by date range',
+            tooltip: 'Filter by date range (Asia/Manila)',
             onPressed: _isInitialLoading ? null : _pickDateRange,
             icon: const Icon(Icons.date_range_outlined),
           ),
@@ -290,7 +496,7 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
                   title: 'School Security & Supervision Logs',
                   subtitle: _isInitialLoading
                       ? 'Loading chronological audit trail...'
-                      : '$_totalMatched recorded event${_totalMatched == 1 ? '' : 's'} (newest first, redacted)',
+                      : '$_totalMatched recorded event${_totalMatched == 1 ? '' : 's'} (Asia/Manila PHT, redacted)',
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -303,7 +509,7 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
                     );
                   },
                   decoration: InputDecoration(
-                    hintText: 'Search action, actor UID, or target ID',
+                    hintText: 'Search action, actor name/UID, or target ID',
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchController.text.isNotEmpty
                         ? IconButton(
@@ -351,6 +557,7 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
                       (id: 'all', label: 'All Outcomes'),
                       (id: 'allowed', label: 'Allowed'),
                       (id: 'denied', label: 'Denied'),
+                      (id: 'failed', label: 'Failed'),
                     ])
                       FilterChip(
                         label: Text(o.label),
@@ -365,7 +572,7 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
                       ActionChip(
                         avatar: const Icon(Icons.close, size: 16),
                         label: Text(
-                          '${_fmtDate(_dateRange!.start)} – ${_fmtDate(_dateRange!.end)}',
+                          '${_fmtDate(_dateRange!.start)} – ${_fmtDate(_dateRange!.end)} (PHT)',
                         ),
                         onPressed: () {
                           setState(() => _dateRange = null);
@@ -401,64 +608,7 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
                         'No security, management, or emergency Tier 2 events match the current filters.',
                   )
                 else ...[
-                  for (final entry in _entries)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Card(
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: () => _showDetails(entry),
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        entry.actionLabel,
-                                        style: const TextStyle(
-                                          fontSize: 14.5,
-                                          fontWeight: FontWeight.w700,
-                                          color: PortalColors.inkPrimary,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    PortalStatusBadge(
-                                      label: entry.outcome == 'denied'
-                                          ? 'Denied'
-                                          : 'Allowed',
-                                      tone: entry.outcome == 'denied'
-                                          ? PortalBadgeTone.alert
-                                          : PortalBadgeTone.verified,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  entry.summary,
-                                  style: const TextStyle(
-                                    fontSize: 12.5,
-                                    color: PortalColors.inkSecondary,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  '${entry.category.toUpperCase()} • ${entry.timestamp}',
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    color: PortalColors.inkSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                  ..._buildGroupedEntries(),
                   if (_nextCursor != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 6),

@@ -158,11 +158,14 @@ class ActivityLogEntry {
     required this.actionLabel,
     required this.outcome,
     required this.actorUid,
+    this.actorDisplayName,
     required this.actorRole,
     required this.targetUid,
     required this.summary,
     required this.reasonCode,
     required this.method,
+    this.manilaDate,
+    this.manilaTimeLabel,
     required this.timestamp,
   });
 
@@ -171,13 +174,16 @@ class ActivityLogEntry {
   final String category; // 'security' | 'management' | 'tier2'
   final String action;
   final String actionLabel;
-  final String outcome; // 'allowed' | 'denied'
+  final String outcome; // 'allowed' | 'denied' | 'failed'
   final String actorUid;
+  final String? actorDisplayName;
   final String actorRole;
   final String? targetUid;
   final String summary;
   final String? reasonCode;
   final String? method;
+  final String? manilaDate;
+  final String? manilaTimeLabel;
   final String timestamp;
 }
 
@@ -1145,11 +1151,14 @@ class FirebasePortalStudentRepository
                 actionLabel: row['actionLabel'] as String? ?? 'Activity',
                 outcome: row['outcome'] as String? ?? 'allowed',
                 actorUid: row['actorUid'] as String? ?? 'unknown',
+                actorDisplayName: row['actorDisplayName'] as String?,
                 actorRole: row['actorRole'] as String? ?? 'admin',
                 targetUid: row['targetUid'] as String?,
                 summary: row['summary'] as String? ?? '',
                 reasonCode: row['reasonCode'] as String?,
                 method: row['method'] as String?,
+                manilaDate: row['manilaDate'] as String?,
+                manilaTimeLabel: row['manilaTimeLabel'] as String?,
                 timestamp: row['timestamp'] as String? ?? '',
               );
             }).toList(),

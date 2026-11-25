@@ -34,6 +34,7 @@ class _FakeActivityRepo implements PortalStudentRepository {
         actionLabel: 'Emergency Tier 2 Scan',
         outcome: 'denied',
         actorUid: 'auth-1',
+        actorDisplayName: 'Nurse One',
         actorRole: 'authorized',
         targetUid: 'stu-1',
         summary: 'Emergency Tier 2 Scan (emergency_response) • target_ineligible',
@@ -49,6 +50,7 @@ class _FakeActivityRepo implements PortalStudentRepository {
         actionLabel: 'Student QR Replaced',
         outcome: 'allowed',
         actorUid: 'admin-1',
+        actorDisplayName: 'Principal Elena Cruz',
         actorRole: 'admin',
         targetUid: 'stu-1',
         summary: 'Student QR Replaced via biometric (lost) v2',
@@ -257,6 +259,11 @@ void main() {
 
     expect(find.text('Emergency Tier 2 Scan'), findsOneWidget);
     expect(find.text('Student QR Replaced'), findsOneWidget);
+    // Date grouping header & PHT timestamp + actor display name & role badge
+    expect(find.text('Nov 25, 2026 (Asia/Manila)'), findsOneWidget);
+    expect(find.text('Nurse One'), findsOneWidget);
+    expect(find.text('AUTHORIZED STAFF'), findsOneWidget);
+    expect(find.textContaining('7:00 PM PHT'), findsOneWidget);
 
     await tester.tap(find.text('Security'));
     await tester.pumpAndSettle();

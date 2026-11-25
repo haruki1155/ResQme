@@ -5,12 +5,38 @@ import {resqmeRuntimeOptions} from '../onboarding/authorization';
 import {requireMasterAdmin, staffManagementDeps} from './staff_account_management';
 
 export type ActivityLogCategory = 'all' | 'security' | 'management' | 'tier2';
-export type ActivityLogOutcome = 'all' | 'allowed' | 'denied';
+export type ActivityLogOutcome = 'all' | 'allowed' | 'denied' | 'failed';
+export type NormalizedAuditOutcome = 'allowed' | 'denied' | 'failed';
 
 const VALID_CATEGORIES: readonly ActivityLogCategory[] = ['all', 'security', 'management', 'tier2'];
-const VALID_OUTCOMES: readonly ActivityLogOutcome[] = ['all', 'allowed', 'denied'];
+const VALID_OUTCOMES: readonly ActivityLogOutcome[] = ['all', 'allowed', 'denied', 'failed'];
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const ACTOR_PATTERN = /^[A-Za-z0-9_-]{2,128}$/;
+const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function formatManilaTimestamp(timestampMs: number): {
+  manilaDate: string;
+  manilaTimeLabel: string;
+} {
+  if (!Number.isFinite(timestampMs) || timestampMs <= 0) {
+    return {manilaDate: '1970-01-01', manilaTimeLabel: '12:00 AM PHT'};
+  }
+  const pht = new Date(timestampMs + MANILA_OFFSET_MS);
+  const y = pht.getUTCFullYear();
+  const m = pht.getUTCMonth() + 1;
+  const d = pht.getUTCDate();
+  const manilaDate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const rawHour = pht.getUTCHours();
+  const min = String(pht.getUTCMinutes()).padStart(2, '0');
+  const ampm = rawHour >= 12 ? 'PM' : 'AM';
+  const hour12 = rawHour % 12 === 0 ? 12 : rawHour % 12;
+  const monthLabel = MONTH_NAMES[m - 1] ?? 'Jan';
+  return {
+    manilaDate,
+    manilaTimeLabel: `${monthLabel} ${d}, ${y} • ${hour12}:${min} ${ampm} PHT`,
+  };
+}
 
 const SECURITY_ACTIONS = new Set([
   'change_own_password',
@@ -86,22 +112,45 @@ function safeString(raw: unknown, maxLen = 128): string | null {
   return trimmed.length > 0 ? trimmed.slice(0, maxLen) : null;
 }
 
+function normalizeOutcome(raw: unknown): NormalizedAuditOutcome {
+  if (raw === 'denied') return 'denied';
+  if (raw === 'failed') return 'failed';
+  return 'allowed';
+}
+
+function resolveActorDisplayName(
+  actorUid: string,
+  actorRole: string,
+  actorDirectory: ReadonlyMap<string, string>,
+): string {
+  const known = actorDirectory.get(actorUid);
+  if (known) return known;
+  if (actorRole === 'student') return 'Student Account';
+  if (actorRole === 'admin') return 'Master Admin';
+  if (actorRole === 'authorized') return 'Authorized Personnel';
+  return 'Staff Account';
+}
+
 function normalizeStaffAudit(
   id: string,
   data: Record<string, unknown>,
+  actorDirectory: ReadonlyMap<string, string>,
 ): {
   id: string;
   sourceCollection: 'staffManagementAudits';
   category: 'security' | 'management';
   action: string;
   actionLabel: string;
-  outcome: 'allowed' | 'denied';
+  outcome: NormalizedAuditOutcome;
   actorUid: string;
+  actorDisplayName: string;
   actorRole: string;
   targetUid: string | null;
   summary: string;
   reasonCode: string | null;
   method: string | null;
+  manilaDate: string;
+  manilaTimeLabel: string;
   timestampMs: number;
   timestamp: string;
 } {
@@ -109,13 +158,15 @@ function normalizeStaffAudit(
   const category: 'security' | 'management' = SECURITY_ACTIONS.has(action)
     ? 'security'
     : 'management';
-  const outcome: 'allowed' | 'denied' = data.outcome === 'denied' ? 'denied' : 'allowed';
+  const outcome = normalizeOutcome(data.outcome);
   const actorUid = safeString(data.actorUid) ?? 'unknown';
   const actorRole = safeString(data.actorRole) ?? 'admin';
+  const actorDisplayName = resolveActorDisplayName(actorUid, actorRole, actorDirectory);
   const targetUid = safeString(data.targetUid) ?? safeString(data.targetId);
   const method = safeString(data.method);
   const reasonCode = safeString(data.reasonCode) ?? safeString(data.reason);
   const timestampMs = toMillis(data.recordedAt ?? data.createdAt);
+  const {manilaDate, manilaTimeLabel} = formatManilaTimestamp(timestampMs);
   const actionLabel = ACTION_LABELS[action] ?? action.replace(/_/g, ' ');
 
   const parts: string[] = [actionLabel];
@@ -133,11 +184,14 @@ function normalizeStaffAudit(
     actionLabel,
     outcome,
     actorUid,
+    actorDisplayName,
     actorRole,
     targetUid,
     summary: parts.join(' '),
     reasonCode,
     method,
+    manilaDate,
+    manilaTimeLabel,
     timestampMs,
     timestamp: timestampMs > 0 ? new Date(timestampMs).toISOString() : new Date(0).toISOString(),
   };
@@ -146,34 +200,40 @@ function normalizeStaffAudit(
 function normalizeTier2Audit(
   id: string,
   data: Record<string, unknown>,
+  actorDirectory: ReadonlyMap<string, string>,
 ): {
   id: string;
   sourceCollection: 'tier2AccessAudits';
   category: 'tier2';
   action: string;
   actionLabel: string;
-  outcome: 'allowed' | 'denied';
+  outcome: NormalizedAuditOutcome;
   actorUid: string;
+  actorDisplayName: string;
   actorRole: string;
   targetUid: string | null;
   summary: string;
   reasonCode: string | null;
   method: string | null;
+  manilaDate: string;
+  manilaTimeLabel: string;
   timestampMs: number;
   timestamp: string;
 } {
-  const outcome: 'allowed' | 'denied' = data.outcome === 'denied' ? 'denied' : 'allowed';
+  const outcome = normalizeOutcome(data.outcome);
   const actorUid = safeString(data.actorUid) ?? 'unknown';
   const actorRole = safeString(data.actorRole) ?? 'staff';
+  const actorDisplayName = resolveActorDisplayName(actorUid, actorRole, actorDirectory);
   const targetUid = safeString(data.targetUid);
   const purpose = safeString(data.purpose);
   const reasonCode = safeString(data.reasonCode);
   const timestampMs = toMillis(data.recordedAt ?? data.createdAt);
+  const {manilaDate, manilaTimeLabel} = formatManilaTimestamp(timestampMs);
   const actionLabel = ACTION_LABELS.tier2_emergency_read;
 
   const parts: string[] = [actionLabel];
   if (purpose) parts.push(`(${purpose})`);
-  if (outcome === 'denied' && reasonCode) parts.push(`• ${reasonCode}`);
+  if (outcome !== 'allowed' && reasonCode) parts.push(`• ${reasonCode}`);
 
   return {
     id,
@@ -183,11 +243,14 @@ function normalizeTier2Audit(
     actionLabel,
     outcome,
     actorUid,
+    actorDisplayName,
     actorRole,
     targetUid,
     summary: parts.join(' '),
     reasonCode,
     method: 'biometric',
+    manilaDate,
+    manilaTimeLabel,
     timestampMs,
     timestamp: timestampMs > 0 ? new Date(timestampMs).toISOString() : new Date(0).toISOString(),
   };
@@ -223,7 +286,7 @@ export const listSchoolActivityLogs = onCall(resqmeRuntimeOptions, async (reques
     if (typeof data.startDate !== 'string' || !DATE_PATTERN.test(data.startDate)) {
       throw new HttpsError('invalid-argument', 'Invalid startDate filter.');
     }
-    startMs = Date.parse(`${data.startDate}T00:00:00.000Z`);
+    startMs = Date.parse(`${data.startDate}T00:00:00.000+08:00`);
   }
 
   let endMs: number | null = null;
@@ -231,7 +294,7 @@ export const listSchoolActivityLogs = onCall(resqmeRuntimeOptions, async (reques
     if (typeof data.endDate !== 'string' || !DATE_PATTERN.test(data.endDate)) {
       throw new HttpsError('invalid-argument', 'Invalid endDate filter.');
     }
-    endMs = Date.parse(`${data.endDate}T23:59:59.999Z`);
+    endMs = Date.parse(`${data.endDate}T23:59:59.999+08:00`);
   }
 
   const rawLimit = data.limit ?? 25;
@@ -263,14 +326,22 @@ export const listSchoolActivityLogs = onCall(resqmeRuntimeOptions, async (reques
     request.auth?.token.email_verified === true,
   );
 
-  const [staffSnap, tier2Snap] = await Promise.all([
+  const [staffSnap, tier2Snap, staffAccountsSnap] = await Promise.all([
     db.collection('staffManagementAudits').where('schoolId', '==', admin.schoolId).get(),
     db.collection('tier2AccessAudits').where('schoolId', '==', admin.schoolId).get(),
+    db.collection('staffAccounts').where('schoolId', '==', admin.schoolId).get(),
   ]);
 
+  const actorDirectory = new Map<string, string>();
+  for (const doc of staffAccountsSnap.docs) {
+    const s = doc.data();
+    const label = safeString(s.fullName, 80) ?? safeString(s.loginId, 80);
+    if (label) actorDirectory.set(doc.id, label);
+  }
+
   const combined = [
-    ...staffSnap.docs.map((doc) => normalizeStaffAudit(doc.id, doc.data())),
-    ...tier2Snap.docs.map((doc) => normalizeTier2Audit(doc.id, doc.data())),
+    ...staffSnap.docs.map((doc) => normalizeStaffAudit(doc.id, doc.data(), actorDirectory)),
+    ...tier2Snap.docs.map((doc) => normalizeTier2Audit(doc.id, doc.data(), actorDirectory)),
   ];
 
   const filtered = combined.filter((item) => {
@@ -280,7 +351,7 @@ export const listSchoolActivityLogs = onCall(resqmeRuntimeOptions, async (reques
     if (startMs !== null && item.timestampMs < startMs) return false;
     if (endMs !== null && item.timestampMs > endMs) return false;
     if (search.length > 0) {
-      const hay = `${item.actionLabel} ${item.action} ${item.summary} ${item.actorUid} ${item.targetUid ?? ''}`.toLowerCase();
+      const hay = `${item.actionLabel} ${item.action} ${item.summary} ${item.actorDisplayName} ${item.actorUid} ${item.targetUid ?? ''}`.toLowerCase();
       if (!hay.includes(search)) return false;
     }
     return true;
