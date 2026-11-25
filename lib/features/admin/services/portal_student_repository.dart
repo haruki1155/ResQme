@@ -156,6 +156,7 @@ class SchoolRosterPage {
 }
 
 abstract interface class PortalStudentRepository {
+  String? get currentAdminUid;
   Future<PortalDashboardStats> loadDashboardStats();
   Future<SchoolStudentPage> listStudents({
     String search = '',
@@ -211,6 +212,9 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
   final FirebaseFunctions functions;
   final AccountOperationLock operationLock;
   final PlatformTier2Key keyProvider;
+
+  @override
+  String? get currentAdminUid => auth.currentUser?.uid;
 
   HttpsCallable _callable(String name) => functions.httpsCallable(
         name,
@@ -459,6 +463,21 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
               'Enter your Master Admin password.',
             );
           }
+          final challengeRes =
+              await _callable('issueAdminLrnRevealChallenge').call<dynamic>(
+            <String, dynamic>{
+              'targetType': targetType,
+              'targetId': targetId,
+              'authMethod': 'password',
+            },
+          );
+          final ch = Map<String, dynamic>.from(challengeRes.data as Map);
+          final challengeId = ch['challengeId'];
+          if (challengeId is! String || challengeId.isEmpty) {
+            throw const PortalStudentException(
+              'Unable to start password LRN verification.',
+            );
+          }
           await user.reauthenticateWithCredential(
             EmailAuthProvider.credential(email: email, password: password),
           );
@@ -468,6 +487,7 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
               'targetType': targetType,
               'targetId': targetId,
               'authMethod': 'password',
+              'challengeId': challengeId,
             },
           );
           final row = Map<String, dynamic>.from(result.data as Map);

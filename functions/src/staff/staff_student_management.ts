@@ -22,21 +22,40 @@ const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
 const CHALLENGE_ID_PATTERN = /^[a-f0-9]{32,64}$/;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const MAX_PAGE_SIZE = 25;
+const LRN_REVEAL_PURPOSE = 'reveal_student_lrn';
+const RATE_WINDOW_MS = 10 * 60_000;
+const MAX_LRN_REVEALS_PER_WINDOW = 15;
+const MAX_EXACT_LRN_SEARCHES_PER_WINDOW = 20;
 
-const lrnRevealRateBuckets = new Map<string, {startedAt: number; count: number}>();
-
-export function allowAdminLrnReveal(adminUid: string, now = Date.now()): boolean {
-  for (const [k, b] of lrnRevealRateBuckets) {
-    if (now - b.startedAt >= 60_000) lrnRevealRateBuckets.delete(k);
-  }
-  const cur = lrnRevealRateBuckets.get(adminUid);
-  if (!cur || now - cur.startedAt >= 60_000) {
-    lrnRevealRateBuckets.set(adminUid, {startedAt: now, count: 1});
-    return true;
-  }
-  if (cur.count >= 15) return false;
-  cur.count += 1;
-  return true;
+async function enforceTransactionalRateLimit(
+  db: FirebaseFirestore.Firestore,
+  docPath: string,
+  maxAttempts: number,
+  errorMessage: string,
+): Promise<void> {
+  const now = Date.now();
+  const rateRef = db.doc(docPath);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(rateRef);
+    const started = snap.get('windowStartedAt');
+    const attempts = snap.get('attempts');
+    const startedMs =
+      started instanceof Timestamp
+        ? started.toMillis()
+        : started instanceof Date
+          ? started.getTime()
+          : 0;
+    const sameWindow = startedMs > 0 && now - startedMs < RATE_WINDOW_MS;
+    const count = sameWindow && Number.isSafeInteger(attempts) ? Number(attempts) : 0;
+    if (count >= maxAttempts) {
+      throw new HttpsError('resource-exhausted', errorMessage);
+    }
+    tx.set(rateRef, {
+      windowStartedAt: sameWindow ? started : Timestamp.fromMillis(now),
+      attempts: count + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
 }
 
 function normalizeGradeLevel(raw: unknown): string {
@@ -214,6 +233,16 @@ export const listSchoolStudents = onCall(resqmeRuntimeOptions, async (request) =
     request.auth?.token.email_verified === true,
   );
 
+  const isExactLrnQuery = /^\d{12}$/.test(search);
+  if (isExactLrnQuery) {
+    await enforceTransactionalRateLimit(
+      db,
+      `staffLrnSearchRateLimits/${adminUid}`,
+      MAX_EXACT_LRN_SEARCHES_PER_WINDOW,
+      'Too many exact LRN searches. Please wait before trying again.',
+    );
+  }
+
   const snap = await db
     .collection('studentProfiles')
     .where('schoolId', '==', admin.schoolId)
@@ -255,14 +284,14 @@ export const listSchoolStudents = onCall(resqmeRuntimeOptions, async (request) =
     });
   }
 
-  const isExactLrnQuery = /^\d{12}$/.test(search);
+  const isExactLrnQuery2 = /^\d{12}$/.test(search);
   const loweredSearch = search.toLowerCase();
 
   const filtered = allRows.filter((row) => {
     if (statusFilter !== 'all' && row.accountCategory !== statusFilter) return false;
     if (gradeFilter && row.gradeLevel !== gradeFilter) return false;
     if (search.length > 0) {
-      if (isExactLrnQuery) {
+      if (isExactLrnQuery2) {
         return row.rawLrn === search;
       }
       const matchesName = row.fullName.toLowerCase().includes(loweredSearch);
@@ -740,6 +769,16 @@ export const listSchoolRoster = onCall(resqmeRuntimeOptions, async (request) => 
     request.auth?.token.email_verified === true,
   );
 
+  const isExactLrnQuery = /^\d{12}$/.test(search);
+  if (isExactLrnQuery) {
+    await enforceTransactionalRateLimit(
+      db,
+      `staffLrnSearchRateLimits/${adminUid}`,
+      MAX_EXACT_LRN_SEARCHES_PER_WINDOW,
+      'Too many exact LRN searches. Please wait before trying again.',
+    );
+  }
+
   const rosterSnap = await db
     .collection('schoolRosterClaims')
     .where('schoolId', '==', admin.schoolId)
@@ -820,13 +859,13 @@ export const listSchoolRoster = onCall(resqmeRuntimeOptions, async (request) => 
     };
   });
 
-  const isExactLrnQuery = /^\d{12}$/.test(search);
+  const isExactLrnQuery2 = /^\d{12}$/.test(search);
   const loweredSearch = search.toLowerCase();
 
   const filtered = allEntries.filter((entry) => {
     if (gradeFilter && entry.gradeLevel !== gradeFilter) return false;
     if (search.length > 0) {
-      if (isExactLrnQuery) return entry.rawLrn === search;
+      if (isExactLrnQuery2) return entry.rawLrn === search;
       return entry.displayName.toLowerCase().includes(loweredSearch) || entry.rawLrn === search;
     }
     return true;
@@ -931,55 +970,76 @@ export const issueAdminLrnRevealChallenge = onCall(resqmeRuntimeOptions, async (
   const adminUid = request.auth?.uid;
   if (!adminUid) throw new HttpsError('unauthenticated', 'Sign in is required.');
   const data = object(request.data);
-  keys(data, ['targetType', 'targetId', 'deviceId']);
+  keys(data, ['targetType', 'targetId', 'authMethod', 'deviceId']);
   const {targetType, targetId} = validateRevealTarget(data);
-  if (typeof data.deviceId !== 'string' || !DEVICE_ID_PATTERN.test(data.deviceId)) {
-    throw new HttpsError('invalid-argument', 'Invalid staff device identifier.');
+  const authMethod = data.authMethod == null ? 'biometric' : data.authMethod;
+  if (authMethod !== 'biometric' && authMethod !== 'password') {
+    throw new HttpsError('invalid-argument', 'Invalid LRN reveal verification method.');
   }
-  const deviceId = data.deviceId;
 
-  if (!allowAdminLrnReveal(adminUid)) {
-    throw new HttpsError('resource-exhausted', 'Too many LRN reveal attempts. Please wait a minute.');
+  let deviceId: string | null = null;
+  if (authMethod === 'biometric') {
+    if (typeof data.deviceId !== 'string' || !DEVICE_ID_PATTERN.test(data.deviceId)) {
+      throw new HttpsError('invalid-argument', 'Invalid staff device identifier.');
+    }
+    deviceId = data.deviceId;
   }
 
   const emailVerified = request.auth?.token.email_verified === true;
   const db = staffManagementDeps.db(adminUid);
+  await enforceTransactionalRateLimit(
+    db,
+    `staffLrnRevealRateLimits/${adminUid}`,
+    MAX_LRN_REVEALS_PER_WINDOW,
+    'Too many LRN reveal attempts. Please wait before trying again.',
+  );
+
   const challengeId = randomBytes(24).toString('hex');
   const nonce = randomBytes(32).toString('base64url');
-  const expiresAtMs = Date.now() + 60_000;
+  const issuedAtMs = Date.now();
+  const issuedAtSec = Math.floor(issuedAtMs / 1000);
+  const expiresAtMs = issuedAtMs + 60_000;
 
   await db.runTransaction(async (tx) => {
     const admin = await requireMasterAdmin(db, adminUid, emailVerified, tx);
-    const deviceSnap = await tx.get(db.doc(`staffTier2Devices/${adminUid}`));
-    if (
-      !deviceSnap.exists ||
-      deviceSnap.get('status') !== 'active' ||
-      deviceSnap.get('deviceId') !== deviceId ||
-      typeof deviceSnap.get('publicKey') !== 'string' ||
-      !Number.isSafeInteger(deviceSnap.get('keyVersion'))
-    ) {
-      throw new HttpsError(
-        'failed-precondition',
-        'Enroll this device in Biometric Device Setup first, or confirm with your Admin password.',
-      );
+    let keyVersion: number | null = null;
+    if (authMethod === 'biometric') {
+      const deviceSnap = await tx.get(db.doc(`staffTier2Devices/${adminUid}`));
+      if (
+        !deviceSnap.exists ||
+        deviceSnap.get('status') !== 'active' ||
+        deviceSnap.get('deviceId') !== deviceId ||
+        typeof deviceSnap.get('publicKey') !== 'string' ||
+        !Number.isSafeInteger(deviceSnap.get('keyVersion'))
+      ) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Enroll this device in Biometric Device Setup first, or confirm with your Admin password.',
+        );
+      }
+      if (deviceSnap.get('enrollmentProofVersion') !== STAFF_ENROLLMENT_PROOF_VERSION) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Biometric device re-enrollment is required before using biometric reveal.',
+        );
+      }
+      await assertAttestationSerialsNotRevoked(deviceSnap.get('attestationSerials'));
+      keyVersion = Number(deviceSnap.get('keyVersion'));
     }
-    if (deviceSnap.get('enrollmentProofVersion') !== STAFF_ENROLLMENT_PROOF_VERSION) {
-      throw new HttpsError(
-        'failed-precondition',
-        'Biometric device re-enrollment is required before using biometric reveal.',
-      );
-    }
-    await assertAttestationSerialsNotRevoked(deviceSnap.get('attestationSerials'));
+
     await resolveSchoolScopedTargetLrn(db, tx, admin.schoolId, targetType, targetId);
 
     tx.create(db.doc(`staffLrnRevealChallenges/${challengeId}`), {
       adminUid,
       schoolId: admin.schoolId,
+      purpose: LRN_REVEAL_PURPOSE,
+      authMethod,
       deviceId,
-      keyVersion: Number(deviceSnap.get('keyVersion')),
+      keyVersion,
       targetType,
       targetId,
       nonce,
+      issuedAtSec,
       expiresAt: new Date(expiresAtMs),
       consumedAt: null,
       createdAt: FieldValue.serverTimestamp(),
@@ -990,6 +1050,7 @@ export const issueAdminLrnRevealChallenge = onCall(resqmeRuntimeOptions, async (
     challengeId,
     nonce,
     deviceId,
+    authMethod,
     expiresAt: expiresAtMs,
   };
 });
@@ -1004,28 +1065,58 @@ export const revealStudentLrn = onCall(resqmeRuntimeOptions, async (request) => 
   if (authMethod !== 'password' && authMethod !== 'biometric') {
     throw new HttpsError('invalid-argument', 'Select password or biometric step-up verification.');
   }
-
-  if (!allowAdminLrnReveal(adminUid)) {
-    throw new HttpsError('resource-exhausted', 'Too many LRN reveal attempts. Please wait a minute.');
+  if (typeof data.challengeId !== 'string' || !CHALLENGE_ID_PATTERN.test(data.challengeId)) {
+    throw new HttpsError('invalid-argument', 'Missing or invalid LRN verification challenge.');
   }
+  const challengeId = data.challengeId;
+
+  const emailVerified = request.auth?.token.email_verified === true;
+  const db = staffManagementDeps.db(adminUid);
+  await enforceTransactionalRateLimit(
+    db,
+    `staffLrnRevealRateLimits/${adminUid}`,
+    MAX_LRN_REVEALS_PER_WINDOW,
+    'Too many LRN reveal attempts. Please wait before trying again.',
+  );
 
   if (authMethod === 'password') {
     // Layer 2A: Fresh password reauthentication within 60 seconds.
     requireRecentAuth(request.auth?.token.auth_time, undefined, 60);
   }
 
-  const emailVerified = request.auth?.token.email_verified === true;
-  const db = staffManagementDeps.db(adminUid);
-
   return db.runTransaction(async (tx) => {
     // Layer 1: Active, verified Master Admin session + strict school-scope isolation.
     const admin = await requireMasterAdmin(db, adminUid, emailVerified, tx);
+    const challengeRef = db.doc(`staffLrnRevealChallenges/${challengeId}`);
+    const challengeSnap = await tx.get(challengeRef);
+    const challenge = challengeSnap.data();
+    const expiresAt = challenge?.expiresAt;
+    const expiresMs =
+      expiresAt instanceof Timestamp
+        ? expiresAt.toMillis()
+        : expiresAt instanceof Date
+          ? expiresAt.getTime()
+          : 0;
+
+    if (
+      !challengeSnap.exists ||
+      !challenge ||
+      challenge.adminUid !== adminUid ||
+      challenge.schoolId !== admin.schoolId ||
+      challenge.purpose !== LRN_REVEAL_PURPOSE ||
+      challenge.authMethod !== authMethod ||
+      challenge.targetType !== targetType ||
+      challenge.targetId !== targetId ||
+      challenge.consumedAt != null ||
+      typeof challenge.nonce !== 'string' ||
+      expiresMs <= Date.now()
+    ) {
+      throw new HttpsError('permission-denied', 'LRN verification challenge failed or expired.');
+    }
 
     if (authMethod === 'biometric') {
       // Layer 2B: Hardware-backed biometric signature over single-use server challenge.
       if (
-        typeof data.challengeId !== 'string' ||
-        !CHALLENGE_ID_PATTERN.test(data.challengeId) ||
         typeof data.deviceId !== 'string' ||
         !DEVICE_ID_PATTERN.test(data.deviceId) ||
         typeof data.signature !== 'string' ||
@@ -1035,37 +1126,14 @@ export const revealStudentLrn = onCall(resqmeRuntimeOptions, async (request) => 
         throw new HttpsError('invalid-argument', 'Invalid biometric verification proof.');
       }
 
-      const challengeRef = db.doc(`staffLrnRevealChallenges/${data.challengeId}`);
-      const deviceRef = db.doc(`staffTier2Devices/${adminUid}`);
-      const [deviceSnap, challengeSnap] = await Promise.all([
-        tx.get(deviceRef),
-        tx.get(challengeRef),
-      ]);
-      const challenge = challengeSnap.data();
-      const expiresAt = challenge?.expiresAt;
-      const expiresMs =
-        expiresAt instanceof Timestamp
-          ? expiresAt.toMillis()
-          : expiresAt instanceof Date
-            ? expiresAt.getTime()
-            : 0;
-
+      const deviceSnap = await tx.get(db.doc(`staffTier2Devices/${adminUid}`));
       if (
         !deviceSnap.exists ||
         deviceSnap.get('status') !== 'active' ||
         deviceSnap.get('deviceId') !== data.deviceId ||
-        typeof deviceSnap.get('publicKey') !== 'string' ||
-        !challengeSnap.exists ||
-        !challenge ||
-        challenge.adminUid !== adminUid ||
-        challenge.schoolId !== admin.schoolId ||
         challenge.deviceId !== data.deviceId ||
         challenge.keyVersion !== deviceSnap.get('keyVersion') ||
-        challenge.targetType !== targetType ||
-        challenge.targetId !== targetId ||
-        challenge.consumedAt != null ||
-        typeof challenge.nonce !== 'string' ||
-        expiresMs <= Date.now()
+        typeof deviceSnap.get('publicKey') !== 'string'
       ) {
         throw new HttpsError('permission-denied', 'Biometric LRN verification failed or expired.');
       }
@@ -1082,7 +1150,7 @@ export const revealStudentLrn = onCall(resqmeRuntimeOptions, async (request) => 
         deviceId: data.deviceId,
         targetType,
         targetId,
-        challengeId: data.challengeId,
+        challengeId,
         nonce: challenge.nonce,
       });
       if (
@@ -1094,30 +1162,21 @@ export const revealStudentLrn = onCall(resqmeRuntimeOptions, async (request) => 
       ) {
         throw new HttpsError('permission-denied', 'Biometric LRN signature verification failed.');
       }
-
-      const fullLrn = await resolveSchoolScopedTargetLrn(
-        db,
-        tx,
-        admin.schoolId,
-        targetType,
-        targetId,
-      );
-
-      tx.update(challengeRef, {consumedAt: FieldValue.serverTimestamp()});
-      tx.create(
-        db.doc(`staffManagementAudits/${randomBytes(16).toString('hex')}`),
-        auditRecord({
-          actorUid: adminUid,
-          actorRole: admin.role,
-          schoolId: admin.schoolId,
-          action: 'reveal_student_lrn',
-          targetUid: targetId,
-          outcome: 'allowed',
-          reason: `method:biometric;targetType:${targetType}`,
-        }),
-      );
-
-      return {lrn: fullLrn, maskedLrn: maskLrn(fullLrn)!};
+    } else {
+      // Password reveal must reauthenticate AFTER this reveal challenge was issued,
+      // preventing reuse of an unrelated recent login or prior reveal's auth_time.
+      const authTime = request.auth?.token.auth_time;
+      const issuedAtSec = Number(challenge.issuedAtSec);
+      if (
+        typeof authTime !== 'number' ||
+        !Number.isFinite(issuedAtSec) ||
+        authTime < issuedAtSec
+      ) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Confirm your Master Admin password again to reveal this LRN.',
+        );
+      }
     }
 
     const fullLrn = await resolveSchoolScopedTargetLrn(
@@ -1128,6 +1187,7 @@ export const revealStudentLrn = onCall(resqmeRuntimeOptions, async (request) => 
       targetId,
     );
 
+    tx.update(challengeRef, {consumedAt: FieldValue.serverTimestamp()});
     tx.create(
       db.doc(`staffManagementAudits/${randomBytes(16).toString('hex')}`),
       auditRecord({
@@ -1137,7 +1197,7 @@ export const revealStudentLrn = onCall(resqmeRuntimeOptions, async (request) => 
         action: 'reveal_student_lrn',
         targetUid: targetId,
         outcome: 'allowed',
-        reason: `method:password;targetType:${targetType}`,
+        reason: `method:${authMethod};targetType:${targetType}`,
       }),
     );
 

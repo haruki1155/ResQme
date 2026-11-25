@@ -509,6 +509,8 @@ class _PortalProtectedLrnRowState extends State<PortalProtectedLrnRow>
     with WidgetsBindingObserver {
   String? _revealedLrn;
   Timer? _autoHideTimer;
+  int _revealGeneration = 0;
+  bool _isBackgrounded = false;
 
   @override
   void initState() {
@@ -517,14 +519,31 @@ class _PortalProtectedLrnRowState extends State<PortalProtectedLrnRow>
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed && _revealedLrn != null) {
+  void didUpdateWidget(covariant PortalProtectedLrnRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.targetId != widget.targetId ||
+        oldWidget.targetType != widget.targetType) {
+      _revealGeneration++;
       _hideLrn();
     }
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _isBackgrounded = false;
+    } else {
+      _isBackgrounded = true;
+      _revealGeneration++;
+      if (_revealedLrn != null) {
+        _hideLrn();
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    _revealGeneration++;
     _autoHideTimer?.cancel();
     if (_revealedLrn != null) {
       widget.portalStudentRepository.setSecureScreen(false);
@@ -534,6 +553,7 @@ class _PortalProtectedLrnRowState extends State<PortalProtectedLrnRow>
   }
 
   void _hideLrn() {
+    _revealGeneration++;
     _autoHideTimer?.cancel();
     _autoHideTimer = null;
     widget.portalStudentRepository.setSecureScreen(false);
@@ -545,6 +565,8 @@ class _PortalProtectedLrnRowState extends State<PortalProtectedLrnRow>
   }
 
   Future<void> _promptReveal() async {
+    final gen = ++_revealGeneration;
+    final startUid = widget.portalStudentRepository.currentAdminUid;
     final revealed = await showDialog<String>(
       context: context,
       builder: (_) => _PortalLrnStepUpDialog(
@@ -555,9 +577,21 @@ class _PortalProtectedLrnRowState extends State<PortalProtectedLrnRow>
         portalStudentRepository: widget.portalStudentRepository,
       ),
     );
-    if (revealed == null || !mounted) return;
+    if (revealed == null ||
+        !mounted ||
+        _isBackgrounded ||
+        gen != _revealGeneration ||
+        widget.portalStudentRepository.currentAdminUid != startUid) {
+      return;
+    }
     await widget.portalStudentRepository.setSecureScreen(true);
-    if (!mounted) return;
+    if (!mounted ||
+        _isBackgrounded ||
+        gen != _revealGeneration ||
+        widget.portalStudentRepository.currentAdminUid != startUid) {
+      await widget.portalStudentRepository.setSecureScreen(false);
+      return;
+    }
     _autoHideTimer?.cancel();
     setState(() => _revealedLrn = revealed);
     _autoHideTimer = Timer(const Duration(seconds: 30), _hideLrn);

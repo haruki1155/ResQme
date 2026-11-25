@@ -124,6 +124,10 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
   bool secureScreenEnabled = false;
   int biometricRevealCalls = 0;
   int passwordRevealCalls = 0;
+  final String _currentAdminUid = 'master-1';
+
+  @override
+  String? get currentAdminUid => _currentAdminUid;
 
   final Map<String, String> _rawStudentLrns = {
     'stu-1': '009876543210',

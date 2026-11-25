@@ -842,39 +842,98 @@ test('2-layer LRN reveal enforces Master Admin + Password recent-auth OR Biometr
 
   // 1. Authorized staff (non-Master Admin) is denied
   await assert.rejects(() =>
-    revealStudentLrn.run(
+    issueAdminLrnRevealChallenge.run(
       req('auth-a', {targetType: 'student', targetId: 'stu-secret', authMethod: 'password'}),
     ),
   );
 
-  // 2. Stale auth (> 60s) is denied for password reveal
-  await assert.rejects(() =>
-    revealStudentLrn.run(
-      req(
-        'master-a',
-        {targetType: 'student', targetId: 'stu-secret', authMethod: 'password'},
-        {authTime: Math.floor(Date.now() / 1000) - 120},
+  // 2. Unrelated recent login (auth_time BEFORE password challenge issued) is denied
+  const stalePwCh = await issueAdminLrnRevealChallenge.run(
+    req('master-a', {targetType: 'student', targetId: 'stu-secret', authMethod: 'password'}),
+  );
+  await assert.rejects(
+    () =>
+      revealStudentLrn.run(
+        req(
+          'master-a',
+          {
+            targetType: 'student',
+            targetId: 'stu-secret',
+            authMethod: 'password',
+            challengeId: stalePwCh.challengeId,
+          },
+          {authTime: Math.floor(Date.now() / 1000) - 5},
+        ),
       ),
-    ),
+    /Confirm your Master Admin password again/,
   );
 
   // 3. Cross-school student reveal is denied even with fresh password
   await assert.rejects(() =>
-    revealStudentLrn.run(
+    issueAdminLrnRevealChallenge.run(
       req('master-a', {targetType: 'student', targetId: 'stu-other', authMethod: 'password'}),
     ),
   );
 
-  // 4. Fresh Master Admin password reauthentication succeeds and logs audit
-  const pwReveal = await revealStudentLrn.run(
+  // 4. Fresh Master Admin password reauthentication AFTER challenge issuance succeeds once and blocks replay
+  const pwCh = await issueAdminLrnRevealChallenge.run(
     req('master-a', {targetType: 'student', targetId: 'stu-secret', authMethod: 'password'}),
+  );
+  const pwReveal = await revealStudentLrn.run(
+    req(
+      'master-a',
+      {
+        targetType: 'student',
+        targetId: 'stu-secret',
+        authMethod: 'password',
+        challengeId: pwCh.challengeId,
+      },
+      {authTime: Math.floor(Date.now() / 1000) + 1},
+    ),
   );
   assert.equal(pwReveal.lrn, '004288881357');
   assert.equal(pwReveal.maskedLrn, '0042••••1357');
 
-  // 5. Hardware Biometric challenge + ECDSA signature succeeds once and blocks replay!
+  // Reusing same password challenge fails!
+  await assert.rejects(() =>
+    revealStudentLrn.run(
+      req('master-a', {
+        targetType: 'student',
+        targetId: 'stu-secret',
+        authMethod: 'password',
+        challengeId: pwCh.challengeId,
+      }),
+    ),
+  );
+
+  // 5. Unregistered roster record reveal is also supported
+  s.rows.set('schoolRosterClaims/roster-unreg-1', {
+    schoolId: 'school-a',
+    normalizedName: 'unregistered child',
+    displayName: 'Child, Unregistered',
+    lrn: '007712345699',
+    claimedByUid: null,
+  });
+  const rosterPwCh = await issueAdminLrnRevealChallenge.run(
+    req('master-a', {targetType: 'roster', targetId: 'roster-unreg-1', authMethod: 'password'}),
+  );
+  const rosterPwReveal = await revealStudentLrn.run(
+    req(
+      'master-a',
+      {
+        targetType: 'roster',
+        targetId: 'roster-unreg-1',
+        authMethod: 'password',
+        challengeId: rosterPwCh.challengeId,
+      },
+      {authTime: Math.floor(Date.now() / 1000) + 1},
+    ),
+  );
+  assert.equal(rosterPwReveal.lrn, '007712345699');
+
+  // 6. Hardware Biometric challenge + ECDSA signature succeeds once and blocks replay!
   const ch = await issueAdminLrnRevealChallenge.run(
-    req('master-a', {targetType: 'student', targetId: 'stu-secret', deviceId}),
+    req('master-a', {targetType: 'student', targetId: 'stu-secret', authMethod: 'biometric', deviceId}),
   );
   const msg = adminLrnRevealSignedMessage({
     adminUid: 'master-a',
@@ -930,7 +989,8 @@ test('2-layer LRN reveal enforces Master Admin + Password recent-auth OR Biometr
   const revealAudits = [...s.rows.entries()]
     .filter(([k]) => k.startsWith('staffManagementAudits/'))
     .map(([, v]) => v);
-  assert.equal(revealAudits.length, 2);
-  assert.ok(revealAudits.some((a) => a.action === 'reveal_student_lrn' && String(a.reason).includes('method:password')));
+  assert.equal(revealAudits.length, 3);
+  assert.ok(revealAudits.some((a) => a.action === 'reveal_student_lrn' && String(a.reason).includes('method:password;targetType:student')));
+  assert.ok(revealAudits.some((a) => a.action === 'reveal_student_lrn' && String(a.reason).includes('method:password;targetType:roster')));
   assert.ok(revealAudits.some((a) => a.action === 'reveal_student_lrn' && String(a.reason).includes('method:biometric')));
 });

@@ -1,5 +1,6 @@
 import {HttpsError} from 'firebase-functions/v2/https';
 import {keys,object} from '../medical/medical_contract';
+import {isStudentAccountDisabled} from '../onboarding/authorization';
 
 export function validateSchoolApprovalRequest(value:unknown) {
   const data=object(value);keys(data,['studentUid','requestId']);
@@ -29,7 +30,7 @@ export function assertApprovalEligible(input:{
 
 export function assertReviewCandidateEligible(input:{reviewer:Record<string,unknown>|undefined;student:Record<string,unknown>|undefined;reviewerUid:string;studentUid:string}) {
   const schoolId=requireSchoolReviewer(input.reviewer),student=input.student;
-  if(input.reviewerUid===input.studentUid||!student||student.schemaVersion!==1||
+  if(input.reviewerUid===input.studentUid||!student||isStudentAccountDisabled(student)||student.schemaVersion!==1||
     student.schoolAssignmentStatus!=='assigned'||student.schoolId!==schoolId||
     student.schoolApprovalStatus!=='pending'||typeof student.fullName!=='string'||student.fullName.trim().length<2) {
     throw new HttpsError('not-found','Candidate unavailable.');
