@@ -156,7 +156,7 @@ test('five synthetic roster scenarios preserve school, medical, QR and privacy b
   assert.equal(manualProfile.get('schoolVerificationOutcome'),'manual_review');
   const conflictProfile=profiles[4];
   assert.equal(conflictProfile.get('schoolApprovalStatus'),'pending');
-  assert.equal(conflictProfile.get('schoolVerificationOutcome'),'manual_review');
+  assert.equal(conflictProfile.get('schoolVerificationOutcome'),'conflict');
   assert.equal((await rosterRefs[4].get()).get('claimedByUid'),'synthetic-already-claimed-uid');
   assert.equal((await codeRefs[3].get()).get('claimedByUid'),'synthetic-already-claimed-uid');
 

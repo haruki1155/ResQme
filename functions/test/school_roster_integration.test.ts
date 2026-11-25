@@ -65,7 +65,7 @@ test('two Auth UIDs cannot consume one roster identity or enrollment code', {ski
  assert.equal(approved.length,1);assert.equal(pending.length,1);
  assert.equal(approved[0].get('schoolVerificationMethod'),'roster');
  assert.equal(approved[0].get('lrn'),lrn);
- assert.equal(pending[0].get('schoolVerificationOutcome'),'manual_review');
+ assert.equal(pending[0].get('schoolVerificationOutcome'),'conflict');
  const claim=(await rosterRef.get()).data();assert.equal(typeof claim?.claimedByUid,'string');
  assert.equal((await codeRef.get()).get('claimedByUid'),claim?.claimedByUid);
  assert.equal(results.length,2);

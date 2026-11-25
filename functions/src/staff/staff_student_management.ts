@@ -7,6 +7,7 @@ import {isStudentAccountDisabled, resqmeRuntimeOptions} from '../onboarding/auth
 import {isQrPayload} from '../qr/ensure_my_tier1_qr';
 import {evaluateQrEligibility} from '../qr/qr_eligibility';
 import {hashQrPayload} from '../qr/resolve_tier1_qr';
+import {parseIsoBirthDate} from '../registration/registration_contract';
 import {rosterLookupId} from '../school/roster_contract';
 import {auditRecord, requireMasterAdmin, staffManagementDeps} from './staff_account_management';
 import {assertAttestationSerialsNotRevoked} from './staff_attestation';
@@ -600,10 +601,14 @@ export const verifySchoolStudentAccount = onCall(resqmeRuntimeOptions, async (re
       lookupRef ? tx.get(lookupRef) : Promise.resolve(null),
     ]);
 
+    const lockOwner = lrnLockSnap.exists
+      ? (lrnLockSnap.get('uid') ?? lrnLockSnap.get('studentUid'))
+      : null;
     if (
       lrnLockSnap.exists &&
-      lrnLockSnap.get('status') === 'active' &&
-      lrnLockSnap.get('uid') !== studentUid
+      lrnLockSnap.get('status') !== 'released' &&
+      lockOwner &&
+      lockOwner !== studentUid
     ) {
       throw new HttpsError(
         'already-exists',
@@ -628,8 +633,30 @@ export const verifySchoolStudentAccount = onCall(resqmeRuntimeOptions, async (re
       }
     }
 
+    let rosterBirthPatch: Record<string, unknown> = {};
+    if (rosterSnap?.exists) {
+      const rosterBirthRaw = rosterSnap.get('birthDate');
+      const rosterGradeRaw = rosterSnap.get('gradeLevel');
+      try {
+        const parsedRosterBirth = parseIsoBirthDate(rosterBirthRaw);
+        if (parsedRosterBirth) {
+          rosterBirthPatch = {
+            birthDate: parsedRosterBirth.birthDate,
+            ageYearsAtRegistration: parsedRosterBirth.ageYears,
+            ...(parsedRosterBirth.ageYears < 18 ? {status: 'pending_guardian'} : {}),
+          };
+        }
+      } catch {
+        // Ignore malformed legacy birthDate on roster row.
+      }
+      if (typeof rosterGradeRaw === 'string' && rosterGradeRaw.trim().length > 0) {
+        rosterBirthPatch.gradeLevel = rosterGradeRaw.trim();
+      }
+    }
+
     const nextProfile: Record<string, unknown> = {
       ...profile,
+      ...rosterBirthPatch,
       schoolApprovalStatus: 'approved',
       schoolVerificationMethod: 'manual_admin',
       schoolVerificationOutcome: 'verified',
@@ -665,6 +692,7 @@ export const verifySchoolStudentAccount = onCall(resqmeRuntimeOptions, async (re
       lrnLockRef,
       {
         uid: studentUid,
+        studentUid,
         lrn,
         schoolId: admin.schoolId,
         status: 'active',
@@ -682,6 +710,7 @@ export const verifySchoolStudentAccount = onCall(resqmeRuntimeOptions, async (re
     }
 
     tx.update(profileRef, {
+      ...rosterBirthPatch,
       schoolApprovalStatus: 'approved',
       schoolVerificationMethod: 'manual_admin',
       schoolVerificationOutcome: 'verified',

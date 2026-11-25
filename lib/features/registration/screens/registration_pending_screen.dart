@@ -9,10 +9,33 @@ class RegistrationPendingScreen extends StatelessWidget {
     required this.onPublicDashboard,
     required this.onSignOut,
   });
+
   final StudentRegistrationProfile profile;
   final VoidCallback onRefreshStatus, onPublicDashboard, onSignOut;
+
   @override
   Widget build(BuildContext context) {
+    final isSchoolApproved = profile.schoolApprovalStatus == 'approved';
+    final isMinor = profile.ageYearsAtRegistration < 18;
+
+    final String headline;
+    final String explanation;
+    final IconData statusIcon;
+    if (isSchoolApproved) {
+      statusIcon = Icons.verified_outlined;
+      headline = isMinor
+          ? 'School enrollment verified - guardian authorization required'
+          : 'Account activated - school enrollment verified';
+      explanation = isMinor
+          ? 'Your school enrollment was verified automatically. Because you are under 18, verified parent/guardian authorization and medical record completion are required before QR credentials activate.'
+          : 'Your school enrollment is verified. Complete your emergency medical record to activate your ResQMe QR credential.';
+    } else {
+      statusIcon = Icons.pending_actions;
+      headline = 'Registration received - pending school review';
+      explanation =
+          'Registration does not confirm student status. School approval is required before your QR can be activated.';
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Registration status')),
       body: SafeArea(
@@ -24,20 +47,18 @@ class RegistrationPendingScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(
-                    Icons.pending_actions,
+                  Icon(
+                    statusIcon,
                     size: 64,
-                    color: Color(0xFFE92B32),
+                    color: const Color(0xFFE92B32),
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    'Registration received - pending school review',
+                    headline,
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 16),
-                  Text(
-                    'Registration does not confirm student status. School approval is required before your QR can be activated.',
-                  ),
+                  Text(explanation),
                   const SizedBox(height: 24),
                   ExpansionTile(
                     title: const Text('Review submitted details'),

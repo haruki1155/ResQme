@@ -23,6 +23,7 @@ class _CreateStudentAccountScreenState
   final fields = {
     for (final key in [
       'name',
+      'birthDate',
       'age',
       'lrn',
       'enrollmentCode',
@@ -40,6 +41,7 @@ class _CreateStudentAccountScreenState
   String? gender, relationship;
   bool busy = false;
   String? message;
+
   @override
   void dispose() {
     for (final controller in fields.values) {
@@ -48,21 +50,58 @@ class _CreateStudentAccountScreenState
     super.dispose();
   }
 
+  void _syncAgeFromBirthDate(String rawBirthDate) {
+    final computed = computeAgeYearsFromBirthDate(rawBirthDate);
+    if (computed != null) {
+      fields['age']!.text = '$computed';
+    }
+  }
+
+  Future<void> _pickBirthDate() async {
+    if (busy) return;
+    final now = DateTime.now();
+    final existingAge = computeAgeYearsFromBirthDate(fields['birthDate']!.text);
+    final initialDate = existingAge != null
+        ? DateTime.tryParse(fields['birthDate']!.text.trim()) ??
+            DateTime(now.year - 16, now.month, now.day)
+        : DateTime(now.year - 16, now.month, now.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate.isAfter(now) ? now : initialDate,
+      firstDate: DateTime(1900, 1, 1),
+      lastDate: now,
+      helpText: 'Select Student Birth Date',
+    );
+    if (picked == null || !mounted) return;
+    final formatted =
+        '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+    setState(() {
+      fields['birthDate']!.text = formatted;
+      _syncAgeFromBirthDate(formatted);
+    });
+  }
+
   Widget field(
     String key,
     String label, {
     String? Function(String?)? validator,
     TextInputType? keyboard,
     bool secret = false,
+    String? hintText,
+    Widget? suffixIcon,
+    ValueChanged<String>? onChanged,
   }) => Padding(
     padding: const EdgeInsets.only(bottom: 16),
     child: TextFormField(
       controller: fields[key],
       decoration: InputDecoration(
         labelText: label,
+        hintText: hintText,
+        suffixIcon: suffixIcon,
         border: const OutlineInputBorder(),
       ),
       validator: validator,
+      onChanged: onChanged,
       keyboardType: keyboard,
       obscureText: secret,
       autocorrect: !secret,
@@ -70,16 +109,22 @@ class _CreateStudentAccountScreenState
       enabled: !busy,
     ),
   );
+
   Widget heading(String text) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 16),
     child: Text(text, style: Theme.of(context).textTheme.titleLarge),
   );
+
   Future<void> submit() async {
+    _syncAgeFromBirthDate(fields['birthDate']!.text);
     if (busy || !form.currentState!.validate()) return;
+    final computedAge =
+        computeAgeYearsFromBirthDate(fields['birthDate']!.text) ??
+        int.parse(fields['age']!.text.trim());
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => RegistrationPrivacyDialog(
-        ageYears: int.parse(fields['age']!.text),
+        ageYears: computedAge,
         onDecline: () => Navigator.pop(context, false),
         onAccept: () => Navigator.pop(context, true),
       ),
@@ -92,7 +137,8 @@ class _CreateStudentAccountScreenState
     final result = await widget.repository.register(
       RegistrationDraft(
         fullName: fields['name']!.text,
-        ageYears: int.parse(fields['age']!.text),
+        ageYears: computedAge,
+        birthDate: fields['birthDate']!.text,
         email: fields['email']!.text,
         password: fields['password']!.text,
         lrn: fields['lrn']!.text.trim(),
@@ -145,16 +191,37 @@ class _CreateStudentAccountScreenState
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Synthetic-data pilot only. Registration remains pending.',
+                    'Enter your official 12-digit LRN, full name, birth date, and school-issued enrollment code for automatic school verification, or continue for manual school review.',
                   ),
                   heading('Personal information'),
                   field('name', 'Full name', validator: validateFullName),
                   field(
+                    'birthDate',
+                    'Birth date (YYYY-MM-DD)',
+                    hintText: 'e.g. 2010-05-10',
+                    keyboard: TextInputType.datetime,
+                    onChanged: _syncAgeFromBirthDate,
+                    suffixIcon: IconButton(
+                      tooltip: 'Select birth date',
+                      onPressed: busy ? null : _pickBirthDate,
+                      icon: const Icon(Icons.calendar_today_outlined, size: 20),
+                    ),
+                    validator: (value) => validateBirthDate(
+                      value,
+                      required: fields['age']!.text.trim().isEmpty,
+                    ),
+                  ),
+                  field(
                     'age',
                     'Age (years)',
                     keyboard: TextInputType.number,
-                    validator: (value) =>
-                        validateAge(int.tryParse(value ?? '')),
+                    validator: (value) {
+                      final fromBirth = computeAgeYearsFromBirthDate(
+                        fields['birthDate']!.text,
+                      );
+                      if (fromBirth != null) return null;
+                      return validateAge(int.tryParse(value ?? ''));
+                    },
                   ),
                   field(
                     'lrn',
@@ -169,7 +236,7 @@ class _CreateStudentAccountScreenState
                     validator: validateEnrollmentCode,
                   ),
                   const Text(
-                    'A valid school-issued enrollment code supports automatic matching. If you do not have one or it cannot be matched, registration continues for manual school review.',
+                    'A valid school-issued enrollment code paired with an exact roster match (LRN, full name, and birth date) activates school verification automatically. If omitted or unmatched, registration continues safely for manual school review.',
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(

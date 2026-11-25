@@ -282,11 +282,25 @@ test('Preview masks LRNs, detects duplicates/conflicts, commits idempotently, an
       rosterId: rId,
       lrn: '009876543210',
       fullName: 'Juan Santos Dela Cruz',
+      birthDate: '2010-05-10',
       enrollmentCode,
       uid: 'stu-new-1',
       key: TEST_ROSTER_KEY,
     });
     assert.equal(claimOutcome, 'auto_approve');
+
+    const missingBirthOutcome = evaluateRosterClaim({
+      roster: rosterDoc as never,
+      codeClaim: codeDoc,
+      rosterId: rId,
+      lrn: '009876543210',
+      fullName: 'Juan Santos Dela Cruz',
+      birthDate: null,
+      enrollmentCode,
+      uid: 'stu-new-1',
+      key: TEST_ROSTER_KEY,
+    });
+    assert.equal(missingBirthOutcome, 'manual_review');
 
     // Duplicate claim by a second student rejected/conflict once claimed
     const dupClaim = evaluateRosterClaim({

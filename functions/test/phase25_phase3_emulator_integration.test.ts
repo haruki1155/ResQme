@@ -179,6 +179,7 @@ test('SF1 import, authoritative minor birthDate/grade inheritance, LRN lock, and
   // Minor student registers claiming ageYears: 19 (attempting to bypass guardian auth!)
   const regRes = (await minorClient.call('createStudentRegistration', {
     fullName: 'Juan Santos Dela Cruz',
+    birthDate: '2010-05-10',
     ageYears: 19,
     noticeVersion,
     acknowledgmentAccepted: true,

@@ -5,6 +5,7 @@ class RegistrationDraft {
     required this.email,
     required this.password,
     required this.lrn,
+    this.birthDate,
     this.enrollmentCode,
     this.gender,
     this.personalPhone,
@@ -14,9 +15,11 @@ class RegistrationDraft {
     this.secondaryName,
     this.secondaryPhone,
   });
+
   final String fullName, email, password;
   final int ageYears;
   final String lrn;
+  final String? birthDate;
   final String? enrollmentCode;
   final String? gender,
       personalPhone,
@@ -25,13 +28,17 @@ class RegistrationDraft {
       guardianPhone,
       secondaryName,
       secondaryPhone;
+
   static String? clean(String? value) =>
       value == null || value.trim().isEmpty ? null : value.trim();
+
   static String? phone(String? value) =>
       clean(value)?.replaceAll(RegExp(r'[ -]'), '');
+
   Map<String, dynamic> toProfilePayload() => {
     'fullName': fullName.trim(),
     'ageYears': ageYears,
+    if (clean(birthDate) != null) 'birthDate': clean(birthDate),
     'lrn': lrn.trim(),
     'enrollmentCode': clean(enrollmentCode)?.toUpperCase(),
     'gender': clean(gender),
@@ -42,6 +49,7 @@ class RegistrationDraft {
     'secondaryName': clean(secondaryName),
     'secondaryPhone': phone(secondaryPhone),
   };
+
   @override
   String toString() => 'RegistrationDraft(private)';
 }
