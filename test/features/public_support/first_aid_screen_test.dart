@@ -45,12 +45,13 @@ void main() {
   setUp(FirstAidRepository.clearCache);
 
   testWidgets(
-    'First Aid Home shows Common Emergencies, filters by category & Filipino search, and recovers from no-match',
+    'Expanded First Aid Home shows Common Emergencies, filters by category & Filipino search, and recovers from no-match',
     (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: FirstAidLibraryScreen(
             releasePolicy: FirstAidReleasePolicy.clinicalReviewDraft,
+            debugEnableExpandedFirstAidOverride: true,
           ),
         ),
       );
@@ -72,7 +73,6 @@ void main() {
         findsOneWidget,
       );
 
-      // Filter by Mental Distress category chip while CATEGORIES section is next
       final mentalChip = find.byKey(const Key('category_chip_Mental Distress'));
       await _scrollDownTo(tester, mentalChip);
       await tester.tap(mentalChip);
@@ -86,7 +86,6 @@ void main() {
       );
       expect(find.text('Acute Anxiety and Panic Attack'), findsOneWidget);
 
-      // Scroll back to top, reset to All, and verify all 66 procedures appear
       await _scrollToTop(tester);
       await _scrollDownTo(tester, find.byKey(const Key('category_chip_All')));
       await tester.tap(find.byKey(const Key('category_chip_All')));
@@ -94,7 +93,6 @@ void main() {
       await _scrollDownTo(tester, find.text('66 PROCEDURES'));
       expect(find.text('66 PROCEDURES'), findsOneWidget);
 
-      // Search Filipino synonym 'Balinguyngoy' -> Nosebleeds
       await _scrollToTop(tester);
       await tester.enterText(
         find.byKey(const Key('first_aid_search_field')),
@@ -105,7 +103,6 @@ void main() {
       expect(find.text('1 PROCEDURE'), findsOneWidget);
       expect(find.text('Nosebleeds'), findsOneWidget);
 
-      // No-match search shows safe guidance + suggested emergencies
       await _scrollToTop(tester);
       await tester.enterText(
         find.byKey(const Key('first_aid_search_field')),
@@ -134,12 +131,12 @@ void main() {
         const MaterialApp(
           home: FirstAidLibraryScreen(
             releasePolicy: FirstAidReleasePolicy.clinicalReviewDraft,
+            debugEnableExpandedFirstAidOverride: true,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      // Verify >=48dp touch targets on Home
       expect(
         tester
             .getSize(find.byKey(const Key('first_aid_call_911_button')))
@@ -151,7 +148,6 @@ void main() {
         greaterThanOrEqualTo(48),
       );
 
-      // 1-tap Common Emergency -> Adult CPR
       final cprChip = find.byKey(const Key('common_emergency_cpr-adult'));
       await _scrollDownTo(tester, cprChip);
       await tester.tap(cprChip);
@@ -178,13 +174,11 @@ void main() {
       await _scrollDownTo(tester, find.byKey(const Key('instruction_step_1')));
       expect(find.text('FIRST-AID STEPS'), findsOneWidget);
 
-      // Verify instruction step text size >= 16sp
       final step1Text = tester.widget<Text>(
         find.byKey(const Key('instruction_step_1')),
       );
       expect(step1Text.style!.fontSize, greaterThanOrEqualTo(16.0));
 
-      // Scroll down to verify Critical Warnings, Escalation, and Learn More
       await _scrollDownTo(
         tester,
         find.byKey(const Key('critical_warnings_section')),
@@ -204,14 +198,12 @@ void main() {
       );
       expect(tester.getSize(learnMoreBtn).height, greaterThanOrEqualTo(48));
 
-      // Navigate to Learn More Article
       await tester.tap(learnMoreBtn);
       await tester.pumpAndSettle();
       expect(find.text('Learn More'), findsOneWidget);
       await _scrollDownTo(tester, find.text('CAUSES & RISK FACTORS'));
       expect(find.text('CAUSES & RISK FACTORS'), findsOneWidget);
 
-      // Return to Quick First Aid via 'View First Aid Instructions' (scroll state preserved!)
       await _scrollToTop(tester);
       final backToQuickBtn = find.byKey(
         const Key('article_view_quick_instructions_button'),
@@ -233,6 +225,7 @@ void main() {
         const MaterialApp(
           home: FirstAidLibraryScreen(
             releasePolicy: FirstAidReleasePolicy.clinicalReviewDraft,
+            debugEnableExpandedFirstAidOverride: true,
           ),
         ),
       );
@@ -266,6 +259,7 @@ void main() {
         const MaterialApp(
           home: FirstAidLibraryScreen(
             releasePolicy: FirstAidReleasePolicy.clinicalReviewDraft,
+            debugEnableExpandedFirstAidOverride: true,
           ),
         ),
       );
@@ -301,7 +295,7 @@ void main() {
   );
 
   testWidgets(
-    'fits 320x720 narrow screens at 1.8x enlarged text scale without overflow',
+    'Expanded UI fits 320x720 narrow screens at 1.8x enlarged text scale without overflow',
     (tester) async {
       tester.view.physicalSize = const Size(320, 720);
       tester.view.devicePixelRatio = 1.0;
@@ -318,6 +312,7 @@ void main() {
           ),
           home: const FirstAidLibraryScreen(
             releasePolicy: FirstAidReleasePolicy.clinicalReviewDraft,
+            debugEnableExpandedFirstAidOverride: true,
           ),
         ),
       );
@@ -346,7 +341,6 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: FirstAidLibraryScreen(
-            releasePolicy: FirstAidReleasePolicy.clinicalReviewDraft,
             openDialer: (uri) async {
               launchedUri = uri;
               return true;
@@ -361,12 +355,10 @@ void main() {
       expect(find.text('Open Phone?'), findsOneWidget);
       expect(launchedUri, isNull);
 
-      // Cancel does not open dialer
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       expect(launchedUri, isNull);
 
-      // Confirm opens tel:911
       await tester.tap(find.byKey(const Key('first_aid_call_911_button')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Open Phone'));
@@ -394,7 +386,6 @@ void main() {
       expect(consent.accepted, isFalse);
       expect(find.text('Blood Type'), findsNothing);
 
-      // Return to Terms, accept, then open First Aid in 1 tap from Scanner Entry
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
       await _scrollDownTo(tester, find.byType(Checkbox));
@@ -415,21 +406,18 @@ void main() {
   );
 
   testWidgets(
-    'publicRelease mode hides unapproved topics and keeps Call 911 active',
+    'Feature ON + publicRelease with zero approved expanded topics safely falls back to original library and Call 911',
     (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: FirstAidLibraryScreen(
             releasePolicy: FirstAidReleasePolicy.publicRelease,
+            debugEnableExpandedFirstAidOverride: true,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      await _scrollDownTo(
-        tester,
-        find.byKey(const Key('public_release_pending_approval_banner')),
-      );
       expect(
         find.byKey(const Key('public_release_pending_approval_banner')),
         findsOneWidget,
@@ -439,6 +427,8 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('common_emergency_cpr-adult')), findsNothing);
+      await _scrollDownTo(tester, find.text('8 GUIDES'));
+      expect(find.text('8 GUIDES'), findsOneWidget);
     },
   );
 }
