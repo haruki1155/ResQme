@@ -158,11 +158,13 @@ function seedFixture(rows: Map<string, Record<string, unknown>>) {
     requiresEmailVerification: true,
     fullName: 'Master Admin',
   });
-  rows.set('staffAccounts/admin-1/devices/device_admin_1234567890', {
+  rows.set('staffTier2Devices/admin-1', {
+    deviceId: 'device_admin_1234567890',
     status: 'active',
-    proofVersion: STAFF_ENROLLMENT_PROOF_VERSION,
-    publicKeySpkiBase64: adminKey.publicKeySpkiBase64,
-    attestationCertSerials: ['01', '02'],
+    enrollmentProofVersion: STAFF_ENROLLMENT_PROOF_VERSION,
+    keyVersion: 1,
+    publicKey: adminKey.publicKeySpkiBase64,
+    attestationSerials: ['01', '02'],
   });
   rows.set('staffAccounts/auth-1', {
     schoolId: '000000123',

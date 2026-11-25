@@ -22,7 +22,8 @@
     "test:rules:contained": "npm run build && node --test lib/test/deny_all_rules.test.js",
     "test:integration": "node --test --test-concurrency=1 lib/test/registration_integration.test.js lib/test/profile_integration.test.js lib/test/onboarding_integration.test.js lib/test/eligibility_integration.test.js lib/test/school_roster_integration.test.js lib/test/school_roster_fixtures_integration.test.js",
     "test:integration:phase1": "npm run build && node --test --test-concurrency=1 lib/test/staff_tier2_emulator_integration.test.js",
-    "test:integration:phase21": "npm run build && node --test --test-concurrency=1 lib/test/staff_account_lifecycle_emulator_integration.test.js"
+    "test:integration:phase21": "npm run build && node --test --test-concurrency=1 lib/test/staff_account_lifecycle_emulator_integration.test.js",
+    "test:integration:phase24": "npm run build && node --test --test-concurrency=1 lib/test/staff_qr_replacement_emulator_integration.test.js"
   },
   "dependencies": {
     "firebase-admin": "^14.5.0",

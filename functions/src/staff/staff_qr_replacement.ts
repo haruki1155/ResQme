@@ -141,11 +141,13 @@ export const issueAdminQrReplaceChallenge = onCall(resqmeRuntimeOptions, async (
   await loadEligibleStudentForReplacement({}, db, studentUid, admin.schoolId);
 
   if (deviceId) {
-    const devSnap = await db.doc(`staffAccounts/${adminUid}/devices/${deviceId}`).get();
+    const devSnap = await db.doc(`staffTier2Devices/${adminUid}`).get();
     if (
       !devSnap.exists ||
       devSnap.get('status') !== 'active' ||
-      devSnap.get('proofVersion') !== STAFF_ENROLLMENT_PROOF_VERSION
+      devSnap.get('deviceId') !== deviceId ||
+      typeof devSnap.get('publicKey') !== 'string' ||
+      devSnap.get('enrollmentProofVersion') !== STAFF_ENROLLMENT_PROOF_VERSION
     ) {
       throw new HttpsError('failed-precondition', 'Biometric staff device is not active.');
     }
@@ -285,17 +287,18 @@ export const replaceSchoolStudentQr = onCall(resqmeRuntimeOptions, async (reques
       if (challenge.deviceId !== deviceId) {
         throw new HttpsError('permission-denied', 'Biometric device mismatch.');
       }
-      const devSnap = await tx.get(db.doc(`staffAccounts/${adminUid}/devices/${deviceId}`));
-      const publicKey = devSnap.get('publicKeySpkiBase64');
+      const devSnap = await tx.get(db.doc(`staffTier2Devices/${adminUid}`));
+      const publicKey = devSnap.get('publicKey');
       if (
         !devSnap.exists ||
         devSnap.get('status') !== 'active' ||
-        devSnap.get('proofVersion') !== STAFF_ENROLLMENT_PROOF_VERSION ||
+        devSnap.get('deviceId') !== deviceId ||
+        devSnap.get('enrollmentProofVersion') !== STAFF_ENROLLMENT_PROOF_VERSION ||
         typeof publicKey !== 'string'
       ) {
         throw new HttpsError('permission-denied', 'Biometric staff device is unavailable.');
       }
-      await assertAttestationSerialsNotRevoked(devSnap.get('attestationCertSerials'));
+      await assertAttestationSerialsNotRevoked(devSnap.get('attestationSerials'));
       const signedMsg = adminQrReplaceSignedMessage({
         adminUid,
         deviceId: deviceId!,
