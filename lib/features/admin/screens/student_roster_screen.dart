@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../widgets/portal_widgets.dart';
@@ -587,6 +588,7 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                     title: 'Student Roster',
                     subtitle:
                         'Official school enrollment baseline including unregistered and registered students.',
+                    guide: ResQMeFeatureGuides.portalStudentRoster,
                     trailing: IconButton(
                       tooltip: 'Refresh roster',
                       onPressed: _isInitialLoading || _isRefreshing

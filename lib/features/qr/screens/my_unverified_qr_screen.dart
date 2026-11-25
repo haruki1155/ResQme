@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../../medical/services/tier2_authorization_repository.dart';
 import '../services/tier1_qr_repository.dart';
 
@@ -323,6 +324,10 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen>
     appBar: AppBar(
       title: const Text('My ResQMe QR'),
       actions: [
+        FeatureGuideIconButton(
+          guide: ResQMeFeatureGuides.studentTier1Qr,
+          accountScope: widget.tier2Repository?.currentUid ?? 'guest',
+        ),
         IconButton(
           tooltip: 'Refresh QR',
           onPressed: loading ? null : () => load(forceRefresh: true),

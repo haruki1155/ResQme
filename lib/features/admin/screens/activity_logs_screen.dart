@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../widgets/portal_widgets.dart';
@@ -472,6 +473,12 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
       appBar: AppBar(
         title: const Text('Activity Logs'),
         actions: [
+          FeatureGuideIconButton(
+            guide: ResQMeFeatureGuides.portalActivityLogs,
+            accountScope:
+                PortalScope.maybeOf(context)?.notifier?.activeScopeKey ??
+                'guest',
+          ),
           IconButton(
             tooltip: 'Filter by date range (Asia/Manila)',
             onPressed: _isInitialLoading ? null : _pickDateRange,

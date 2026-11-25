@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../services/staff_access_repository.dart';
@@ -221,6 +222,7 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
                 title: 'Active Students',
                 subtitle:
                     'Review registered student accounts, manual school verification, and account state.',
+                guide: ResQMeFeatureGuides.portalActiveStudents,
                 trailing: IconButton(
                   tooltip: 'Refresh students',
                   onPressed:

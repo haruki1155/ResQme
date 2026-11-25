@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../services/staff_access_repository.dart';
@@ -402,6 +403,12 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
       appBar: AppBar(
         title: const Text('Student Details'),
         actions: [
+          FeatureGuideIconButton(
+            guide: ResQMeFeatureGuides.portalActiveStudents,
+            accountScope:
+                PortalScope.maybeOf(context)?.notifier?.activeScopeKey ??
+                'guest',
+          ),
           IconButton(
             tooltip: 'Refresh details',
             onPressed: _isInitialLoading || _isRefreshing || _busy

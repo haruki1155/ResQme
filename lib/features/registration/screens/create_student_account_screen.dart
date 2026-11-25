@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../models/registration_draft.dart';
 import '../registration_validators.dart';
 import '../services/student_registration_repository.dart';
@@ -169,7 +170,12 @@ class _CreateStudentAccountScreenState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Create student account')),
+    appBar: AppBar(
+      title: const Text('Create student account'),
+      actions: const [
+        FeatureGuideIconButton(guide: ResQMeFeatureGuides.studentRegistration),
+      ],
+    ),
     body: SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),

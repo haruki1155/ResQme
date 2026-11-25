@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../../qr/domain/qr_payload_parser.dart';
 import '../services/staff_tier2_repository.dart';
 import 'staff_tier2_result_screen.dart';
@@ -132,7 +133,15 @@ class _StaffTier2ScannerScreenState extends State<StaffTier2ScannerScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Staff Tier 2 QR Scanner')),
+      appBar: AppBar(
+        title: const Text('Staff Tier 2 QR Scanner'),
+        actions: [
+          FeatureGuideIconButton(
+            guide: ResQMeFeatureGuides.portalStaffBiometrics,
+            accountScope: widget.client.currentUid ?? 'guest',
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),

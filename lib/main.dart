@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:resqme/app/resqme_app.dart';
 import 'package:resqme/core/config/app_environment.dart';
 import 'package:resqme/core/config/firebase_environment.dart';
+import 'package:resqme/core/widgets/feature_guide.dart';
 import 'package:resqme/features/welcome/data/shared_preferences_consent_repository.dart';
 import 'package:resqme/features/registration/services/student_registration_repository.dart';
 import 'package:resqme/features/registration/services/firebase_student_registration_repository.dart';
@@ -22,6 +23,7 @@ import 'package:resqme/features/school/services/school_review_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FeatureGuidePolicy.enableAutoShowFirstVisit = true;
   StudentRegistrationRepository? registrationRepository;
   Stream<void>? authChanges;
   SyntheticMedicalRepository? medicalRepository;

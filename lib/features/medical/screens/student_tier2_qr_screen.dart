@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../../qr/services/tier1_qr_repository.dart';
 import '../services/tier2_authorization_repository.dart';
 import '../widgets/tier2_profile_view.dart';
@@ -338,6 +339,8 @@ class _StudentTier2QrScreenState extends State<StudentTier2QrScreen>
             Tier2TopBar(
               unlocked: unlocked,
               onLock: unlocked ? () => _lockPresentation(clearError: true) : null,
+              guide: ResQMeFeatureGuides.studentTier2Qr,
+              guideAccountScope: widget.presentationClient?.currentUid ?? 'guest',
             ),
             Expanded(
               child: ListView(

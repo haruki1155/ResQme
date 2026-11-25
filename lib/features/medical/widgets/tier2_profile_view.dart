@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
+import '../../../core/widgets/feature_guide.dart';
 
 class Tier2ProfileView extends StatefulWidget {
   const Tier2ProfileView({
@@ -725,11 +726,15 @@ class Tier2TopBar extends StatelessWidget {
     required this.unlocked,
     this.onLock,
     this.title = 'Tier 2 information',
+    this.guide,
+    this.guideAccountScope = 'guest',
   });
 
   final bool unlocked;
   final VoidCallback? onLock;
   final String title;
+  final FeatureGuideContent? guide;
+  final String guideAccountScope;
 
   @override
   Widget build(BuildContext context) {
@@ -762,6 +767,11 @@ class Tier2TopBar extends StatelessWidget {
               ),
             ),
           ),
+          if (guide != null)
+            FeatureGuideIconButton(
+              guide: guide!,
+              accountScope: guideAccountScope,
+            ),
           IconButton(
             tooltip: unlocked ? 'Lock Tier 2 information' : 'Locked',
             onPressed: unlocked ? onLock : null,

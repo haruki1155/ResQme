@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/staff_access_repository.dart';
 import '../services/staff_management_repository.dart';
@@ -132,6 +133,7 @@ class _AuthorizedPersonnelScreenState extends State<AuthorizedPersonnelScreen> {
                     title: 'Authorized Personnel',
                     subtitle:
                         'Issue and manage school-scoped Authorized staff accounts and devices.',
+                    guide: ResQMeFeatureGuides.portalAuthorizedPersonnel,
                     trailing: IconButton(
                       tooltip: 'Refresh',
                       onPressed:
@@ -308,6 +310,12 @@ class _AuthorizedPersonnelScreenState extends State<AuthorizedPersonnelScreen> {
           : AppBar(
               title: const Text('Authorized Personnel'),
               actions: [
+                FeatureGuideIconButton(
+                  guide: ResQMeFeatureGuides.portalAuthorizedPersonnel,
+                  accountScope:
+                      PortalScope.maybeOf(context)?.notifier?.activeScopeKey ??
+                      'guest',
+                ),
                 IconButton(
                   tooltip: 'Refresh',
                   onPressed:

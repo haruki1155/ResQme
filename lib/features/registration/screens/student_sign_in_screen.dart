@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../services/student_registration_repository.dart';
 import 'create_student_account_screen.dart';
 import 'student_login_qr_screen.dart';
@@ -146,7 +147,12 @@ class _StudentSignInScreenState extends State<StudentSignInScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Student Account')),
+    appBar: AppBar(
+      title: const Text('Student Account'),
+      actions: const [
+        FeatureGuideIconButton(guide: ResQMeFeatureGuides.studentQrLogin),
+      ],
+    ),
     body: SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../services/staff_access_repository.dart';
@@ -144,6 +145,7 @@ class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
                 title: 'School Administration',
                 subtitle:
                     'Assigned school: ${access.schoolId}${access.fullName != null ? ' • ${access.fullName}' : ''}',
+                guide: ResQMeFeatureGuides.portalDashboard,
                 trailing: widget.portalStudentRepository != null
                     ? IconButton(
                         tooltip: 'Refresh statistics',

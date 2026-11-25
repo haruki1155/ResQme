@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:resqme/core/config/first_aid_feature_flags.dart';
+import 'package:resqme/core/widgets/feature_guide.dart';
 import 'package:resqme/features/public_support/data/first_aid_repository.dart';
 import 'package:resqme/features/public_support/data/original_first_aid_guides.dart';
 import 'package:resqme/features/public_support/domain/first_aid_models.dart';
@@ -881,7 +882,10 @@ PreferredSizeWidget _buildStandardFirstAidAppBar(
       'First-aid instructions',
       style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
     ),
-    actions: actions,
+    actions: [
+      const FeatureGuideIconButton(guide: ResQMeFeatureGuides.studentFirstAid),
+      ...?actions,
+    ],
   );
 }
 

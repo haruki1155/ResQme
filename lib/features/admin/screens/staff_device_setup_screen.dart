@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../services/staff_tier2_repository.dart';
 
 class StaffDeviceSetupScreen extends StatefulWidget {
@@ -48,7 +49,15 @@ class _StaffDeviceSetupScreenState extends State<StaffDeviceSetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Trusted Device Biometrics')),
+      appBar: AppBar(
+        title: const Text('Trusted Device Biometrics'),
+        actions: [
+          FeatureGuideIconButton(
+            guide: ResQMeFeatureGuides.portalStaffBiometrics,
+            accountScope: widget.client.currentUid ?? 'guest',
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(

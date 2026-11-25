@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../services/tier2_authorization_repository.dart';
 
 class BiometricOnboardingScreen extends StatefulWidget {
@@ -85,7 +86,15 @@ class _BiometricOnboardingScreenState extends State<BiometricOnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Biometric Security Setup')),
+      appBar: AppBar(
+        title: const Text('Biometric Security Setup'),
+        actions: [
+          FeatureGuideIconButton(
+            guide: ResQMeFeatureGuides.studentBiometrics,
+            accountScope: widget.repository.currentUid ?? 'guest',
+          ),
+        ],
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(24),

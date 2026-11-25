@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
 import 'package:resqme/app/app_routes.dart';
+import 'package:resqme/core/widgets/feature_guide.dart';
 import 'package:resqme/features/qr/services/tier1_qr_repository.dart';
 import 'package:resqme/features/registration/models/student_registration_profile.dart';
 import 'package:resqme/features/registration/services/student_registration_repository.dart';
@@ -307,14 +308,28 @@ class _EmergencyDashboardScreenState extends State<EmergencyDashboardScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'RESQME  |  QR ID',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1,
-                              ),
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    'RESQME  |  QR ID',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                ),
+                                FeatureGuideIconButton(
+                                  guide: ResQMeFeatureGuides.studentDashboard,
+                                  accountScope:
+                                      _qrCredential?.payload ??
+                                      _profile?.fullName ??
+                                      'guest',
+                                  iconColor: Colors.white,
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 42),
                             Text(

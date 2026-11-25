@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../../registration/registration_validators.dart';
 import '../services/medical_completion_repository.dart';
 
@@ -193,7 +194,15 @@ class _MedicalCompletionScreenState extends State<MedicalCompletionScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Medical information')),
+    appBar: AppBar(
+      title: const Text('Medical information'),
+      actions: [
+        FeatureGuideIconButton(
+          guide: ResQMeFeatureGuides.studentMedicalRecord,
+          accountScope: _uid ?? 'guest',
+        ),
+      ],
+    ),
     body: _loading
         ? const Center(child: CircularProgressIndicator())
         : SafeArea(

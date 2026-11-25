@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../../qr/services/tier1_qr_repository.dart';
 import '../../registration/models/student_registration_profile.dart';
 import '../../registration/services/student_registration_repository.dart';
@@ -497,6 +498,8 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
             Tier2TopBar(
               unlocked: unlocked,
               onLock: () => setState(_clearProtectedState),
+              guide: ResQMeFeatureGuides.studentBiometrics,
+              guideAccountScope: widget.repository.currentUid ?? 'guest',
             ),
             Expanded(
               child: unlocked

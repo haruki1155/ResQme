@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:resqme/core/config/firebase_environment.dart';
 import 'package:resqme/core/data/account_operation_lock.dart';
+import 'package:resqme/core/widgets/feature_guide.dart';
 import 'package:resqme/features/admin/admin_app.dart';
 import 'package:resqme/features/admin/config/admin_backend_config.dart';
 import 'package:resqme/features/admin/screens/staff_device_setup_screen.dart';
@@ -19,6 +20,7 @@ import 'package:resqme/features/medical/services/platform_tier2_key.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FeatureGuidePolicy.enableAutoShowFirstVisit = true;
   final backend = AdminBackendConfig.resolve(
     mode: const String.fromEnvironment('RESQME_BACKEND'),
     isDebugBuild: kDebugMode,

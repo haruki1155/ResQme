@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../app/resqme_theme.dart';
+import '../../../core/widgets/feature_guide.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 
@@ -277,14 +278,18 @@ class PortalSectionHeader extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.trailing,
+    this.guide,
   });
 
   final String title;
   final String subtitle;
   final Widget? trailing;
+  final FeatureGuideContent? guide;
 
   @override
   Widget build(BuildContext context) {
+    final scopeKey =
+        PortalScope.maybeOf(context)?.notifier?.activeScopeKey ?? 'guest';
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -313,8 +318,13 @@ class PortalSectionHeader extends StatelessWidget {
             ],
           ),
         ),
+        if (guide != null)
+          FeatureGuideIconButton(
+            guide: guide!,
+            accountScope: scopeKey,
+          ),
         if (trailing != null) ...[
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           trailing!,
         ],
       ],
