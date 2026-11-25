@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 export const MAX_SF1_FILE_BYTES = 2 * 1024 * 1024;
 export const MAX_SF1_RAW_ROWS = 2500;
 export const MAX_SF1_STUDENTS = 500;
+export const MAX_SF1_SHEETS = 20;
 
 export interface ParsedSf1Row {
   rowNumber: number;
@@ -228,6 +229,9 @@ export function parseSf1Workbook(input: {
       type: 'buffer',
       cellDates: true,
       cellNF: true,
+      cellFormula: false,
+      cellHTML: false,
+      sheetStubs: false,
       raw: false,
     });
   } catch {
@@ -236,6 +240,9 @@ export function parseSf1Workbook(input: {
 
   if (!wb.SheetNames || wb.SheetNames.length === 0) {
     throw new HttpsError('invalid-argument', 'Spreadsheet contains no worksheets.');
+  }
+  if (wb.SheetNames.length > MAX_SF1_SHEETS) {
+    throw new HttpsError('invalid-argument', `Spreadsheet exceeds maximum ${MAX_SF1_SHEETS} worksheets.`);
   }
 
   let targetSheetName: string | null = null;

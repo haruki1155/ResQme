@@ -4,6 +4,18 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import {noticeVersion, validateRegistration} from './registration_contract';
 import {isStudentAccountDisabled, resqmeRuntimeOptions} from '../onboarding/authorization';
 import {evaluateRosterClaim,matchingRosterSchool,rosterCodeDigest,rosterLookupId,type SchoolRosterRecord} from '../school/roster_contract';
+
+function computeAgeFromIsoBirthDate(birthDate: unknown, now = new Date()): number | null {
+  if (typeof birthDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return null;
+  const [y, m, d] = birthDate.split('-').map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  if (utc.getUTCFullYear() !== y || utc.getUTCMonth() !== m - 1 || utc.getUTCDate() !== d) return null;
+  let age = now.getUTCFullYear() - y;
+  const monthDiff = now.getUTCMonth() + 1 - m;
+  if (monthDiff < 0 || (monthDiff === 0 && now.getUTCDate() < d)) age -= 1;
+  return age >= 0 && age <= 130 ? age : null;
+}
+
 export const createStudentRegistration = onCall(resqmeRuntimeOptions, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in is required.');
   const data = request.data as Record<string, unknown>;
@@ -37,15 +49,54 @@ export const createStudentRegistration = onCall(resqmeRuntimeOptions, async (req
       }
       return;
     }
-    const roster=rosterSnapshot?.data() as SchoolRosterRecord|undefined;
-    const assignmentSchoolId=matchingRosterSchool(roster,registration.fullName);
-    const verification=rosterKey?evaluateRosterClaim({roster,codeClaim:codeClaimSnapshot?.data(),rosterId:rosterRef?.id,lrn:registration.lrn,fullName:registration.fullName,enrollmentCode:registration.enrollmentCode,uid:request.auth!.uid,key:rosterKey}):'manual_review';
-    const autoApproved=verification==='auto_approve'&&!!assignmentSchoolId&&!!rosterRef;
+    const rosterRaw = rosterSnapshot?.data() as (SchoolRosterRecord & {gradeLevel?: unknown; birthDate?: unknown}) | undefined;
+    const assignmentSchoolId=matchingRosterSchool(rosterRaw,registration.fullName);
+    const lrnLockRef = assignmentSchoolId ? db.doc(`studentLrnLocks/${assignmentSchoolId}_${registration.lrn}`) : null;
+    const lrnLockSnap = lrnLockRef ? await tx.get(lrnLockRef) : null;
+    const lrnLockedByOther = Boolean(lrnLockSnap?.exists && lrnLockSnap.get('studentUid') !== request.auth!.uid);
+
+    const rawVerification=rosterKey?evaluateRosterClaim({roster:rosterRaw,codeClaim:codeClaimSnapshot?.data(),rosterId:rosterRef?.id,lrn:registration.lrn,fullName:registration.fullName,enrollmentCode:registration.enrollmentCode,uid:request.auth!.uid,key:rosterKey}):'manual_review';
+    const verification = lrnLockedByOther ? 'conflict' : rawVerification;
+    const autoApproved=verification==='auto_approve'&&!!assignmentSchoolId&&!!rosterRef&&!lrnLockedByOther;
+
+    // Trusted roster gradeLevel and authoritative birthDate/age cannot be overridden by student-supplied age.
+    const trustedGradeLevel = assignmentSchoolId && typeof rosterRaw?.gradeLevel === 'string' && rosterRaw.gradeLevel.trim().length > 0
+      ? rosterRaw.gradeLevel.trim()
+      : null;
+    const trustedBirthDate = assignmentSchoolId && typeof rosterRaw?.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rosterRaw.birthDate)
+      ? rosterRaw.birthDate
+      : null;
+    const trustedAge = computeAgeFromIsoBirthDate(trustedBirthDate);
+    const effectiveAge = trustedAge ?? registration.ageYears;
+    const effectiveStatus = effectiveAge < 18 ? 'pending_guardian' : 'pending_review';
+
     if(autoApproved){
       tx.update(rosterRef!,{claimedByUid:request.auth!.uid,claimedAt:FieldValue.serverTimestamp(),enrollmentCodeDigest:null});
       tx.update(codeClaimRef!,{claimedByUid:request.auth!.uid,claimedAt:FieldValue.serverTimestamp()});
+      if (lrnLockRef && !lrnLockSnap?.exists) {
+        tx.create(lrnLockRef, {studentUid: request.auth!.uid, schoolId: assignmentSchoolId, method: 'roster', recordedAt: FieldValue.serverTimestamp()});
+      }
     }
-    tx.create(profile, {schemaVersion: 1, fullName:registration.fullName, ageYearsAtRegistration:registration.ageYears, status:registration.status, schoolApprovalStatus:autoApproved?'approved':'pending', schoolAssignmentStatus:assignmentSchoolId?'assigned':'unassigned', schoolId:assignmentSchoolId, schoolVerificationMethod:autoApproved?'roster':null, schoolVerificationOutcome:autoApproved?'verified':'manual_review', medicalStatus:'not_started', medicalRevision:0, lrn: registration.lrn, gender:registration.gender,personalContactNumber:registration.personalContactNumber,emergencyContacts:registration.emergencyContacts, createdAt: FieldValue.serverTimestamp()});
+    tx.create(profile, {
+      schemaVersion: 1,
+      fullName: registration.fullName,
+      ageYearsAtRegistration: effectiveAge,
+      ...(trustedBirthDate ? {birthDate: trustedBirthDate} : {}),
+      ...(trustedGradeLevel ? {gradeLevel: trustedGradeLevel} : {}),
+      status: effectiveStatus,
+      schoolApprovalStatus: autoApproved ? 'approved' : 'pending',
+      schoolAssignmentStatus: assignmentSchoolId ? 'assigned' : 'unassigned',
+      schoolId: assignmentSchoolId,
+      schoolVerificationMethod: autoApproved ? 'roster' : null,
+      schoolVerificationOutcome: autoApproved ? 'verified' : (verification === 'conflict' ? 'conflict' : 'manual_review'),
+      medicalStatus: 'not_started',
+      medicalRevision: 0,
+      lrn: registration.lrn,
+      gender: registration.gender,
+      personalContactNumber: registration.personalContactNumber,
+      emergencyContacts: registration.emergencyContacts,
+      createdAt: FieldValue.serverTimestamp(),
+    });
     tx.create(acknowledgment, {affirmativeAction: true, actorUid: request.auth!.uid, serverTimestamp: FieldValue.serverTimestamp()});
   });
   const result = await profile.get(); return {status: result.get('status'), profilePath: profile.path};

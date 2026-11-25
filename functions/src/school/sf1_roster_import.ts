@@ -50,6 +50,7 @@ interface StoredPreviewRow {
 }
 
 const PREVIEW_TTL_MS = 15 * 60_000;
+const ENROLLMENT_CODE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CHUNK_SIZE = 100;
 const PREVIEW_ID_PATTERN = /^[a-f0-9]{32,64}$/;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
@@ -436,6 +437,17 @@ export const commitSchoolRosterImport = onCall(resqmeRuntimeOptions, async (requ
         }
 
         if (snap.exists) {
+          const oldDigest = snap.get('enrollmentCodeDigest');
+          const code = generateEnrollmentCode();
+          const digest = rosterCodeDigest(code, key);
+          const codeExpiresAt = Date.now() + ENROLLMENT_CODE_TTL_MS;
+          if (typeof oldDigest === 'string' && oldDigest.length > 0) {
+            tx.set(
+              db.doc(`schoolRosterCodes/${oldDigest}`),
+              {revoked: true, revokedAt: FieldValue.serverTimestamp()},
+              {merge: true},
+            );
+          }
           tx.update(ref, {
             lastName: row.lastName,
             firstName: row.firstName,
@@ -450,12 +462,28 @@ export const commitSchoolRosterImport = onCall(resqmeRuntimeOptions, async (requ
             guardianName: row.guardianName,
             guardianRelationship: row.guardianRelationship,
             parentGuardianContact: row.parentGuardianContact,
+            enrollmentCodeDigest: digest,
+            codeExpiresAt,
             updatedAt: FieldValue.serverTimestamp(),
+          });
+          tx.create(db.doc(`schoolRosterCodes/${digest}`), {
+            rosterId: row.rosterId,
+            schoolId: admin.schoolId,
+            claimedByUid: null,
+            codeExpiresAt,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+          generatedCredentials.push({
+            maskedLrn: row.maskedLrn ?? '••••••••••••',
+            fullName: row.fullName,
+            gradeLevel: row.gradeLevel,
+            enrollmentCode: code,
           });
           updatedCount++;
         } else {
           const code = generateEnrollmentCode();
           const digest = rosterCodeDigest(code, key);
+          const codeExpiresAt = Date.now() + ENROLLMENT_CODE_TTL_MS;
           tx.create(ref, {
             schoolId: admin.schoolId,
             lrn: row.lrn,
@@ -473,6 +501,7 @@ export const commitSchoolRosterImport = onCall(resqmeRuntimeOptions, async (requ
             guardianRelationship: row.guardianRelationship,
             parentGuardianContact: row.parentGuardianContact,
             enrollmentCodeDigest: digest,
+            codeExpiresAt,
             claimedByUid: null,
             importedByUid: adminUid,
             importId: requestId,
@@ -483,6 +512,7 @@ export const commitSchoolRosterImport = onCall(resqmeRuntimeOptions, async (requ
             rosterId: row.rosterId,
             schoolId: admin.schoolId,
             claimedByUid: null,
+            codeExpiresAt,
             createdAt: FieldValue.serverTimestamp(),
           });
           generatedCredentials.push({
