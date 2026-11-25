@@ -174,9 +174,59 @@ class Tier2AuthorizationRepository {
     }, check);
   }
 
+  String _enrolledKey(String uid) => 'resqme-tier2-enrolled-$uid';
+
+  Future<bool> isBiometricEnrolled() async {
+    final uid = currentUid;
+    if (uid == null) return false;
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_enrolledKey(uid)) == true;
+  }
+
+  Future<void> _markEnrolled(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_enrolledKey(uid), true);
+  }
+
   Future<Map<String, dynamic>> readWithBiometrics() =>
       _withOwner((uid, check) async {
-        return _readWithDevice(uid, await _deviceId(uid, check), check);
+        final result = await _readWithDevice(
+          uid,
+          await _deviceId(uid, check),
+          check,
+        );
+        await _markEnrolled(uid);
+        return result;
+      });
+
+  Future<Map<String, String>> revealOwnIdentityWithBiometrics() =>
+      _withOwner((uid, check) async {
+        final deviceId = await _deviceId(uid, check);
+        final challenge = await _call('issueTier2Challenge', {
+          'deviceId': deviceId,
+          'operation': 'reveal_identity',
+        }, check);
+        if (challenge['challengeId'] is! String ||
+            challenge['nonce'] is! String ||
+            challenge['deviceId'] != deviceId ||
+            challenge['operation'] != 'reveal_identity') {
+          throw const Tier2AuthorizationFailure('Tier 2 challenge is invalid.');
+        }
+        final message =
+            '$uid\n$deviceId\nreveal_identity\n${challenge['challengeId']}\n${challenge['nonce']}';
+        final signature = await keyProvider.sign(deviceId, message);
+        check();
+        final response = await _call('revealMyStudentIdentity', {
+          'challengeId': challenge['challengeId'],
+          'deviceId': deviceId,
+          'signature': signature,
+        }, check);
+        await _markEnrolled(uid);
+        return {
+          'fullName': response['fullName']?.toString() ?? '',
+          'surname': response['surname']?.toString() ?? '',
+          'lrn': response['lrn']?.toString() ?? '',
+        };
       });
 
   Future<String> checkBiometricAvailability() async {
@@ -236,6 +286,7 @@ class Tier2AuthorizationRepository {
       'publicKey': enrollment.publicKey,
       'signature': enrollment.signature,
     }, check);
+    await _markEnrolled(uid);
     return deviceId;
   }
 
@@ -294,5 +345,6 @@ class Tier2AuthorizationRepository {
     if (id != null) await keyProvider.deleteKey(id);
     check();
     await prefs.remove(key);
+    await prefs.remove(_enrolledKey(uid));
   }
 }

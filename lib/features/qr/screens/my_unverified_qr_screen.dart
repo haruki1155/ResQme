@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pretty_qr_code/pretty_qr_code.dart';
+import '../../medical/services/tier2_authorization_repository.dart';
 import '../services/tier1_qr_repository.dart';
 
 class MyUnverifiedQrScreen extends StatefulWidget {
@@ -14,7 +15,10 @@ class MyUnverifiedQrScreen extends StatefulWidget {
     this.onSetupBiometrics,
     this.onCompleteMedical,
     this.medicalComplete = false,
+    this.studentFullName,
+    this.tier2Repository,
   });
+
   final Tier1QrRepository repository;
   final VoidCallback onDashboard;
   final VoidCallback? onScan, onSignOut;
@@ -22,17 +26,96 @@ class MyUnverifiedQrScreen extends StatefulWidget {
   final VoidCallback? onSetupBiometrics;
   final VoidCallback? onCompleteMedical;
   final bool medicalComplete;
+  final String? studentFullName;
+  final Tier2AuthorizationRepository? tier2Repository;
+
   @override
   State<MyUnverifiedQrScreen> createState() => _MyUnverifiedQrScreenState();
 }
 
-class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
+class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen>
+    with WidgetsBindingObserver {
   Tier1QrCredential? credential;
   bool loading = true, failed = false;
+  bool _biometricEnrolled = false;
+  bool _revealingIdentity = false;
+  String? _revealedSurname;
+  String? _revealedLrn;
+  String? _revealError;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     load();
+    _checkBiometricStatus();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if ((state == AppLifecycleState.paused ||
+            state == AppLifecycleState.hidden) &&
+        mounted) {
+      setState(() {
+        _revealedSurname = null;
+        _revealedLrn = null;
+        _revealError = null;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _revealedSurname = null;
+    _revealedLrn = null;
+    super.dispose();
+  }
+
+  Future<void> _checkBiometricStatus() async {
+    final repo = widget.tier2Repository;
+    if (repo == null) return;
+    final enrolled = await repo.isBiometricEnrolled();
+    if (mounted) {
+      setState(() => _biometricEnrolled = enrolled);
+    }
+  }
+
+  String _censoredSurname() {
+    final raw = widget.studentFullName?.trim() ?? '';
+    if (raw.isEmpty) return '••••••';
+    final parts = raw.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '••••••';
+    final surname = parts.last;
+    if (surname.length <= 1) return '••••••';
+    return '${surname[0]}${'•' * (surname.length - 1)}';
+  }
+
+  Future<void> _revealIdentity() async {
+    final repo = widget.tier2Repository;
+    if (repo == null || _revealingIdentity) return;
+    setState(() {
+      _revealingIdentity = true;
+      _revealError = null;
+    });
+    try {
+      final result = await repo.revealOwnIdentityWithBiometrics();
+      if (!mounted) return;
+      setState(() {
+        _revealedSurname = result['surname'];
+        _revealedLrn = result['lrn'];
+        _biometricEnrolled = true;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _revealError = error is Tier2AuthorizationFailure
+            ? error.message
+            : 'Biometric verification is required to view surname and LRN.';
+      });
+    } finally {
+      if (mounted) setState(() => _revealingIdentity = false);
+    }
   }
 
   Future<void> load() async {
@@ -55,6 +138,7 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
         setState(() => loading = false);
       }
     }
+    await _checkBiometricStatus();
   }
 
   Future<void> replace() async {
@@ -91,6 +175,132 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  Widget _buildCensoredIdentityCard() {
+    final revealed = _revealedSurname != null || _revealedLrn != null;
+    final surnameDisplay = revealed && (_revealedSurname?.isNotEmpty == true)
+        ? _revealedSurname!
+        : _censoredSurname();
+    final lrnDisplay = revealed && (_revealedLrn?.isNotEmpty == true)
+        ? _revealedLrn!
+        : '•••• •••• ••••';
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5EAF2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.badge_outlined,
+                size: 18,
+                color: Color(0xFFE92B32),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'PROTECTED STUDENT IDENTITY',
+                  style: TextStyle(
+                    color: Color(0xFF7B879B),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
+              if (revealed)
+                TextButton(
+                  onPressed: () => setState(() {
+                    _revealedSurname = null;
+                    _revealedLrn = null;
+                  }),
+                  child: const Text('Hide'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'SURNAME',
+                      style: TextStyle(
+                        color: Color(0xFF7B879B),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      surnameDisplay,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'LRN',
+                      style: TextStyle(
+                        color: Color(0xFF7B879B),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      lrnDisplay,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (!revealed && widget.tier2Repository != null) ...[
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: _revealingIdentity ? null : _revealIdentity,
+              icon: const Icon(Icons.fingerprint),
+              label: Text(
+                _revealingIdentity
+                    ? 'Verifying biometrics…'
+                    : 'View with Biometrics',
+              ),
+            ),
+          ],
+          if (_revealError != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _revealError!,
+              style: const TextStyle(color: Colors.red, fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -147,11 +357,14 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
                       ),
                     ),
                   ),
-                if (credential != null)
+                if (credential != null) _buildCensoredIdentityCard(),
+                if (credential != null) ...[
+                  const SizedBox(height: 14),
                   OutlinedButton(
                     onPressed: loading ? null : replace,
                     child: const Text('Replace QR'),
                   ),
+                ],
                 if (credential?.verificationStatus == 'pending' &&
                     widget.onCompleteMedical != null &&
                     !widget.medicalComplete)
@@ -190,20 +403,11 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
                   ),
                 ],
                 const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: widget.onDashboard,
-                  child: const Text('Go to Dashboard'),
-                ),
-                if (widget.onSetupBiometrics != null)
+                if (widget.onSetupBiometrics != null && !_biometricEnrolled)
                   OutlinedButton.icon(
                     onPressed: widget.onSetupBiometrics,
                     icon: const Icon(Icons.fingerprint),
                     label: const Text('Biometric Security Setup'),
-                  ),
-                if (widget.onTier2 != null)
-                  OutlinedButton(
-                    onPressed: widget.onTier2,
-                    child: const Text('Access Tier 2'),
                   ),
                 if (widget.onScan != null)
                   TextButton(

@@ -146,6 +146,8 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
           ? null
           : () => setState(() => step = 'medical'),
       medicalComplete: widget.profile.medicalStatus == 'complete',
+      studentFullName: widget.profile.fullName,
+      tier2Repository: widget.tier2,
     ),
     _ => const SizedBox.shrink(),
   };

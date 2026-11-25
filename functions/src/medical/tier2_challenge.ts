@@ -4,6 +4,7 @@ import {keys,object} from './medical_contract';
 import {evaluateStudentEligibility} from '../qr/qr_eligibility';
 
 export const tier2Operation='read_medical' as const;
+export const tier2RevealIdentityOperation='reveal_identity' as const;
 export const STUDENT_ENROLLMENT_PROOF_VERSION=2 as const;
 export function studentEnrollmentSignedMessage(input:{uid:string;deviceId:string;challengeId:string;nonce:string}) {
   return `student_biometric_enroll\n${input.uid}\n${input.deviceId}\n${input.challengeId}\n${input.nonce}`;
@@ -30,8 +31,11 @@ export function validateDeviceEnrollment(value:unknown) {
 }
 export function validateChallengeRequest(value:unknown) {
   const data=object(value);keys(data,['deviceId','operation']);
-  if(typeof data.deviceId!=='string'||!/^[A-Za-z0-9_-]{20,80}$/.test(data.deviceId)||data.operation!==tier2Operation) throw new HttpsError('invalid-argument','Invalid Tier 2 request.');
-  return {deviceId:data.deviceId,operation:tier2Operation};
+  if(typeof data.deviceId!=='string'||!/^[A-Za-z0-9_-]{20,80}$/.test(data.deviceId)||
+     (data.operation!==tier2Operation&&data.operation!==tier2RevealIdentityOperation)) {
+    throw new HttpsError('invalid-argument','Invalid Tier 2 request.');
+  }
+  return {deviceId:data.deviceId,operation:data.operation as typeof tier2Operation | typeof tier2RevealIdentityOperation};
 }
 export function validateProof(value:unknown) {
   const data=object(value);keys(data,['challengeId','deviceId','signature']);
