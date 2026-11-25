@@ -45,40 +45,10 @@ class _AuthorizedAccountDetailsScreenState
   }
 
   Future<bool> _promptReauth(String reason) async {
-    final controller = TextEditingController();
     final password = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirm Admin Password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(reason),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Admin password',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text),
-            child: const Text('Confirm'),
-          ),
-        ],
-      ),
+      builder: (_) => _AdminReauthDialog(reason: reason),
     );
-    controller.dispose();
     if (password == null || password.isEmpty) return false;
     await widget.accessRepository.reauthenticate(password);
     return true;
@@ -373,6 +343,60 @@ class _AuthorizedAccountDetailsScreenState
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AdminReauthDialog extends StatefulWidget {
+  const _AdminReauthDialog({required this.reason});
+
+  final String reason;
+
+  @override
+  State<_AdminReauthDialog> createState() => _AdminReauthDialogState();
+}
+
+class _AdminReauthDialogState extends State<_AdminReauthDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Confirm Admin Password'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.reason),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Admin password',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Confirm'),
+        ),
+      ],
     );
   }
 }

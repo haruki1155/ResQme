@@ -353,4 +353,52 @@ void main() {
     expect(find.textContaining('AUTH-9999ZZZZ'), findsOneWidget);
     expect(find.textContaining('Temp!Password2026'), findsOneWidget);
   });
+
+  testWidgets('Reset Temporary Password reauth dialog disposes cleanly without red error screen', (tester) async {
+    final repo = FakeStaffAccessRepository(
+      access: const StaffAccess(
+        uid: 'master-1',
+        role: 'admin',
+        schoolId: 'pilot-school-1',
+        active: true,
+        isMasterAdmin: true,
+        mustChangePassword: false,
+        requiresEmailVerification: true,
+        emailVerified: true,
+      ),
+    );
+    await repo.signIn('master@school.edu.ph', 'Strong!Password2026');
+    final mgmt = FakeStaffManagementRepository();
+    await tester.pumpWidget(
+      AdminApp(
+        accessRepository: repo,
+        managementRepository: mgmt,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Authorized Personnel'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nurse Clara'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Reset Temporary Password'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reset Temporary Password'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Admin password'),
+      'Strong!Password2026',
+    );
+    await tester.tap(find.text('Confirm'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('One-Time Temporary Password'), findsOneWidget);
+    expect(find.textContaining('Reset!Password2026'), findsOneWidget);
+  });
 }
