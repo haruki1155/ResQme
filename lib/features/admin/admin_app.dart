@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/active_students_screen.dart';
 import 'screens/authorized_personnel_screen.dart';
 import 'screens/master_admin_email_screen.dart';
+import 'screens/activity_logs_screen.dart';
 import 'screens/lost_qr_management_screen.dart';
 import 'screens/portal_dashboard_screen.dart';
 import 'screens/staff_account_setup_screen.dart';
@@ -610,6 +611,14 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
                     MaterialPageRoute<void>(
                       builder: (_) =>
                           LostQrManagementScreen(repository: studentRepo),
+                    ),
+                  ),
+          onOpenActivityLogs: studentRepo == null
+              ? null
+              : () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          ActivityLogsScreen(repository: studentRepo),
                     ),
                   ),
         );

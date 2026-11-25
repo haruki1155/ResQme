@@ -133,6 +133,50 @@ class QrReplacementResult {
   final String? issuedAt;
 }
 
+class ActivityLogEntry {
+  const ActivityLogEntry({
+    required this.id,
+    required this.sourceCollection,
+    required this.category,
+    required this.action,
+    required this.actionLabel,
+    required this.outcome,
+    required this.actorUid,
+    required this.actorRole,
+    required this.targetUid,
+    required this.summary,
+    required this.reasonCode,
+    required this.method,
+    required this.timestamp,
+  });
+
+  final String id;
+  final String sourceCollection;
+  final String category; // 'security' | 'management' | 'tier2'
+  final String action;
+  final String actionLabel;
+  final String outcome; // 'allowed' | 'denied'
+  final String actorUid;
+  final String actorRole;
+  final String? targetUid;
+  final String summary;
+  final String? reasonCode;
+  final String? method;
+  final String timestamp;
+}
+
+class ActivityLogPage {
+  const ActivityLogPage({
+    required this.entries,
+    required this.nextCursor,
+    required this.totalMatched,
+  });
+
+  final List<ActivityLogEntry> entries;
+  final String? nextCursor;
+  final int totalMatched;
+}
+
 class SchoolRosterEntry {
   const SchoolRosterEntry({
     required this.rosterId,
@@ -217,6 +261,16 @@ abstract interface class PortalStudentRepository {
     required String studentUid,
     required String reason,
     required String requestId,
+  });
+  Future<ActivityLogPage> listActivityLogs({
+    String category = 'all',
+    String outcome = 'all',
+    String? actorUid,
+    String search = '',
+    String? startDate,
+    String? endDate,
+    int limit = 25,
+    String? cursor,
   });
   Future<void> setSecureScreen(bool enabled);
 }
@@ -741,6 +795,61 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
             error,
             'Unable to verify biometrics for QR replacement.',
           );
+        }
+      });
+
+  @override
+  Future<ActivityLogPage> listActivityLogs({
+    String category = 'all',
+    String outcome = 'all',
+    String? actorUid,
+    String search = '',
+    String? startDate,
+    String? endDate,
+    int limit = 25,
+    String? cursor,
+  }) =>
+      operationLock.run(() async {
+        try {
+          final result =
+              await _callable('listSchoolActivityLogs').call<dynamic>(
+            <String, dynamic>{
+              'category': category,
+              'outcome': outcome,
+              'actorUid': actorUid,
+              'search': search.trim(),
+              'startDate': startDate,
+              'endDate': endDate,
+              'limit': limit,
+              'cursor': cursor,
+            },
+          );
+          final raw = Map<String, dynamic>.from(result.data as Map);
+          final items = (raw['entries'] as List?) ?? const [];
+          return ActivityLogPage(
+            entries: items.map((item) {
+              final row = Map<String, dynamic>.from(item as Map);
+              return ActivityLogEntry(
+                id: row['id'] as String? ?? '',
+                sourceCollection: row['sourceCollection'] as String? ?? '',
+                category: row['category'] as String? ?? 'management',
+                action: row['action'] as String? ?? '',
+                actionLabel: row['actionLabel'] as String? ?? 'Activity',
+                outcome: row['outcome'] as String? ?? 'allowed',
+                actorUid: row['actorUid'] as String? ?? 'unknown',
+                actorRole: row['actorRole'] as String? ?? 'admin',
+                targetUid: row['targetUid'] as String?,
+                summary: row['summary'] as String? ?? '',
+                reasonCode: row['reasonCode'] as String?,
+                method: row['method'] as String?,
+                timestamp: row['timestamp'] as String? ?? '',
+              );
+            }).toList(),
+            nextCursor: raw['nextCursor'] as String?,
+            totalMatched: (raw['totalMatched'] as num?)?.toInt() ?? 0,
+          );
+        } catch (error) {
+          _rethrowMapped(error, 'Unable to load school activity logs.');
         }
       });
 }

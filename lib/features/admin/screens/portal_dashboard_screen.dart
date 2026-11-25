@@ -9,12 +9,14 @@ class PortalDashboardScreen extends StatefulWidget {
     required this.access,
     required this.onScanStudentQr,
     this.onOpenLostQrManagement,
+    this.onOpenActivityLogs,
     this.portalStudentRepository,
   });
 
   final StaffAccess access;
   final VoidCallback? onScanStudentQr;
   final VoidCallback? onOpenLostQrManagement;
+  final VoidCallback? onOpenActivityLogs;
   final PortalStudentRepository? portalStudentRepository;
 
   @override
@@ -183,6 +185,59 @@ class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
                         OutlinedButton(
                           onPressed: widget.onOpenLostQrManagement,
                           child: const Text('Open'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              if (widget.onOpenActivityLogs != null) ...[
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: PortalColors.brandRedSoft,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.history_outlined,
+                            color: PortalColors.brandRed,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Activity Logs',
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: PortalColors.inkPrimary,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Review school security, management, and Tier 2 audit logs.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: PortalColors.inkSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton(
+                          onPressed: widget.onOpenActivityLogs,
+                          child: const Text('View'),
                         ),
                       ],
                     ),

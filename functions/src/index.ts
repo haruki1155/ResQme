@@ -13,3 +13,6 @@ export {
   issueAdminQrReplaceChallenge,
   replaceSchoolStudentQr,
 } from './staff/staff_qr_replacement';
+export {
+  listSchoolActivityLogs,
+} from './staff/staff_activity_logs';

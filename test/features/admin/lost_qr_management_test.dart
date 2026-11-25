@@ -166,6 +166,19 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
     required String studentUid,
     required String requestId,
   }) async {}
+
+  @override
+  Future<ActivityLogPage> listActivityLogs({
+    String category = 'all',
+    String outcome = 'all',
+    String? actorUid,
+    String search = '',
+    String? startDate,
+    String? endDate,
+    int limit = 25,
+    String? cursor,
+  }) async =>
+      const ActivityLogPage(entries: [], nextCursor: null, totalMatched: 0);
 }
 
 class _FakeAccessRepo implements StaffAccessRepository {
