@@ -202,19 +202,43 @@ class Tier2AuthorizationRepository {
   Future<Map<String, String>> revealOwnIdentityWithBiometrics() =>
       _withOwner((uid, check) async {
         final deviceId = await _deviceId(uid, check);
-        final challenge = await _call('issueTier2Challenge', {
-          'deviceId': deviceId,
-          'operation': 'reveal_identity',
-        }, check);
+        Map<String, dynamic> challenge;
+        try {
+          challenge = await _call('issueTier2Challenge', {
+            'deviceId': deviceId,
+            'operation': 'reveal_identity',
+          }, check);
+        } on FirebaseFunctionsException catch (error) {
+          if (error.code == 'failed-precondition' ||
+              error.code == 'permission-denied') {
+            throw const Tier2AuthorizationFailure(
+              'Set up biometrics on this device to view your protected student identity.',
+            );
+          }
+          rethrow;
+        }
         if (challenge['challengeId'] is! String ||
             challenge['nonce'] is! String ||
             challenge['deviceId'] != deviceId ||
             challenge['operation'] != 'reveal_identity') {
-          throw const Tier2AuthorizationFailure('Tier 2 challenge is invalid.');
+          throw const Tier2AuthorizationFailure(
+            'Biometric verification challenge is invalid.',
+          );
         }
         final message =
             '$uid\n$deviceId\nreveal_identity\n${challenge['challengeId']}\n${challenge['nonce']}';
-        final signature = await keyProvider.sign(deviceId, message);
+        final String signature;
+        try {
+          signature = await keyProvider.sign(deviceId, message);
+        } on PlatformException catch (error) {
+          if (error.code == 'key_unavailable' ||
+              error.code == 'key_invalidated') {
+            throw const Tier2AuthorizationFailure(
+              'Set up biometrics on this device to view your protected student identity.',
+            );
+          }
+          rethrow;
+        }
         check();
         final response = await _call('revealMyStudentIdentity', {
           'challengeId': challenge['challengeId'],

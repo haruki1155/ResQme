@@ -3,7 +3,6 @@ import {HttpsError,onCall} from 'firebase-functions/v2/https';
 import {onboardingDatabase,resqmeRuntimeOptions} from '../onboarding/authorization';
 import {
   STUDENT_ENROLLMENT_PROOF_VERSION,
-  requireRecentAuth,
   requireTier2Eligible,
   tier2RevealIdentityOperation,
   tier2SignedMessage,
@@ -19,7 +18,6 @@ function extractSurname(fullName: unknown): string {
 
 export const revealMyStudentIdentity=onCall(resqmeRuntimeOptions,async request=>{
   const uid=request.auth?.uid,db=onboardingDatabase(uid);
-  requireRecentAuth(request.auth?.token.auth_time);
   const input=validateProof(request.data);
   const profile=db.doc(`studentProfiles/${uid}`),
     medical=db.doc(`studentMedicalRecords/${uid}`),

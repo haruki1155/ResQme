@@ -416,11 +416,15 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen>
                   ),
                 ],
                 const SizedBox(height: 24),
-                if (widget.onSetupBiometrics != null && !_biometricEnrolled)
+                if (widget.onSetupBiometrics != null)
                   OutlinedButton.icon(
                     onPressed: widget.onSetupBiometrics,
                     icon: const Icon(Icons.fingerprint),
-                    label: const Text('Biometric Security Setup'),
+                    label: Text(
+                      _biometricEnrolled
+                          ? 'Manage Biometric Security'
+                          : 'Biometric Security Setup',
+                    ),
                   ),
                 if (widget.onScan != null)
                   TextButton(
