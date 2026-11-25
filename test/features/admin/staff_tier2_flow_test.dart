@@ -103,8 +103,10 @@ void main() {
     client.pendingRead!.complete(_sampleRecord);
     await tester.pumpAndSettle();
 
+    expect(find.text('Fictional Guardian (Parent)'), findsOneWidget);
+    await tester.tap(find.text('Medical'));
+    await tester.pumpAndSettle();
     expect(find.text('Fictional asthma'), findsOneWidget);
-    expect(find.text('Fictional Guardian'), findsOneWidget);
     expect(client.secureScreenCalls, contains(true));
   });
 
@@ -138,6 +140,9 @@ void main() {
     triggerScan!('resqme:v1:${'B' * 43}');
     await tester.pumpAndSettle();
     expect(client.readCalls, 2);
+    expect(find.text('Fictional Guardian (Parent)'), findsOneWidget);
+    await tester.tap(find.text('Medical'));
+    await tester.pumpAndSettle();
     expect(find.text('Fictional asthma'), findsOneWidget);
   });
 
@@ -182,9 +187,9 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Fictional asthma'), findsOneWidget);
+    expect(find.text('Fictional Guardian (Parent)'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
-    expect(find.text('Fictional asthma'), findsNothing);
+    expect(find.text('Fictional Guardian (Parent)'), findsNothing);
     expect(find.textContaining('locked'), findsOneWidget);
 
     // 2. App background
@@ -198,10 +203,10 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Fictional asthma'), findsOneWidget);
+    expect(find.text('Fictional Guardian (Parent)'), findsOneWidget);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
     await tester.pump();
-    expect(find.text('Fictional asthma'), findsNothing);
+    expect(find.text('Fictional Guardian (Parent)'), findsNothing);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
 
@@ -216,10 +221,10 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Fictional asthma'), findsOneWidget);
+    expect(find.text('Fictional Guardian (Parent)'), findsOneWidget);
     client.switchUid(null);
     await tester.pump();
-    expect(find.text('Fictional asthma'), findsNothing);
+    expect(find.text('Fictional Guardian (Parent)'), findsNothing);
     expect(client.secureScreenCalls, contains(false));
   });
 

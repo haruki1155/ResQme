@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../medical/widgets/tier2_profile_view.dart';
 import '../services/staff_tier2_repository.dart';
 
 class StaffTier2ResultScreen extends StatefulWidget {
@@ -68,106 +69,62 @@ class _StaffTier2ResultScreenState extends State<StaffTier2ResultScreen>
     super.dispose();
   }
 
-  String _formatAnswer(Object? raw) {
-    if (raw is! Map) return 'Unavailable';
-    final state = raw['state'];
-    final details = raw['details'];
-    if (state == 'listed' && details is String && details.trim().isNotEmpty) {
-      return details.trim();
-    }
-    if (state == 'none_known') return 'None known';
-    if (state == 'unknown') return 'Unknown';
-    return 'Unavailable';
-  }
-
   @override
   Widget build(BuildContext context) {
     final record = _record;
     return Scaffold(
-      appBar: AppBar(title: const Text('Emergency Medical Information')),
+      backgroundColor: const Color(0xFFF4F6FA),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: record == null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.lock_outline, size: 48),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'Protected medical display locked and cleared.',
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: () => Navigator.of(context).maybePop(),
-                        child: const Text('Return to Scanner'),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView(
-                  children: [
-                    Card(
+        child: Column(
+          children: [
+            Tier2TopBar(
+              unlocked: record != null,
+              onLock: _clearProtected,
+            ),
+            Expanded(
+              child: record == null
+                  ? Center(
                       child: Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(24),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              'Medical Conditions',
-                              style: Theme.of(context).textTheme.titleMedium,
+                            const Icon(
+                              Icons.lock_outline,
+                              size: 48,
+                              color: Color(0xFF04081A),
                             ),
-                            const SizedBox(height: 4),
-                            Text(_formatAnswer(record['conditions'])),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Protected medical display locked and cleared.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
                             const SizedBox(height: 16),
-                            Text(
-                              'Allergies',
-                              style: Theme.of(context).textTheme.titleMedium,
+                            FilledButton(
+                              onPressed: () =>
+                                  Navigator.of(context).maybePop(),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFE92B32),
+                              ),
+                              child: const Text('Return to Scanner'),
                             ),
-                            const SizedBox(height: 4),
-                            Text(_formatAnswer(record['allergies'])),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Primary Emergency Contact',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 4),
-                            if (record['primaryContact'] is Map) ...[
-                              Text(
-                                (record['primaryContact'] as Map)['fullName']
-                                        ?.toString() ??
-                                    'Unavailable',
-                              ),
-                              Text(
-                                (record['primaryContact']
-                                            as Map)['relationship']
-                                        ?.toString() ??
-                                    '',
-                              ),
-                              Text(
-                                (record['primaryContact'] as Map)['phoneNumber']
-                                        ?.toString() ??
-                                    '',
-                              ),
-                            ],
                           ],
                         ),
                       ),
+                    )
+                  : Tier2ProfileView(
+                      record: record,
+                      onLock: _clearProtected,
+                      lockButtonLabel: 'Lock and clear',
+                      securityNotice:
+                          'This screen automatically locks after 2 minutes, on backgrounding, or on sign-out. Screenshots are suppressed and no medical data is cached offline.',
                     ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'This screen automatically locks after 2 minutes, on backgrounding, or on sign-out. Screenshots are suppressed and no medical data is cached offline.',
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      onPressed: _clearProtected,
-                      icon: const Icon(Icons.lock),
-                      label: const Text('Lock and clear'),
-                    ),
-                  ],
-                ),
+            ),
+          ],
         ),
       ),
     );
