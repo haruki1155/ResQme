@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:resqme/features/public_support/presentation/first_aid_screens.dart';
 import 'package:resqme/features/welcome/data/consent_repository.dart';
 
 class TermsPrivacyScreen extends StatefulWidget {
@@ -115,6 +116,26 @@ class _TermsPrivacyScreenState extends State<TermsPrivacyScreen> {
                   ElevatedButton(
                     onPressed: _agreed ? widget.onAccepted : null,
                     child: const Text('Accept & continue'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    key: const Key('terms_emergency_first_aid_button'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFE92B32),
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const FirstAidLibraryScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(
+                      Icons.medical_services_outlined,
+                      size: 19,
+                    ),
+                    label: const Text('Emergency First Aid'),
                   ),
                 ],
               ),

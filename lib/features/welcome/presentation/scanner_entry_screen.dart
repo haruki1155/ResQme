@@ -191,6 +191,20 @@ class _ScannerEntryScreenState extends State<ScannerEntryScreen>
                       onPressed: () => _leave(AppRoutes.register),
                       child: const Text('Register'),
                     ),
+                    const SizedBox(height: 4),
+                    TextButton.icon(
+                      key: const Key('entry_emergency_first_aid_button'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFFFF8A93),
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                      onPressed: () => _leave(AppRoutes.firstAid),
+                      icon: const Icon(
+                        Icons.medical_services_outlined,
+                        size: 19,
+                      ),
+                      label: const Text('Emergency First Aid'),
+                    ),
                   ],
                 ),
               ),

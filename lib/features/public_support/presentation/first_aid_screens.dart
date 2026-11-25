@@ -1,290 +1,688 @@
 import 'package:flutter/material.dart';
+import 'package:resqme/features/public_support/data/first_aid_repository.dart';
+import 'package:resqme/features/public_support/domain/first_aid_models.dart';
+import 'package:resqme/features/public_support/domain/first_aid_release_policy.dart';
+import 'package:resqme/features/public_support/domain/first_aid_search_engine.dart';
+import 'package:resqme/features/public_support/presentation/emergency_call_helper.dart';
 
-class FirstAidGuide {
-  const FirstAidGuide(this.title, this.category, this.icon, this.details);
+const _brandRed = Color(0xFFE3222A);
+const _darkSurface = Color(0xFF080B1D);
+const _ink = Color(0xFF10131C);
+const _bodyInk = Color(0xFF1D2433);
+const _mutedInk = Color(0xFF526075);
+const _pageBg = Color(0xFFF5F6F8);
+const _borderSubtle = Color(0xFFDDE3EC);
+const _warningRed = Color(0xFFB42318);
+const _warningBg = Color(0xFFFEF3F2);
+const _amberBorder = Color(0xFFB54708);
+const _amberBg = Color(0xFFFFFAEB);
 
-  final String title;
-  final String category;
-  final IconData icon;
-  final String details;
-}
-
-const _guides = <FirstAidGuide>[
-  FirstAidGuide(
-    'Asthma',
-    'Breathing & response',
-    Icons.air,
-    '''Step 1: Sit the person upright\nBe calm and reassuring. Do not leave them alone.\n\nStep 2: Give 4 separate puffs of blue/grey reliever puffer\nShake the puffer. Put 1 puff into the spacer. Get the person to take 4 breaths from the spacer. Repeat until 4 puffs have been taken. If no spacer is available, give 1 puff as they take 1 slow, deep breath and hold their breath for as long as comfortable. Remember: Shake, 1 puff, 4 breaths.\n\nStep 3: Wait 4 minutes\nIf there is no improvement, give 4 more separate puffs of blue/grey reliever as above.\n\nStep 4: If breathing does not return to normal, call emergency assistance for an ambulance\nTell the operator someone is having an asthma emergency. Keep giving 4 separate puffs, taking 4 breaths for each puff, every 4 minutes until help arrives.\n\nWhat if only 1 puff is available?\nStep 1: Use the puffer\nHelp the person use their available inhaler. Give 1 puff as the person begins a slow, deep breath, then have them hold their breath for as long as comfortable.\n\nStep 2: Seek emergency assistance\nSince not enough reliever medication is available, immediately call 911 or any emergency hotline. Explain that the person is having an asthma emergency and only one puff is available.\n\nStep 3: While waiting for responders\nObserve breathing, level of consciousness, and whether symptoms improve or worsen. Give enough space, loosen tight clothing if necessary, and avoid smoke or known triggers.''',
-  ),
-  FirstAidGuide(
-    'Anemia',
-    'Breathing & response',
-    Icons.favorite_outline,
-    '''Steps and procedures during an emergency\nStep 1: Make sure the area is safe. Check surroundings are safe for both helper and person.\n\nStep 2: Check the person's condition. Ask how they feel; check if they are awake, responding normally, and breathing normally. Ask about symptoms and a known history of anemia.\n\nStep 3: Call emergency services if there are serious symptoms. Call 911 for chest pain, severe difficulty breathing, fainting, confusion, or other serious symptoms. Explain the condition and exact location.\n\nStep 4: Help the person rest. Help them sit or lie comfortably. If faint, help them lie flat when safe and comfortable. Do not let them walk or exert themselves.\n\nStep 5: Monitor their condition. Observe breathing, awareness, and symptoms; watch for worsening weakness, breathing difficulties, or loss of consciousness.\n\nStep 6: Turn over the patient to healthcare professionals. Explain what happened, symptoms noticed, when they started, and any known medical history or medications. Allow professionals to assess and treat.''',
-  ),
-  FirstAidGuide(
-    'Nosebleed',
-    'Bleeding & wounds',
-    Icons.water_drop_outlined,
-    '''Steps and procedures during an emergency\nStep 1: Sit the person upright. Help them sit upright and lean slightly forward. Stay calm and reassure them. Do not let them lie down or tilt their head backward.\n\nStep 2: Pinch the nose. Pinch the soft part with thumb and index finger continuously for 10–15 minutes. Tell them to breathe through their mouth.\n\nStep 3: Check the bleeding. Slowly release after 10–15 minutes. If still bleeding, pinch again for another 10–15 minutes.\n\nStep 4: Seek medical assistance if needed. Get help if bleeding is heavy, continues a long time, follows serious injury, or the person is weak or faint. Keep them calm while waiting.''',
-  ),
-  FirstAidGuide(
-    'Hyperventilation',
-    'Breathing & response',
-    Icons.slow_motion_video_outlined,
-    '''Step 1: Help the person sit comfortably in a safe position. Stay calm, reassure them, and do not leave them alone.\n\nStep 2: Encourage slow breathing. Ask for slow, gentle, normal breaths instead of very deep or rapid breaths.\n\nStep 3: Make them comfortable. Loosen tight clothing if necessary; move away from smoke, strong smells, or possible triggers. Give space and keep the area calm.\n\nStep 4: Seek emergency assistance if needed. Call if breathing does not improve or worsens, or for chest pain, fainting, confusion, or severe difficulty breathing. Stay and monitor while waiting.''',
-  ),
-  FirstAidGuide(
-    'Moving an injured person',
-    'Moving safely',
-    Icons.accessibility_new,
-    '''Wheelchair\nLock the wheelchair before helping the person sit. Help them move carefully, make sure they sit safely, and push slowly away from uneven or dangerous areas.\n\nStretcher\nPlace the person carefully on the stretcher. Keep them supported and still, secure them before moving, and have enough people help carry it.\n\nSpine Board\nUse when a spinal injury is suspected. Keep head, neck, and body aligned; secure properly to prevent movement. Only trained rescuers should move a person using a spine board.\n\nCarrying an injured person\nCheck the area is safe. Use a method suited to the condition, support the head, neck, and injured areas when needed, and ask for help instead of carrying seriously injured people alone.''',
-  ),
-  FirstAidGuide(
-    'Basic life support (BLS) / CPR',
-    'Life-saving response',
-    Icons.monitor_heart_outlined,
-    '''A. Hands-Only CPR\nCheck the area is safe. Tap the shoulder and shout to check response. Ask someone to call 911 and get an AED. Lay the person on their back on a firm, flat surface. Put the heel of one hand in the centre of the chest, other hand on top, fingers locked. Push hard and fast with straight arms. Let the chest rise after every push. Continue until normal breathing, help arrives, or you cannot continue.\n\nChest compression rate and depth\nPush 100–120 times per minute. Push at least 2 inches (5 cm), but not deeper than 2.4 inches (6 cm). Keep hands centred, one on top of the other. Allow full chest recoil and do not lean on the chest.\n\nB. How to use an AED\nTurn it on and follow spoken instructions. Remove chest clothing and dry the chest. Attach pads to bare skin: one upper right chest, one lower left below the armpit. Do not touch while it checks rhythm. If a shock is advised, make sure everyone moves away before pressing shock. Continue CPR immediately after a shock or if no shock is advised. Follow the AED until medical help arrives.''',
-  ),
-  FirstAidGuide(
-    'Choking (blocked airway)',
-    'Life-saving response',
-    Icons.warning_amber_outlined,
-    '''A. Adults and children: Back blows and abdominal thrusts\nSigns: cannot breathe, speak, make sounds, or cough properly; may hold throat. Ask if choking. Ask someone to call 911. Stand behind and slightly to one side, support chest, lean forward, and give 5 firm back blows between shoulder blades. If not cleared, make a fist just above belly button, hold it with the other hand, and give 5 quick inward-and-upward abdominal thrusts. Alternate 5 back blows and 5 thrusts until cleared or unresponsive.\n\nB. Infants: Back blows and chest thrusts\nFor babies under one, do not use abdominal thrusts. Hold face-down along forearm, support head and jaw, and keep head lower than body. Give 5 back blows. Turn face-up supporting head and neck, keep head lower than chest, and give 5 chest thrusts following current AHA technique. Repeat until cleared or unresponsive. If unresponsive, place on firm flat surface and begin infant CPR according to training.''',
-  ),
-  FirstAidGuide(
-    'Bleeding and wound care',
-    'Bleeding & wounds',
-    Icons.healing_outlined,
-    '''A. Direct pressure\nEnsure safety. Wear disposable gloves if available. Put clean gauze or cloth directly over the wound and press firmly and continuously until bleeding stops. For severe bleeding that does not stop, get emergency help immediately; a tourniquet may be needed for a serious arm or leg injury. Cover with a clean dressing.\n\nB. Elevation\nApply direct pressure first. Avoid unnecessary movement. If a broken bone or serious injury is suspected, do not raise or move it unnecessarily. Get medical help for serious injuries.\n\nC. Cleaning a wound\nWash hands. Rinse with clean running water, gently clean surrounding skin, and avoid dirty hands. Seek help if an object is deeply stuck. Watch for redness, swelling, warmth, or pus.\n\nD. Dressing and bandaging\nControl bleeding. Cover completely with sterile dressing or clean bandage. Secure without wrapping too tightly. Change if wet or dirty; check for swelling, unusual colour, numbness, or tightness.\n\nE. Tourniquets for severe bleeding\nCall emergency services. Apply direct pressure while preparing if possible. Use a commercially made tourniquet and follow its instructions. Place 2–3 inches above the wound, between wound and heart; never over a joint or wound. Tighten until bleeding stops, secure it, record the time, and do not loosen or remove it.''',
-  ),
-  FirstAidGuide(
-    'Burns',
-    'Burns & injuries',
-    Icons.local_fire_department_outlined,
-    '''Thermal burns\nStop the burning process if safe. Cool under cool running water for about 20 minutes. Remove jewellery or tight items before swelling if not stuck. Cover loosely with a clean non-stick dressing or cloth. Do not apply ice, toothpaste, butter, oil, or home remedies. Seek medical help for large, deep, serious burns; burns to face, hands, feet, genitals, major joints; or electrical/chemical burns.\n\nChemical burns\nProtect yourself; avoid direct contact. Remove contaminated clothing carefully. Brush off dry chemicals before water. Flush with plenty of running water for at least 20 minutes. Do not neutralize with another substance. Get medical attention, especially for significant burns or eye exposure.\n\nElectrical injuries\nTurn off the power first; do not touch someone still connected. Once safe, check breathing and responsiveness. Call emergency medical services if needed. Cover visible burns with a clean, dry, non-stick dressing. Electrical injuries need medical evaluation even when skin damage seems small.''',
-  ),
-  FirstAidGuide(
-    'Fractures, sprains, dislocations & seizures',
-    'Burns & injuries',
-    Icons.personal_injury_outlined,
-    '''Fractures, sprains, and dislocations\nKeep the person still and calm. Do not straighten, push back, or realign. Immobilize in the position found; if appropriate support with a splint or sling including joints above and below. Apply a cold pack wrapped in cloth. For sprains: RICE—Rest, Ice in short wrapped periods, Compression not tight enough to cause numbness/tingling/colour changes, Elevation when comfortable.\n\nWhen not to move a victim\nAvoid unnecessary movement for suspected spinal/neck injury, severe injury or deformity, if moving could worsen injury, or if unconscious/seriously injured—unless immediate safety or lifesaving first aid requires it.\n\nSeizure and convulsions: during\nStay calm and stay with them. Clear nearby hazards, protect head with something soft, loosen neck clothing. Do not restrain, put anything in their mouth, force it open, or give food, water, or medicine until fully alert. Time the seizure.\n\nAfter\nCheck breathing. If breathing but unconscious, place in recovery position on their side. Reassure as awareness returns and monitor until help arrives. Call emergency services if it lasts 5 minutes or longer, repeats before recovery, is a first known seizure, causes breathing difficulty/unconsciousness, serious injury, or happens in water.''',
-  ),
+const List<String> _featuredEmergencyIds = <String>[
+  'cpr-adult',
+  'choking-adult',
+  'severe-bleeding',
+  'stroke',
+  'cardiac-chest-pain',
+  'anaphylaxis',
+  'seizures',
+  'drowning',
+  'burns',
+  'heatstroke',
 ];
 
 class FirstAidLibraryScreen extends StatefulWidget {
-  const FirstAidLibraryScreen({super.key});
+  const FirstAidLibraryScreen({
+    super.key,
+    this.repository,
+    this.releasePolicy,
+    this.openDialer,
+  });
+
+  final FirstAidRepository? repository;
+  final FirstAidReleasePolicy? releasePolicy;
+  final EmergencyDialerOpener? openDialer;
+
   @override
   State<FirstAidLibraryScreen> createState() => _FirstAidLibraryScreenState();
 }
 
 class _FirstAidLibraryScreenState extends State<FirstAidLibraryScreen> {
-  static const _red = Color(0xFFE3222A);
-  static const _ink = Color(0xFF10131C);
-  static const _muted = Color(0xFF697789);
-  final _search = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+  FirstAidLibraryBundle? _syncBundle;
+  late Future<FirstAidLibraryBundle> _bundleFuture;
   String _query = '';
-  String _category = 'All';
+  String _selectedCategory = 'All';
+
+  FirstAidReleasePolicy get _effectivePolicy =>
+      widget.releasePolicy ?? FirstAidReleasePolicy.fromEnvironment();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBundle();
+  }
+
+  @override
+  void didUpdateWidget(covariant FirstAidLibraryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository != widget.repository ||
+        oldWidget.releasePolicy != widget.releasePolicy) {
+      _loadBundle();
+    }
+  }
+
+  void _loadBundle() {
+    final repo = widget.repository ?? FirstAidRepository();
+    _syncBundle = repo.tryLoadLibrarySync(policy: _effectivePolicy);
+    _bundleFuture = repo.loadLibrary(policy: _effectivePolicy);
+  }
 
   @override
   void dispose() {
-    _search.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   void _submitSearch() {
     FocusScope.of(context).unfocus();
-    setState(() => _query = _search.text);
+    setState(() => _query = _searchController.text);
   }
 
   void _clearFilters() {
-    _search.clear();
+    _searchController.clear();
     setState(() {
       _query = '';
-      _category = 'All';
+      _selectedCategory = 'All';
     });
   }
 
-  Widget _guideCard(
-    FirstAidGuide guide, {
-    required bool initiallyExpanded,
-  }) => Container(
-    margin: const EdgeInsets.only(bottom: 16),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: const Color(0xFFF0F1F4)),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x0D101828),
-          blurRadius: 5,
-          offset: Offset(0, 2),
+  void _openQuickInstruction(
+    FirstAidTopic topic,
+    FirstAidLibraryBundle bundle,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => FirstAidQuickInstructionScreen(
+          topic: topic,
+          bundle: bundle,
+          openDialer: widget.openDialer,
         ),
-      ],
-    ),
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: ExpansionTile(
-        key: PageStorageKey(guide.title),
-        initiallyExpanded: initiallyExpanded,
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        shape: const Border(),
-        collapsedShape: const Border(),
-        iconColor: const Color(0xFFA4ADBA),
-        collapsedIconColor: const Color(0xFFA4ADBA),
-        leading: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF1F2),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Icon(guide.icon, color: _red, size: 23),
-        ),
-        title: Text(
-          guide.title,
-          style: const TextStyle(
-            color: _ink,
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            height: 1.3,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            guide.category,
-            style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
-          ),
-        ),
-        children: [
-          const Divider(height: 1, color: Color(0xFFF0F1F4)),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF7F8FA),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'BEFORE YOU BEGIN',
-                        style: TextStyle(
-                          color: _muted,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.4,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Use professional emergency services for serious or life-threatening conditions.',
-                        style: TextStyle(
-                          color: Color(0xFF455165),
-                          fontSize: 14,
-                          height: 1.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'WHAT TO DO',
-                  style: TextStyle(
-                    color: _red,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                for (final section in guide.details.split('\n\n'))
-                  _instruction(section),
-                const SizedBox(height: 8),
-                TextButton.icon(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => FirstAidDetailScreen(guide: guide),
-                    ),
-                  ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: _red,
-                    minimumSize: const Size.fromHeight(48),
-                  ),
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                  label: const Text('Open full guide'),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  Widget _instruction(String section) {
-    final match = RegExp(r'^Step (\d+):\s*').firstMatch(section);
-    final text = Text(
-      match == null ? section : section.substring(match.end),
-      style: const TextStyle(
-        color: Color(0xFF455165),
-        fontSize: 14,
-        height: 1.55,
       ),
     );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: match == null
-          ? text
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: _red,
-                    shape: BoxShape.circle,
+  }
+
+  void _openLearningLibrary(FirstAidLibraryBundle bundle) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => FirstAidLearningLibraryScreen(
+          bundle: bundle,
+          openDialer: widget.openDialer,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmergencyShortcutBar() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _darkSurface,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.emergency_outlined,
+                color: Color(0xFFFF6974),
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'LIFE-THREATENING EMERGENCY? CALL FOR HELP FIRST',
+                  style: TextStyle(
+                    color: Color(0xFFFF8A93),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
                   ),
-                  child: Text(
-                    match.group(1)!,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 150, minHeight: 48),
+                child: FilledButton.icon(
+                  key: const Key('first_aid_call_911_button'),
+                  onPressed: () => EmergencyCallHelper.confirmAndOpen911(
+                    context,
+                    openDialer: widget.openDialer,
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _brandRed,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(150, 48),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  icon: const Icon(Icons.phone_outlined, size: 20),
+                  label: const Text('Call 911'),
+                ),
+              ),
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 150, minHeight: 48),
+                child: OutlinedButton.icon(
+                  key: const Key('first_aid_hotlines_button'),
+                  onPressed: () => EmergencyCallHelper.openHotlinesDirectory(
+                    context,
+                    openDialer: widget.openDialer,
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFF475467)),
+                    minimumSize: const Size(150, 48),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  icon: const Icon(Icons.contact_phone_outlined, size: 20),
+                  label: const Text('Hotlines (143)'),
                 ),
-                const SizedBox(width: 10),
-                Expanded(child: text),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchField() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: TextField(
+            key: const Key('first_aid_search_field'),
+            controller: _searchController,
+            textInputAction: TextInputAction.search,
+            onChanged: (value) => setState(() => _query = value),
+            onSubmitted: (_) => _submitSearch(),
+            style: const TextStyle(fontSize: 16, color: _ink),
+            decoration: InputDecoration(
+              hintText: 'Search injury, symptom, or Filipino term',
+              hintStyle: const TextStyle(
+                fontSize: 15,
+                color: Color(0xFF667085),
+              ),
+              prefixIcon: const Icon(
+                Icons.search,
+                size: 22,
+                color: Color(0xFF667085),
+              ),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      constraints: const BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
+                      ),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _query = '');
+                      },
+                      icon: const Icon(Icons.close, size: 20),
+                    ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 15,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: _borderSubtle),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: _borderSubtle),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: _brandRed, width: 1.6),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton.filled(
+          tooltip: 'Search guides',
+          onPressed: _submitSearch,
+          style: IconButton.styleFrom(
+            backgroundColor: _brandRed,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(52, 52),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+          icon: const Icon(Icons.search, size: 24),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCommonEmergenciesSection(FirstAidLibraryBundle bundle) {
+    final commonTopics = <FirstAidTopic>[];
+    for (final id in _featuredEmergencyIds) {
+      final found = bundle.topicById(id);
+      if (found != null) {
+        commonTopics.add(found);
+      }
+    }
+    if (commonTopics.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'COMMON EMERGENCIES',
+          style: TextStyle(
+            color: _brandRed,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.4,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Tap any emergency for immediate step-by-step action.',
+          style: TextStyle(color: _mutedInk, fontSize: 14, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final topic in commonTopics)
+              Semantics(
+                button: true,
+                label: 'Quick emergency guide: ${topic.shortTitle}',
+                child: Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    key: Key('common_emergency_${topic.id}'),
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => _openQuickInstruction(topic, bundle),
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minHeight: 52,
+                        minWidth: 140,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFFECDCA)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(topic.iconData, color: _brandRed, size: 20),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              topic.shortTitle,
+                              style: const TextStyle(
+                                color: _ink,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                height: 1.25,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCategoryChips(List<String> categories) {
+    final allCategories = <String>['All', ...categories];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'CATEGORIES',
+          style: TextStyle(
+            color: _mutedInk,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final cat in allCategories)
+              ChoiceChip(
+                key: Key('category_chip_$cat'),
+                label: Text(cat),
+                selected: _selectedCategory == cat,
+                materialTapTargetSize: MaterialTapTargetSize.padded,
+                selectedColor: const Color(0xFFFFE4E6),
+                backgroundColor: Colors.white,
+                side: BorderSide(
+                  color: _selectedCategory == cat ? _brandRed : _borderSubtle,
+                ),
+                labelStyle: TextStyle(
+                  color: _selectedCategory == cat ? _brandRed : _ink,
+                  fontSize: 14,
+                  fontWeight: _selectedCategory == cat
+                      ? FontWeight.w800
+                      : FontWeight.w600,
+                ),
+                onSelected: (_) => setState(() => _selectedCategory = cat),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProcedureCard(
+    FirstAidTopic topic,
+    FirstAidLibraryBundle bundle,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          key: Key('topic_card_${topic.id}'),
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _openQuickInstruction(topic, bundle),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 72),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: topic.isTrainedResponderOnly
+                    ? _amberBorder
+                    : const Color(0xFFE4E7EC),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: topic.isTrainedResponderOnly
+                            ? _amberBg
+                            : const Color(0xFFFFF1F2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        topic.iconData,
+                        color: topic.isTrainedResponderOnly
+                            ? _amberBorder
+                            : _brandRed,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            topic.title,
+                            style: const TextStyle(
+                              color: _ink,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              height: 1.3,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              _StatusBadge(
+                                icon: Icons.folder_outlined,
+                                label: topic.category,
+                                foreground: _mutedInk,
+                                background: const Color(0xFFF2F4F7),
+                                border: const Color(0xFFD0D5DD),
+                              ),
+                              if (topic.ageGroup != 'all_ages')
+                                _StatusBadge(
+                                  icon: Icons.person_outline,
+                                  label: topic.ageGroupLabel,
+                                  foreground: const Color(0xFF175CD3),
+                                  background: const Color(0xFFEFF8FF),
+                                  border: const Color(0xFFB2DDFF),
+                                ),
+                              if (topic.isTrainedResponderOnly)
+                                const _StatusBadge(
+                                  icon: Icons.health_and_safety_outlined,
+                                  label: 'TRAINED RESPONDER ONLY',
+                                  foreground: _amberBorder,
+                                  background: _amberBg,
+                                  border: _amberBorder,
+                                )
+                              else if (topic.isCriticalEmergency)
+                                const _StatusBadge(
+                                  icon: Icons.priority_high,
+                                  label: 'CRITICAL EMERGENCY',
+                                  foreground: _warningRed,
+                                  background: _warningBg,
+                                  border: Color(0xFFFDA29B),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(
+                      Icons.chevron_right,
+                      color: _mutedInk,
+                      size: 24,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  topic.quickInstructions.immediateAction,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _bodyInk,
+                    fontSize: 16,
+                    height: 1.45,
+                  ),
+                ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptySearchState(FirstAidLibraryBundle bundle) {
+    final fallbackTopics = <FirstAidTopic>[];
+    for (final id in const [
+      'cpr-adult',
+      'choking-adult',
+      'severe-bleeding',
+      'stroke',
+      'burns',
+    ]) {
+      final t = bundle.topicById(id);
+      if (t != null) fallbackTopics.add(t);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.search_off, color: _brandRed, size: 24),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'No guides found',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: _ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'No first-aid procedure matched your search or selected category. Clear filters or choose a common emergency below, or call 911 immediately if life is in danger.',
+            style: TextStyle(color: _bodyInk, fontSize: 16, height: 1.45),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _clearFilters,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _brandRed,
+              side: const BorderSide(color: _brandRed),
+              minimumSize: const Size.fromHeight(48),
+            ),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Clear search & filters'),
+          ),
+          if (fallbackTopics.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'SUGGESTED COMMON EMERGENCIES',
+              style: TextStyle(
+                color: _mutedInk,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final topic in fallbackTopics)
+                  ActionChip(
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                    avatar: Icon(topic.iconData, size: 18, color: _brandRed),
+                    label: Text(topic.shortTitle),
+                    onPressed: () => _openQuickInstruction(topic, bundle),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPublicReleasePendingState(FirstAidLibraryBundle bundle) {
+    return Container(
+      key: const Key('public_release_pending_approval_banner'),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _amberBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _amberBorder, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.verified_user_outlined, color: _amberBorder, size: 24),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Pending Clinical Medical Sign-Off',
+                  style: TextStyle(
+                    color: _ink,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${bundle.excludedPendingApprovalCount} IFRC 2025 source-verified first-aid procedures are currently withheld in public release mode awaiting human clinical reviewer sign-off. For immediate medical emergencies, call 911 or open Emergency Hotlines above.',
+            style: const TextStyle(color: _bodyInk, fontSize: 16, height: 1.5),
+          ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final categories = [
-      'All',
-      ...{for (final guide in _guides) guide.category},
-    ];
-    final guides = _guides
-        .where(
-          (guide) =>
-              (_category == 'All' || guide.category == _category) &&
-              guide.title.toLowerCase().contains(_query.trim().toLowerCase()),
-        )
-        .toList();
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6F8),
+      backgroundColor: _pageBg,
       appBar: AppBar(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
@@ -307,12 +705,209 @@ class _FirstAidLibraryScreenState extends State<FirstAidLibraryScreen> {
           'First-aid instructions',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 22),
-            child: Icon(Icons.add_circle_outline, color: _red, size: 25),
+      ),
+      body: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: FutureBuilder<FirstAidLibraryBundle>(
+              initialData: _syncBundle,
+              future: _bundleFuture,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                    children: [
+                      _buildEmergencyShortcutBar(),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Loading offline first-aid procedures...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: _mutedInk, fontSize: 16),
+                      ),
+                    ],
+                  );
+                }
+
+                final bundle = snapshot.data!;
+                final filteredTopics = FirstAidSearchEngine.search(
+                  bundle.topics,
+                  query: _query,
+                  category: _selectedCategory,
+                );
+                final hasDraftTopics = bundle.topics.any(
+                  (t) => !t.review.isClinicallyApproved,
+                );
+
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                  children: [
+                    const Text(
+                      'IMMEDIATE CARE GUIDE',
+                      style: TextStyle(
+                        color: _brandRed,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Act first.\nLearn more when needed.',
+                      style: TextStyle(
+                        color: _ink,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        height: 1.18,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Offline emergency procedures adapted from IFRC 2025 Guidelines.',
+                      style: TextStyle(
+                        color: _mutedInk,
+                        fontSize: 15,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildEmergencyShortcutBar(),
+                    if (hasDraftTopics) ...[
+                      const SizedBox(height: 12),
+                      const _ClinicalReviewDraftBanner(),
+                    ],
+                    if (bundle.hasLoadError) ...[
+                      const SizedBox(height: 16),
+                      _LoadErrorCard(message: bundle.loadError!),
+                    ] else if (bundle.topics.isEmpty &&
+                        bundle.excludedPendingApprovalCount > 0) ...[
+                      const SizedBox(height: 16),
+                      _buildPublicReleasePendingState(bundle),
+                    ] else ...[
+                      const SizedBox(height: 16),
+                      _buildSearchField(),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        key: const Key('open_learning_library_button'),
+                        onPressed: () => _openLearningLibrary(bundle),
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: _ink,
+                          side: const BorderSide(color: _borderSubtle),
+                          minimumSize: const Size.fromHeight(52),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        icon: const Icon(
+                          Icons.menu_book_outlined,
+                          color: _brandRed,
+                        ),
+                        label: const Text(
+                          'Learning Library — Learn More',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      if (_query.trim().isEmpty &&
+                          _selectedCategory == 'All') ...[
+                        const SizedBox(height: 22),
+                        _buildCommonEmergenciesSection(bundle),
+                      ],
+                      const SizedBox(height: 22),
+                      _buildCategoryChips(bundle.categories),
+                      const SizedBox(height: 20),
+                      Text(
+                        '${filteredTopics.length} ${filteredTopics.length == 1 ? 'PROCEDURE' : 'PROCEDURES'}',
+                        style: const TextStyle(
+                          color: _mutedInk,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (filteredTopics.isEmpty)
+                        _buildEmptySearchState(bundle)
+                      else
+                        for (final topic in filteredTopics)
+                          _buildProcedureCard(topic, bundle),
+                    ],
+                  ],
+                );
+              },
+            ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class FirstAidQuickInstructionScreen extends StatelessWidget {
+  const FirstAidQuickInstructionScreen({
+    super.key,
+    required this.topic,
+    required this.bundle,
+    this.openedFromArticle = false,
+    this.openDialer,
+  });
+
+  final FirstAidTopic topic;
+  final FirstAidLibraryBundle bundle;
+  final bool openedFromArticle;
+  final EmergencyDialerOpener? openDialer;
+
+  void _openLearnMore(BuildContext context) {
+    if (openedFromArticle) {
+      Navigator.of(context).pop();
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => FirstAidArticleScreen(
+          topic: topic,
+          bundle: bundle,
+          openedFromQuickInstruction: true,
+          openDialer: openDialer,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final qi = topic.quickInstructions;
+    return Scaffold(
+      backgroundColor: _pageBg,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: _ink,
+        toolbarHeight: 68,
+        leadingWidth: 68,
+        leading: Center(
+          child: IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).maybePop(),
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFFF3F5F8),
+              minimumSize: const Size(48, 48),
+            ),
+            icon: const Icon(Icons.chevron_left, size: 28),
+          ),
+        ),
+        title: const Text(
+          'Quick First Aid',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
       ),
       body: SafeArea(
         top: false,
@@ -320,161 +915,738 @@ class _FirstAidLibraryScreenState extends State<FirstAidLibraryScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 680),
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+              children: [
+                // 1. Topic Title & Qualification Metadata
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _borderSubtle),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        topic.category.toUpperCase(),
+                        style: const TextStyle(
+                          color: _brandRed,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        topic.title,
+                        style: const TextStyle(
+                          color: _ink,
+                          fontSize: 23,
+                          fontWeight: FontWeight.w900,
+                          height: 1.25,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _StatusBadge(
+                            icon: Icons.person_outline,
+                            label: topic.ageGroupLabel,
+                            foreground: const Color(0xFF175CD3),
+                            background: const Color(0xFFEFF8FF),
+                            border: const Color(0xFFB2DDFF),
+                          ),
+                          _StatusBadge(
+                            icon: topic.isTrainedResponderOnly
+                                ? Icons.health_and_safety_outlined
+                                : Icons.volunteer_activism_outlined,
+                            label: topic.audienceLabel,
+                            foreground: topic.isTrainedResponderOnly
+                                ? _amberBorder
+                                : const Color(0xFF067647),
+                            background: topic.isTrainedResponderOnly
+                                ? _amberBg
+                                : const Color(0xFFECFDF3),
+                            border: topic.isTrainedResponderOnly
+                                ? _amberBorder
+                                : const Color(0xFFABEFC6),
+                          ),
+                          if (!topic.review.isClinicallyApproved)
+                            const _StatusBadge(
+                              icon: Icons.fact_check_outlined,
+                              label: 'Pending clinical review',
+                              foreground: _amberBorder,
+                              background: _amberBg,
+                              border: _amberBorder,
+                            ),
+                        ],
+                      ),
+                      if (topic.isTrainedResponderOnly) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          key: const Key('trained_responder_warning_banner'),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: _amberBg,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: _amberBorder, width: 1.5),
+                          ),
+                          child: const Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.health_and_safety,
+                                color: _amberBorder,
+                                size: 22,
+                              ),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'TRAINED RESPONDERS ONLY: Specialized equipment steps in this guide require formal training and authorization. Untrained bystanders should call 911 immediately and follow only standard bystander-safe steps.',
+                                  style: TextStyle(
+                                    color: _ink,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                // 2. Emergency Assistance Action (before lengthy steps when required)
+                if (topic.requiresEmergencyCall) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    key: const Key('quick_instruction_emergency_banner'),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _darkSurface,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(
+                              Icons.phone_in_talk_outlined,
+                              color: Color(0xFFFF6974),
+                              size: 20,
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'EMERGENCY ASSISTANCE REQUIRED',
+                                style: TextStyle(
+                                  color: Color(0xFFFF8A93),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minWidth: 150,
+                                minHeight: 48,
+                              ),
+                              child: FilledButton.icon(
+                                key: const Key('quick_call_911_button'),
+                                onPressed: () =>
+                                    EmergencyCallHelper.confirmAndOpen911(
+                                      context,
+                                      openDialer: openDialer,
+                                    ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: _brandRed,
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size(150, 48),
+                                  textStyle: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                icon: const Icon(Icons.phone_outlined),
+                                label: const Text('Call 911'),
+                              ),
+                            ),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minWidth: 150,
+                                minHeight: 48,
+                              ),
+                              child: OutlinedButton.icon(
+                                onPressed: () =>
+                                    EmergencyCallHelper.openHotlinesDirectory(
+                                      context,
+                                      openDialer: openDialer,
+                                    ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                  side: const BorderSide(
+                                    color: Color(0xFF475467),
+                                  ),
+                                  minimumSize: const Size(150, 48),
+                                ),
+                                icon: const Icon(Icons.contact_phone_outlined),
+                                label: const Text('All Hotlines'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                // 3. Immediate Action Callout
+                const SizedBox(height: 14),
+                Container(
+                  key: const Key('immediate_action_callout'),
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF1F2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _brandRed, width: 1.6),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.bolt, color: _brandRed, size: 22),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'IMMEDIATE ACTION — DO THIS FIRST',
+                              style: TextStyle(
+                                color: _brandRed,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        qi.immediateAction,
+                        style: const TextStyle(
+                          color: _ink,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // 4. Essential Recognition Criteria
+                const SizedBox(height: 16),
+                _SectionCard(
+                  icon: Icons.visibility_outlined,
+                  iconColor: _ink,
+                  title: 'SIGNS TO RECOGNIZE',
+                  child: _BulletItemList(items: qi.recognitionSigns),
+                ),
+
+                // 5. Numbered First-Aid Instructions & Conditional Actions
+                const SizedBox(height: 16),
+                _SectionCard(
+                  icon: Icons.format_list_numbered,
+                  iconColor: _brandRed,
+                  title: 'FIRST-AID STEPS',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < qi.steps.length; i++)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            bottom: i == qi.steps.length - 1 ? 0 : 16,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                alignment: Alignment.center,
+                                decoration: const BoxDecoration(
+                                  color: _brandRed,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text(
+                                  '${i + 1}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  qi.steps[i],
+                                  key: Key('instruction_step_${i + 1}'),
+                                  style: const TextStyle(
+                                    color: _ink,
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (qi.conditionalActions.isNotEmpty) ...[
+                        const Divider(height: 28, color: _borderSubtle),
+                        const Row(
+                          children: [
+                            Icon(Icons.alt_route, size: 20, color: _ink),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'IF CONDITIONS CHANGE',
+                                style: TextStyle(
+                                  color: _ink,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        for (final ca in qi.conditionalActions)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: _borderSubtle),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  ca.condition,
+                                  style: const TextStyle(
+                                    color: _ink,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  ca.action,
+                                  style: const TextStyle(
+                                    color: _bodyInk,
+                                    fontSize: 16,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                // 6. Critical Warnings
+                const SizedBox(height: 16),
+                Container(
+                  key: const Key('critical_warnings_section'),
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: _warningBg,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _warningRed, width: 1.5),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: _warningRed,
+                            size: 24,
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'CRITICAL WARNINGS — DO NOT DO THIS',
+                              style: TextStyle(
+                                color: _warningRed,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.9,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _BulletItemList(
+                        items: qi.warnings,
+                        bulletColor: _warningRed,
+                      ),
+                    ],
+                  ),
+                ),
+
+                // 7. Medical Escalation Guidance
+                const SizedBox(height: 16),
+                _SectionCard(
+                  icon: Icons.local_hospital_outlined,
+                  iconColor: _brandRed,
+                  title: 'WHEN TO GET EMERGENCY MEDICAL HELP',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _BulletItemList(items: qi.emergencyEscalation),
+                      if (!topic.requiresEmergencyCall) ...[
+                        const SizedBox(height: 14),
+                        OutlinedButton.icon(
+                          key: const Key('escalation_call_911_button'),
+                          onPressed: () =>
+                              EmergencyCallHelper.confirmAndOpen911(
+                                context,
+                                openDialer: openDialer,
+                              ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _brandRed,
+                            side: const BorderSide(color: _brandRed),
+                            minimumSize: const Size.fromHeight(48),
+                          ),
+                          icon: const Icon(Icons.phone_outlined),
+                          label: const Text('Call 911 if red flags appear'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                // 8. Learn More Action
+                const SizedBox(height: 20),
+                OutlinedButton.icon(
+                  key: const Key('quick_instruction_learn_more_button'),
+                  onPressed: () => _openLearnMore(context),
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: _ink,
+                    side: const BorderSide(color: _ink, width: 1.4),
+                    minimumSize: const Size.fromHeight(54),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  icon: const Icon(Icons.menu_book_outlined, color: _brandRed),
+                  label: const Text(
+                    'Learn More — Background, Prevention & IFRC Source',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class FirstAidLearningLibraryScreen extends StatefulWidget {
+  const FirstAidLearningLibraryScreen({
+    super.key,
+    required this.bundle,
+    this.openDialer,
+  });
+
+  final FirstAidLibraryBundle bundle;
+  final EmergencyDialerOpener? openDialer;
+
+  @override
+  State<FirstAidLearningLibraryScreen> createState() =>
+      _FirstAidLearningLibraryScreenState();
+}
+
+class _FirstAidLearningLibraryScreenState
+    extends State<FirstAidLearningLibraryScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+  String _selectedCategory = 'All';
+  FirstAidSortOrder _sortOrder = FirstAidSortOrder.logical;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _openArticle(FirstAidTopic topic) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => FirstAidArticleScreen(
+          topic: topic,
+          bundle: widget.bundle,
+          openedFromQuickInstruction: false,
+          openDialer: widget.openDialer,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final articles = FirstAidSearchEngine.search(
+      widget.bundle.topics,
+      query: _query,
+      category: _selectedCategory,
+      sortOrder: _sortOrder,
+    );
+
+    return Scaffold(
+      backgroundColor: _pageBg,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: _ink,
+        toolbarHeight: 68,
+        leadingWidth: 68,
+        leading: Center(
+          child: IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).maybePop(),
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFFF3F5F8),
+              minimumSize: const Size(48, 48),
+            ),
+            icon: const Icon(Icons.chevron_left, size: 28),
+          ),
+        ),
+        title: const Text(
+          'Learning Library',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+      ),
+      body: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
               children: [
                 const Text(
-                  'IMMEDIATE CARE GUIDE',
+                  'EDUCATION & PREPAREDNESS',
                   style: TextStyle(
-                    color: _red,
+                    color: _brandRed,
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: 2,
+                    letterSpacing: 1.8,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Understand why first aid works and how to prevent emergencies.',
+                  style: TextStyle(
+                    color: _ink,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  key: const Key('learning_library_search_field'),
+                  controller: _searchController,
+                  onChanged: (v) => setState(() => _query = v),
+                  style: const TextStyle(fontSize: 16, color: _ink),
+                  decoration: InputDecoration(
+                    hintText: 'Search Learning Library topics',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            constraints: const BoxConstraints(
+                              minWidth: 48,
+                              minHeight: 48,
+                            ),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _query = '');
+                            },
+                            icon: const Icon(Icons.close),
+                          ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: _borderSubtle),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: _borderSubtle),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    const Text(
+                      'Sort:',
+                      style: TextStyle(
+                        color: _mutedInk,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    ChoiceChip(
+                      label: const Text('Recommended Order'),
+                      selected: _sortOrder == FirstAidSortOrder.logical,
+                      materialTapTargetSize: MaterialTapTargetSize.padded,
+                      onSelected: (_) => setState(
+                        () => _sortOrder = FirstAidSortOrder.logical,
+                      ),
+                    ),
+                    ChoiceChip(
+                      key: const Key('sort_alphabetical_chip'),
+                      label: const Text('A–Z'),
+                      selected: _sortOrder == FirstAidSortOrder.alphabetical,
+                      materialTapTargetSize: MaterialTapTargetSize.padded,
+                      onSelected: (_) => setState(
+                        () => _sortOrder = FirstAidSortOrder.alphabetical,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final cat in ['All', ...widget.bundle.categories])
+                      ChoiceChip(
+                        label: Text(cat),
+                        selected: _selectedCategory == cat,
+                        materialTapTargetSize: MaterialTapTargetSize.padded,
+                        onSelected: (_) =>
+                            setState(() => _selectedCategory = cat),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  '${articles.length} ${articles.length == 1 ? 'ARTICLE' : 'ARTICLES'}',
+                  style: const TextStyle(
+                    color: _mutedInk,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'What do you need\nhelp with?',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    height: 1.15,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _search,
-                        textInputAction: TextInputAction.search,
-                        onChanged: (value) => setState(() => _query = value),
-                        onSubmitted: (_) => _submitSearch(),
-                        style: const TextStyle(fontSize: 14, color: _ink),
-                        decoration: InputDecoration(
-                          hintText: 'Search injury or symptom',
-                          hintStyle: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF7B889A),
-                          ),
-                          prefixIcon: const Icon(
-                            Icons.search,
-                            size: 21,
-                            color: Color(0xFF8B98AA),
-                          ),
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 16,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE1E5EB),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE1E5EB),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: const BorderSide(
-                              color: _red,
-                              width: 1.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton.filled(
-                      tooltip: 'Search guides',
-                      onPressed: _submitSearch,
-                      style: IconButton.styleFrom(
-                        backgroundColor: _red,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(52, 52),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      icon: const Icon(Icons.search, size: 25),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${guides.length} ${guides.length == 1 ? 'GUIDE' : 'GUIDES'}',
-                        style: const TextStyle(
-                          color: Color(0xFF7B889A),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: .6,
-                        ),
-                      ),
-                    ),
-                    PopupMenuButton<String>(
-                      tooltip: 'Filter guides',
-                      initialValue: _category,
-                      onSelected: (value) => setState(() => _category = value),
-                      itemBuilder: (_) => [
-                        for (final category in categories)
-                          CheckedPopupMenuItem(
-                            value: category,
-                            checked: category == _category,
-                            child: Text(category),
-                          ),
-                      ],
-                      icon: Icon(
-                        Icons.filter_list,
-                        color: _category == 'All' ? _muted : _red,
-                        size: 21,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (guides.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
+                for (final topic in articles)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Material(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'No guides found',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: _ink,
+                      borderRadius: BorderRadius.circular(18),
+                      child: InkWell(
+                        key: Key('learning_article_card_${topic.id}'),
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: () => _openArticle(topic),
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: _borderSubtle),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    topic.iconData,
+                                    color: _brandRed,
+                                    size: 22,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      topic.title,
+                                      style: const TextStyle(
+                                        color: _ink,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  const Icon(
+                                    Icons.chevron_right,
+                                    color: _mutedInk,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                topic.learnMore.overview,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: _bodyInk,
+                                  fontSize: 15.5,
+                                  height: 1.45,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '${topic.category} • IFRC 2025 (${topic.source.pageCitation})',
+                                style: const TextStyle(
+                                  color: _mutedInk,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Try another search or clear the selected filters.',
-                          textAlign: TextAlign.center,
-                        ),
-                        TextButton(
-                          onPressed: _clearFilters,
-                          child: const Text('Clear search & filters'),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                for (var i = 0; i < guides.length; i++)
-                  _guideCard(
-                    guides[i],
-                    initiallyExpanded:
-                        i == 0 && _query.isEmpty && _category == 'All',
                   ),
               ],
             ),
@@ -485,81 +1657,531 @@ class _FirstAidLibraryScreenState extends State<FirstAidLibraryScreen> {
   }
 }
 
-class FirstAidDetailScreen extends StatelessWidget {
-  const FirstAidDetailScreen({super.key, required this.guide});
-  final FirstAidGuide guide;
+class FirstAidArticleScreen extends StatelessWidget {
+  const FirstAidArticleScreen({
+    super.key,
+    required this.topic,
+    required this.bundle,
+    this.openedFromQuickInstruction = false,
+    this.openDialer,
+  });
+
+  final FirstAidTopic topic;
+  final FirstAidLibraryBundle bundle;
+  final bool openedFromQuickInstruction;
+  final EmergencyDialerOpener? openDialer;
+
+  void _viewFirstAidInstructions(BuildContext context) {
+    if (openedFromQuickInstruction) {
+      Navigator.of(context).pop();
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => FirstAidQuickInstructionScreen(
+          topic: topic,
+          bundle: bundle,
+          openedFromArticle: true,
+          openDialer: openDialer,
+        ),
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(guide.title)),
-    body: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Container(
-            height: 180,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF0F1),
-              borderRadius: BorderRadius.circular(24),
+  Widget build(BuildContext context) {
+    final lm = topic.learnMore;
+    final related = <FirstAidTopic>[
+      for (final id in topic.relatedTopics)
+        if (bundle.topicById(id) case final FirstAidTopic t) t,
+    ];
+
+    return Scaffold(
+      backgroundColor: _pageBg,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        foregroundColor: _ink,
+        toolbarHeight: 68,
+        leadingWidth: 68,
+        leading: Center(
+          child: IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).maybePop(),
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFFF3F5F8),
+              minimumSize: const Size(48, 48),
             ),
-            child: const Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            icon: const Icon(Icons.chevron_left, size: 28),
+          ),
+        ),
+        title: const Text(
+          'Learn More',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+      ),
+      body: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
               children: [
-                Icon(Icons.image_outlined, size: 48, color: Color(0xFFE92B32)),
-                SizedBox(height: 8),
-                Text('Instruction image'),
-                Text('Reserved for a reviewed visual guide'),
+                FilledButton.icon(
+                  key: const Key('article_view_quick_instructions_button'),
+                  onPressed: () => _viewFirstAidInstructions(context),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _brandRed,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(52),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  icon: const Icon(Icons.bolt),
+                  label: const Text('View First Aid Instructions'),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _borderSubtle),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        topic.category.toUpperCase(),
+                        style: const TextStyle(
+                          color: _brandRed,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        topic.title,
+                        style: const TextStyle(
+                          color: _ink,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          height: 1.25,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        lm.overview,
+                        style: const TextStyle(
+                          color: _bodyInk,
+                          fontSize: 16,
+                          height: 1.55,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _SectionCard(
+                  icon: Icons.help_outline,
+                  iconColor: _ink,
+                  title: 'CAUSES & RISK FACTORS',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Common Causes',
+                        style: TextStyle(
+                          color: _ink,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _BulletItemList(items: lm.causes),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Risk Factors',
+                        style: TextStyle(
+                          color: _ink,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _BulletItemList(items: lm.riskFactors),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _SectionCard(
+                  icon: Icons.search,
+                  iconColor: _ink,
+                  title: 'DETAILED RECOGNITION',
+                  child: _BulletItemList(items: lm.detailedRecognition),
+                ),
+                const SizedBox(height: 16),
+                _SectionCard(
+                  icon: Icons.science_outlined,
+                  iconColor: _brandRed,
+                  title: 'MEDICAL RATIONALE — WHY IT WORKS',
+                  child: _BulletItemList(items: lm.explanations),
+                ),
+                const SizedBox(height: 16),
+                _SectionCard(
+                  icon: Icons.shield_outlined,
+                  iconColor: const Color(0xFF067647),
+                  title: 'PREVENTION & PREPARATION',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Prevention',
+                        style: TextStyle(
+                          color: _ink,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _BulletItemList(items: lm.prevention),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Preparation',
+                        style: TextStyle(
+                          color: _ink,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _BulletItemList(items: lm.preparation),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _SectionCard(
+                  icon: Icons.healing_outlined,
+                  iconColor: _ink,
+                  title: 'PRECAUTIONS & FOLLOW-UP CARE',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _BulletItemList(items: lm.additionalPrecautions),
+                      const SizedBox(height: 10),
+                      _BulletItemList(items: lm.followUpCare),
+                    ],
+                  ),
+                ),
+                if (related.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _SectionCard(
+                    icon: Icons.hub_outlined,
+                    iconColor: _brandRed,
+                    title: 'RELATED TOPICS',
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final rel in related)
+                          ActionChip(
+                            key: Key('related_topic_chip_${rel.id}'),
+                            materialTapTargetSize: MaterialTapTargetSize.padded,
+                            avatar: Icon(
+                              rel.iconData,
+                              size: 18,
+                              color: _brandRed,
+                            ),
+                            label: Text(rel.shortTitle),
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => FirstAidQuickInstructionScreen(
+                                  topic: rel,
+                                  bundle: bundle,
+                                  openDialer: openDialer,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                _SectionCard(
+                  icon: Icons.menu_book_outlined,
+                  iconColor: _mutedInk,
+                  title: 'SOURCE REFERENCE & ATTRIBUTION',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${topic.source.organization} International First Aid, Resuscitation and Education Guidelines (${topic.source.edition})',
+                        style: const TextStyle(
+                          color: _ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Section: ${topic.source.chapter} — "${topic.source.topicTitle}" (${topic.source.pageCitation}; PDF ${topic.source.pageCitation})',
+                        style: const TextStyle(
+                          color: _bodyInk,
+                          fontSize: 15,
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        bundle.nonEndorsementNotice,
+                        style: const TextStyle(
+                          color: _mutedInk,
+                          fontSize: 14,
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        bundle.medicalDisclaimer,
+                        style: const TextStyle(
+                          color: _mutedInk,
+                          fontSize: 14,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
-          Text(
-            guide.category.toUpperCase(),
-            style: const TextStyle(
-              color: Color(0xFFE92B32),
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.5,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Follow emergency professionals whenever available.',
-            style: TextStyle(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 16),
-          for (final section in guide.details.split('\n\n'))
-            _InstructionSection(section: section),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
-class _InstructionSection extends StatelessWidget {
-  const _InstructionSection({required this.section});
-  final String section;
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.child,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final Widget child;
+
   @override
   Widget build(BuildContext context) {
-    final lines = section.split('\n');
-    final expandable = lines.first == 'What if only 1 puff is available?';
-    final body = Column(
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: iconColor, size: 21),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _BulletItemList extends StatelessWidget {
+  const _BulletItemList({required this.items, this.bulletColor = _brandRed});
+
+  final List<String> items;
+  final Color bulletColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(lines.first, style: Theme.of(context).textTheme.titleMedium),
-        for (final line in lines.skip(1))
+        for (var i = 0; i < items.length; i++)
           Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(line, style: const TextStyle(height: 1.45)),
+            padding: EdgeInsets.only(bottom: i == items.length - 1 ? 0 : 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: bulletColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    items[i],
+                    style: const TextStyle(
+                      color: _bodyInk,
+                      fontSize: 16,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
       ],
     );
-    return Card(
-      child: expandable
-          ? ExpansionTile(
-              title: Text(lines.first),
-              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              children: [body],
-            )
-          : Padding(padding: const EdgeInsets.all(16), child: body),
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({
+    required this.icon,
+    required this.label,
+    required this.foreground,
+    required this.background,
+    required this.border,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color foreground;
+  final Color background;
+  final Color border;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: foreground),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClinicalReviewDraftBanner extends StatelessWidget {
+  const _ClinicalReviewDraftBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('clinical_review_draft_banner'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: _amberBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _amberBorder),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.fact_check_outlined, color: _amberBorder, size: 19),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Clinical review pending: Instructions are verified against IFRC 2025 Guidelines and awaiting qualified human clinical sign-off before public release.',
+              style: TextStyle(
+                color: _ink,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LoadErrorCard extends StatelessWidget {
+  const _LoadErrorCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('first_aid_load_error_card'),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _warningBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _warningRed, width: 1.4),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, color: _warningRed, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: _ink,
+                fontSize: 16,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
