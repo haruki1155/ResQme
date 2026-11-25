@@ -1,6 +1,11 @@
 import {HttpsError} from 'firebase-functions/v2/https';
 import {keys, object} from '../medical/medical_contract';
+import {isTier2PresentationPayload} from '../medical/trusted_device_management';
 import {isQrPayload} from '../qr/ensure_my_tier1_qr';
+
+export function isStaffScannableTier2Payload(value: unknown): value is string {
+  return isQrPayload(value) || isTier2PresentationPayload(value);
+}
 
 export const staffTier2Operation = 'staff_read_medical' as const;
 export const STAFF_ENROLLMENT_PROOF_VERSION = 2 as const;
@@ -30,7 +35,7 @@ export function validateStaffChallengeRequest(value: unknown): {
   const data = object(value);
   keys(data, ['payload', 'deviceId', 'purpose']);
   if (
-    !isQrPayload(data.payload) ||
+    !isStaffScannableTier2Payload(data.payload) ||
     typeof data.deviceId !== 'string' ||
     !/^[A-Za-z0-9_-]{20,80}$/.test(data.deviceId) ||
     typeof data.purpose !== 'string' ||

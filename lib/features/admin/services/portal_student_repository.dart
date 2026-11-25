@@ -432,8 +432,18 @@ abstract interface class RegistrationFilterableRosterRepository
   });
 }
 
+abstract interface class TrustedDeviceRecoveryPortalRepository
+    implements PortalStudentRepository {
+  Future<void> resetStudentTrustedDevice({
+    required String studentUid,
+    String reason,
+  });
+}
+
 class FirebasePortalStudentRepository
-    implements RegistrationFilterableRosterRepository {
+    implements
+        RegistrationFilterableRosterRepository,
+        TrustedDeviceRecoveryPortalRepository {
   FirebasePortalStudentRepository({
     required this.auth,
     required this.functions,
@@ -701,6 +711,28 @@ class FirebasePortalStudentRepository
           readCoordinator.notifyMutation();
         } catch (error) {
           _rethrowMapped(error, 'Unable to update student account status.');
+        }
+      });
+
+  @override
+  Future<void> resetStudentTrustedDevice({
+    required String studentUid,
+    String reason = 'school_verified_recovery',
+  }) =>
+      operationLock.run(() async {
+        try {
+          await _callable('resetStudentTrustedDevice').call<dynamic>(
+            <String, dynamic>{
+              'studentUid': studentUid,
+              'reason': reason,
+            },
+          );
+          readCoordinator.notifyMutation();
+        } catch (error) {
+          _rethrowMapped(
+            error,
+            'Unable to reset student biometric device binding.',
+          );
         }
       });
 

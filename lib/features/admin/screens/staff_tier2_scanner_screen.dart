@@ -245,7 +245,7 @@ class _StaffQrCameraViewState extends State<_StaffQrCameraView>
     if (_captured || !mounted) return;
     final raw = capture.barcodes.firstOrNull?.rawValue;
     if (raw == null || raw.isEmpty) return;
-    if (QrPayloadParser.parse(raw) is ValidResQMeQr) {
+    if (QrPayloadParser.isValidStaffTier2Payload(raw)) {
       _captured = true;
       _controller.stop();
       widget.onValidQr(raw.trim());

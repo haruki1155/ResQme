@@ -1,9 +1,13 @@
 import {randomBytes} from 'node:crypto';
 import {FieldValue, Timestamp} from 'firebase-admin/firestore';
 import {HttpsError, onCall} from 'firebase-functions/v2/https';
-import {sanitizeTier2Record, verifyTier2Signature} from '../medical/tier2_challenge';
+import {
+  STUDENT_ENROLLMENT_PROOF_VERSION,
+  sanitizeTier2Record,
+  verifyTier2Signature,
+} from '../medical/tier2_challenge';
 import {onboardingDatabase, resqmeRuntimeOptions} from '../onboarding/authorization';
-import {evaluateQrEligibility} from '../qr/qr_eligibility';
+import {evaluateQrEligibility, evaluateStudentEligibility} from '../qr/qr_eligibility';
 import {hashQrPayload} from '../qr/resolve_tier1_qr';
 import {assertAttestationSerialsNotRevoked} from './staff_attestation';
 import {requireStaff} from './staff_authorization';
@@ -107,40 +111,95 @@ export const readStudentTier2 = onCall(resqmeRuntimeOptions, async (request) => 
 
       const targetUid = challenge.targetUid;
       const qrHash = challenge.qrHash;
-      const [profileSnap, credentialSnap, lookupSnap, medicalSnap, guardianSnap] = await Promise.all([
-        tx.get(db.doc(`studentProfiles/${targetUid}`)),
-        tx.get(db.doc(`studentQrCredentials/${targetUid}`)),
-        tx.get(db.doc(`studentQrLookups/${qrHash}`)),
-        tx.get(db.doc(`studentMedicalRecords/${targetUid}`)),
-        tx.get(db.doc(`studentGuardianAuthorizations/${targetUid}`)),
-      ]);
-      const profile = profileSnap.data();
-      const credential = credentialSnap.data();
-      const medical = medicalSnap.data();
-      const livePayload = typeof credential?.payload === 'string' ? credential.payload : '';
+      const isPresentationToken = challenge.qrMode === 'tier2_presentation';
+      let medical: FirebaseFirestore.DocumentData | undefined;
 
-      if (
-        !profileSnap.exists ||
-        !credentialSnap.exists ||
-        !lookupSnap.exists ||
-        !medicalSnap.exists ||
-        profile?.schoolId !== staff.schoolId ||
-        lookupSnap.get('status') !== 'active' ||
-        lookupSnap.get('uid') !== targetUid ||
-        !livePayload ||
-        hashQrPayload(livePayload) !== qrHash ||
-        medical?.revision !== challenge.medicalRevision ||
-        !evaluateQrEligibility({
-          uid: targetUid,
-          profile,
-          medical,
-          guardianAuthorization: guardianSnap.data(),
-          credential,
-          lookup: lookupSnap.data(),
-        })
-      ) {
-        denialContext.reason = 'target_ineligible_or_qr_changed';
-        throw new HttpsError('permission-denied', 'Emergency Tier 2 access is unavailable.');
+      if (isPresentationToken) {
+        const tokenRef = db.doc(`studentTier2PresentationTokens/${qrHash}`);
+        const [profileSnap, studentDeviceSnap, tokenSnap, medicalSnap, guardianSnap] =
+          await Promise.all([
+            tx.get(db.doc(`studentProfiles/${targetUid}`)),
+            tx.get(db.doc(`tier2Devices/${targetUid}`)),
+            tx.get(tokenRef),
+            tx.get(db.doc(`studentMedicalRecords/${targetUid}`)),
+            tx.get(db.doc(`studentGuardianAuthorizations/${targetUid}`)),
+          ]);
+        const profile = profileSnap.data();
+        medical = medicalSnap.data();
+        const tokenExpires = tokenSnap.get('expiresAt');
+        const tokenExpiresMs =
+          tokenExpires instanceof Timestamp
+            ? tokenExpires.toMillis()
+            : tokenExpires instanceof Date
+              ? tokenExpires.getTime()
+              : 0;
+
+        if (
+          !profileSnap.exists ||
+          !studentDeviceSnap.exists ||
+          !tokenSnap.exists ||
+          !medicalSnap.exists ||
+          profile?.schoolId !== staff.schoolId ||
+          tokenSnap.get('status') !== 'active' ||
+          tokenSnap.get('consumedAt') != null ||
+          tokenSnap.get('uid') !== targetUid ||
+          tokenExpiresMs <= Date.now() ||
+          studentDeviceSnap.get('status') !== 'active' ||
+          studentDeviceSnap.get('enrollmentProofVersion') !== STUDENT_ENROLLMENT_PROOF_VERSION ||
+          studentDeviceSnap.get('keyVersion') !== tokenSnap.get('keyVersion') ||
+          medical?.revision !== challenge.medicalRevision ||
+          !evaluateStudentEligibility({
+            uid: targetUid,
+            profile,
+            medical,
+            guardianAuthorization: guardianSnap.data(),
+          })
+        ) {
+          denialContext.reason = 'target_ineligible_or_qr_changed';
+          throw new HttpsError('permission-denied', 'Emergency Tier 2 access is unavailable.');
+        }
+        tx.update(tokenRef, {
+          status: 'consumed',
+          consumedAt: FieldValue.serverTimestamp(),
+          consumedByStaffUid: staffUid,
+        });
+      } else {
+        const [profileSnap, credentialSnap, lookupSnap, medicalSnap, guardianSnap] =
+          await Promise.all([
+            tx.get(db.doc(`studentProfiles/${targetUid}`)),
+            tx.get(db.doc(`studentQrCredentials/${targetUid}`)),
+            tx.get(db.doc(`studentQrLookups/${qrHash}`)),
+            tx.get(db.doc(`studentMedicalRecords/${targetUid}`)),
+            tx.get(db.doc(`studentGuardianAuthorizations/${targetUid}`)),
+          ]);
+        const profile = profileSnap.data();
+        const credential = credentialSnap.data();
+        medical = medicalSnap.data();
+        const livePayload = typeof credential?.payload === 'string' ? credential.payload : '';
+
+        if (
+          !profileSnap.exists ||
+          !credentialSnap.exists ||
+          !lookupSnap.exists ||
+          !medicalSnap.exists ||
+          profile?.schoolId !== staff.schoolId ||
+          lookupSnap.get('status') !== 'active' ||
+          lookupSnap.get('uid') !== targetUid ||
+          !livePayload ||
+          hashQrPayload(livePayload) !== qrHash ||
+          medical?.revision !== challenge.medicalRevision ||
+          !evaluateQrEligibility({
+            uid: targetUid,
+            profile,
+            medical,
+            guardianAuthorization: guardianSnap.data(),
+            credential,
+            lookup: lookupSnap.data(),
+          })
+        ) {
+          denialContext.reason = 'target_ineligible_or_qr_changed';
+          throw new HttpsError('permission-denied', 'Emergency Tier 2 access is unavailable.');
+        }
       }
 
       const sanitized = sanitizeTier2Record(medical);

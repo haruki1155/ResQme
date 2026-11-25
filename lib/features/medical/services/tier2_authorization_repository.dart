@@ -13,7 +13,38 @@ class Tier2AuthorizationFailure implements Exception {
   String toString() => message;
 }
 
-class Tier2AuthorizationRepository {
+class TrustedDeviceStatus {
+  const TrustedDeviceStatus({
+    required this.hasActiveTrustedDevice,
+    required this.isCurrentDeviceTrusted,
+    this.keyVersion,
+  });
+
+  final bool hasActiveTrustedDevice;
+  final bool isCurrentDeviceTrusted;
+  final int? keyVersion;
+}
+
+class Tier2PresentationToken {
+  const Tier2PresentationToken({
+    required this.payload,
+    required this.expiresAt,
+    required this.ttlSeconds,
+  });
+
+  final String payload;
+  final DateTime expiresAt;
+  final int ttlSeconds;
+}
+
+abstract interface class Tier2PresentationClient {
+  String? get currentUid;
+  Future<TrustedDeviceStatus> getTrustedDeviceStatus();
+  Future<Tier2PresentationToken> unlockTier2PresentationQr();
+  Future<void> setSecureScreen(bool enabled);
+}
+
+class Tier2AuthorizationRepository implements Tier2PresentationClient {
   Tier2AuthorizationRepository({
     required this.auth,
     required this.functions,
@@ -30,6 +61,7 @@ class Tier2AuthorizationRepository {
   final FirebaseAuth auth;
   final FirebaseFunctions functions;
   final PlatformTier2Key keyProvider;
+  @override
   String? get currentUid => auth.currentUser?.uid;
 
   Future<T> _withOwner<T>(
@@ -84,6 +116,16 @@ class Tier2AuthorizationRepository {
       });
     }
     if (error is FirebaseFunctionsException) {
+      final msg = error.message ?? '';
+      if (error.code == 'failed-precondition' &&
+          msg.toLowerCase().contains('another personal device')) {
+        return Tier2AuthorizationFailure(msg);
+      }
+      if (error.code == 'permission-denied' &&
+          (msg.toLowerCase().contains('transfer') ||
+              msg.toLowerCase().contains('only the enrolled personal device'))) {
+        return Tier2AuthorizationFailure(msg);
+      }
       return Tier2AuthorizationFailure(switch (error.code) {
         'resource-exhausted' => 'Too many Tier 2 attempts. Try again later.',
         'failed-precondition' ||
@@ -263,11 +305,142 @@ class Tier2AuthorizationRepository {
     }
   }
 
+  Future<String?> _existingLocalDeviceId(
+    String uid,
+    void Function() check,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    check();
+    final value = prefs.getString('resqme-tier2-device-$uid');
+    if (value != null && RegExp(r'^[A-Za-z0-9_-]{20,80}$').hasMatch(value)) {
+      return value;
+    }
+    return null;
+  }
+
+  @override
+  Future<void> setSecureScreen(bool enabled) =>
+      keyProvider.setSecureScreen(enabled);
+
+  @override
+  Future<TrustedDeviceStatus> getTrustedDeviceStatus() =>
+      _withOwner((uid, check) async {
+        final localDeviceId = await _existingLocalDeviceId(uid, check);
+        final res = await _call(
+          'getMyTrustedDeviceStatus',
+          {'deviceId': ?localDeviceId},
+          check,
+        );
+        final active = res['hasActiveTrustedDevice'] == true;
+        final currentTrusted = res['isCurrentDeviceTrusted'] == true;
+        if (currentTrusted) {
+          await _markEnrolled(uid);
+        } else {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_enrolledKey(uid));
+        }
+        return TrustedDeviceStatus(
+          hasActiveTrustedDevice: active,
+          isCurrentDeviceTrusted: currentTrusted,
+          keyVersion: (res['keyVersion'] as num?)?.toInt(),
+        );
+      });
+
+  @override
+  Future<Tier2PresentationToken> unlockTier2PresentationQr() =>
+      _withOwner((uid, check) async {
+        final deviceId = await _existingLocalDeviceId(uid, check);
+        if (deviceId == null) {
+          throw const Tier2AuthorizationFailure(
+            'Enroll this personal device with biometrics first.',
+          );
+        }
+        final challenge = await _call('issueTier2Challenge', {
+          'deviceId': deviceId,
+          'operation': 'present_tier2_qr',
+        }, check);
+        if (challenge['challengeId'] is! String ||
+            challenge['nonce'] is! String ||
+            challenge['deviceId'] != deviceId ||
+            challenge['operation'] != 'present_tier2_qr') {
+          throw const Tier2AuthorizationFailure('Tier 2 challenge is invalid.');
+        }
+        final message =
+            '$uid\n$deviceId\npresent_tier2_qr\n${challenge['challengeId']}\n${challenge['nonce']}';
+        final signature = await keyProvider.sign(deviceId, message);
+        check();
+        final issued = await _call('issueMyTier2PresentationToken', {
+          'challengeId': challenge['challengeId'],
+          'deviceId': deviceId,
+          'signature': signature,
+        }, check);
+        final payload = issued['payload'];
+        final expiresAtMs = (issued['expiresAt'] as num?)?.toInt();
+        final ttlSeconds = (issued['ttlSeconds'] as num?)?.toInt() ?? 90;
+        if (payload is! String || expiresAtMs == null) {
+          throw const Tier2AuthorizationFailure(
+            'Protected Tier 2 QR token could not be issued.',
+          );
+        }
+        await _markEnrolled(uid);
+        return Tier2PresentationToken(
+          payload: payload,
+          expiresAt: DateTime.fromMillisecondsSinceEpoch(expiresAtMs),
+          ttlSeconds: ttlSeconds,
+        );
+      });
+
+  Future<String> approveTrustedDeviceTransfer(String password) =>
+      _withOwner((uid, check) async {
+        final user = auth.currentUser;
+        if (user == null || user.email == null || password.isEmpty) {
+          throw const Tier2AuthorizationFailure('Enter your account password.');
+        }
+        await user.reauthenticateWithCredential(
+          EmailAuthProvider.credential(email: user.email!, password: password),
+        );
+        check();
+        await user.getIdToken(true);
+        check();
+        final deviceId = await _existingLocalDeviceId(uid, check);
+        if (deviceId == null) {
+          throw const Tier2AuthorizationFailure(
+            'Only your enrolled personal device can approve device transfer.',
+          );
+        }
+        final challenge = await _call('issueTier2Challenge', {
+          'deviceId': deviceId,
+          'operation': 'approve_device_transfer',
+        }, check);
+        if (challenge['challengeId'] is! String ||
+            challenge['nonce'] is! String ||
+            challenge['deviceId'] != deviceId) {
+          throw const Tier2AuthorizationFailure('Transfer challenge is invalid.');
+        }
+        final message =
+            '$uid\n$deviceId\napprove_device_transfer\n${challenge['challengeId']}\n${challenge['nonce']}';
+        final signature = await keyProvider.sign(deviceId, message);
+        check();
+        final issued = await _call('issueTrustedDeviceTransferCode', {
+          'challengeId': challenge['challengeId'],
+          'deviceId': deviceId,
+          'signature': signature,
+        }, check);
+        final code = issued['transferCode'];
+        if (code is! String || code.isEmpty) {
+          throw const Tier2AuthorizationFailure(
+            'Unable to generate device transfer code.',
+          );
+        }
+        return code;
+      });
+
   Future<String> _enrollDeviceInternal(
     String uid,
     String password,
-    void Function() check,
-  ) async {
+    void Function() check, {
+    String? transferCode,
+  }) async {
     final user = auth.currentUser;
     if (user == null || user.email == null || password.isEmpty) {
       throw const Tier2AuthorizationFailure('Enter your account password.');
@@ -304,24 +477,43 @@ class Tier2AuthorizationRepository {
       message: message,
     );
     check();
+    final cleanTransfer = transferCode?.trim();
     await _call('enrollTier2Device', {
       'challengeId': challengeId,
       'deviceId': deviceId,
       'publicKey': enrollment.publicKey,
       'signature': enrollment.signature,
+      if (cleanTransfer != null && cleanTransfer.isNotEmpty)
+        'transferCode': cleanTransfer.toUpperCase(),
     }, check);
     await _markEnrolled(uid);
     return deviceId;
   }
 
-  Future<void> enrollBiometricDeviceWithPassword(String password) =>
+  Future<void> enrollBiometricDeviceWithPassword(
+    String password, {
+    String? transferCode,
+  }) =>
       _withOwner((uid, check) async {
-        await _enrollDeviceInternal(uid, password, check);
+        await _enrollDeviceInternal(
+          uid,
+          password,
+          check,
+          transferCode: transferCode,
+        );
       });
 
-  Future<Map<String, dynamic>> enrollWithPassword(String password) =>
+  Future<Map<String, dynamic>> enrollWithPassword(
+    String password, {
+    String? transferCode,
+  }) =>
       _withOwner((uid, check) async {
-        final deviceId = await _enrollDeviceInternal(uid, password, check);
+        final deviceId = await _enrollDeviceInternal(
+          uid,
+          password,
+          check,
+          transferCode: transferCode,
+        );
         return _readWithDevice(uid, deviceId, check);
       });
 
@@ -352,7 +544,12 @@ class Tier2AuthorizationRepository {
         check();
         await user.getIdToken(true);
         check();
-        await _call('revokeMyTier2Device', {}, check);
+        final localDeviceId = await _existingLocalDeviceId(uid, check);
+        await _call(
+          'revokeMyTier2Device',
+          {'deviceId': ?localDeviceId},
+          check,
+        );
         await _deleteLocalDeviceKey(uid, check);
       });
 

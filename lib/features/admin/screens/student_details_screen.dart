@@ -217,6 +217,87 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
     }
   }
 
+  Future<void> _confirmTrustedDeviceReset(SchoolStudentDetails details) async {
+    final repo = widget.portalStudentRepository;
+    if (_busy || repo is! TrustedDeviceRecoveryPortalRepository) return;
+    final passwordController = TextEditingController();
+    final password = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset Trusted Biometric Device'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Revoke the enrolled personal biometric device for ${details.fullName} after verifying identity in person?\n\n'
+                'This immediately invalidates previous device biometric keys and allows the student to enroll their new personal phone.',
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm Master Admin password',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(passwordController.text),
+            child: const Text('Reset Device'),
+          ),
+        ],
+      ),
+    );
+    passwordController.dispose();
+    if (password == null || password.isEmpty) return;
+
+    setState(() {
+      _busy = true;
+      _error = null;
+      _feedbackMessage = null;
+    });
+    try {
+      await widget.accessRepository.reauthenticate(password);
+      await repo.resetStudentTrustedDevice(
+        studentUid: details.uid,
+        reason: 'school_verified_recovery',
+      );
+      if (mounted) {
+        PortalScope.notifyMutation(context);
+      }
+      await _load();
+      if (!mounted) return;
+      setState(() {
+        _feedbackMessage =
+            'Student trusted biometric device reset. The student can now enroll their replacement personal device.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error)) {
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
+      setState(() {
+        _error = error is PortalStudentException
+            ? error.message
+            : error is StaffAccessDenied
+                ? error.message
+                : 'Unable to reset trusted biometric device.';
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _openQrReplacement(SchoolStudentDetails details) async {
     final result = await showQrReplacementDialog(
       context: context,
@@ -538,6 +619,18 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
                                   : () => _openQrReplacement(details),
                               icon: const Icon(Icons.qr_code_2_outlined),
                               label: const Text('Replace QR Code'),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          if (!details.accountDisabled &&
+                              widget.portalStudentRepository
+                                  is TrustedDeviceRecoveryPortalRepository) ...[
+                            OutlinedButton.icon(
+                              onPressed: _busy
+                                  ? null
+                                  : () => _confirmTrustedDeviceReset(details),
+                              icon: const Icon(Icons.phonelink_erase_outlined),
+                              label: const Text('Reset Trusted Biometric Device'),
                             ),
                             const SizedBox(height: 10),
                           ],

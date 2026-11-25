@@ -18,7 +18,9 @@ class BiometricOnboardingScreen extends StatefulWidget {
 
 class _BiometricOnboardingScreenState extends State<BiometricOnboardingScreen> {
   final _password = TextEditingController();
+  final _transferCode = TextEditingController();
   String _availability = 'checking';
+  bool _needsTransferCode = false;
   bool _busy = false;
   bool _enrolled = false;
   String? _error;
@@ -32,6 +34,7 @@ class _BiometricOnboardingScreenState extends State<BiometricOnboardingScreen> {
   @override
   void dispose() {
     _password.dispose();
+    _transferCode.dispose();
     super.dispose();
   }
 
@@ -52,18 +55,27 @@ class _BiometricOnboardingScreenState extends State<BiometricOnboardingScreen> {
       _error = null;
     });
     try {
-      await widget.repository.enrollBiometricDeviceWithPassword(_password.text);
+      await widget.repository.enrollBiometricDeviceWithPassword(
+        _password.text,
+        transferCode: _transferCode.text,
+      );
       if (!mounted) return;
       setState(() {
         _enrolled = true;
+        _needsTransferCode = false;
         _password.clear();
+        _transferCode.clear();
       });
     } catch (error) {
       if (!mounted) return;
+      final msg = error is Tier2AuthorizationFailure
+          ? error.message
+          : 'Biometric security setup could not be completed.';
       setState(() {
-        _error = error is Tier2AuthorizationFailure
-            ? error.message
-            : 'Biometric security setup could not be completed.';
+        if (msg.toLowerCase().contains('another personal device')) {
+          _needsTransferCode = true;
+        }
+        _error = msg;
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -199,6 +211,31 @@ class _BiometricOnboardingScreenState extends State<BiometricOnboardingScreen> {
                 child: const Text('Continue to My QR'),
               ),
             ] else ...[
+              if (_needsTransferCode) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFF59E0B)),
+                  ),
+                  child: const Text(
+                    'Another personal device is currently enrolled for biometric Tier 2 access. Password login never silently replaces your trusted device. Enter a transfer code generated on your previous device, or ask your school Master Admin to reset your lost device first.',
+                    style: TextStyle(fontSize: 13, height: 1.45),
+                  ),
+                ),
+                TextField(
+                  controller: _transferCode,
+                  enabled: !_busy,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Trusted-device transfer code (TDX-...)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               TextField(
                 controller: _password,
                 enabled: !_busy,

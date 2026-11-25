@@ -27,7 +27,39 @@ class InactiveQr extends QrScanResult {
 /// Strict offline syntactic parser for ResQMe emergency QR payloads.
 abstract final class QrPayloadParser {
   static const String prefix = 'resqme:v1:';
+  static const String tier2PresentationPrefix = 'resqme:tier2:v1:';
   static final RegExp _base64UrlPattern = RegExp(r'^[A-Za-z0-9_-]{43}$');
+
+  static bool _isValidCanonical32ByteRef(String reference) {
+    if (!_base64UrlPattern.hasMatch(reference)) return false;
+    try {
+      final normalized = base64.normalize(reference);
+      final Uint8List decoded = base64Url.decode(normalized);
+      if (decoded.length != 32) return false;
+      final reEncoded = base64Url.encode(decoded).replaceAll('=', '');
+      return reEncoded == reference;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Validates payloads scannable by the authenticated Staff Tier 2 scanner:
+  /// accepts both permanent emergency QRs (`resqme:v1:`) and short-lived
+  /// biometric Tier 2 presentation tokens (`resqme:tier2:v1:`), while rejecting
+  /// Student Login QRs (`resqme:login:v1:`) and malformed strings.
+  static bool isValidStaffTier2Payload(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return false;
+    final trimmed = raw.trim();
+    if (trimmed.startsWith(prefix)) {
+      return _isValidCanonical32ByteRef(trimmed.substring(prefix.length));
+    }
+    if (trimmed.startsWith(tier2PresentationPrefix)) {
+      return _isValidCanonical32ByteRef(
+        trimmed.substring(tier2PresentationPrefix.length),
+      );
+    }
+    return false;
+  }
 
   /// Parses and validates a raw scanned payload against the ResQMe v1 specification.
   ///

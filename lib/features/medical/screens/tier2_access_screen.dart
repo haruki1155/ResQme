@@ -32,10 +32,13 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
   static const _mutedText = Color(0xFF7B879B);
 
   final _password = TextEditingController();
+  final _transferCode = TextEditingController();
   StreamSubscription<User?>? _authSubscription;
   Map<String, dynamic>? _record;
   StudentRegistrationProfile? _profile;
   Tier1QrCredential? _qrCredential;
+  String? _generatedTransferCode;
+  bool _showTransferCodeInput = false;
   bool _loadingQr = false;
   String? _message, _loadedUid;
   bool _busy = false;
@@ -46,8 +49,11 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
     _generation++;
     _record = null;
     _profile = null;
+    _generatedTransferCode = null;
+    _showTransferCodeInput = false;
     _message = null;
     _password.clear();
+    _transferCode.clear();
   }
 
   @override
@@ -106,6 +112,7 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
     WidgetsBinding.instance.removeObserver(this);
     _authSubscription?.cancel();
     _password.dispose();
+    _transferCode.dispose();
     _record = null;
     _profile = null;
     super.dispose();
@@ -153,10 +160,52 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
           !_backgrounded &&
           generation == _generation &&
           uid == widget.repository.currentUid) {
+        final msg = error is Tier2AuthorizationFailure
+            ? error.message
+            : 'Tier 2 access could not be verified.';
+        setState(() {
+          if (msg.toLowerCase().contains('another personal device')) {
+            _showTransferCodeInput = true;
+          }
+          _message = msg;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _generateTransferCode() async {
+    if (_busy || _backgrounded) return;
+    final generation = ++_generation;
+    final uid = widget.repository.currentUid;
+    setState(() {
+      _busy = true;
+      _message = null;
+      _generatedTransferCode = null;
+    });
+    try {
+      final code = await widget.repository.approveTrustedDeviceTransfer(
+        _password.text,
+      );
+      if (mounted &&
+          !_backgrounded &&
+          generation == _generation &&
+          uid == widget.repository.currentUid) {
+        setState(() {
+          _password.clear();
+          _generatedTransferCode = code;
+        });
+      }
+    } catch (error) {
+      if (mounted &&
+          !_backgrounded &&
+          generation == _generation &&
+          uid == widget.repository.currentUid) {
         setState(
           () => _message = error is Tier2AuthorizationFailure
               ? error.message
-              : 'Tier 2 access could not be verified.',
+              : 'Unable to generate device transfer code.',
         );
       }
     } finally {
@@ -368,6 +417,18 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
                   border: OutlineInputBorder(),
                 ),
               ),
+              if (_showTransferCodeInput) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _transferCode,
+                  enabled: !_busy,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Replacement transfer code (TDX-...)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               OutlinedButton(
                 onPressed: _busy
@@ -385,10 +446,23 @@ class _Tier2AccessScreenState extends State<Tier2AccessScreen>
                     : () => _run(
                         () => widget.repository.enrollWithPassword(
                           _password.text,
+                          transferCode: _transferCode.text,
                         ),
                       ),
                 child: const Text('Set up biometrics with password'),
               ),
+              TextButton(
+                onPressed: _busy ? null : _generateTransferCode,
+                child: const Text('Generate transfer code for new device'),
+              ),
+              if (_generatedTransferCode != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: SelectableText(
+                    'Transfer Code (valid 10 min): $_generatedTransferCode',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
               TextButton(
                 onPressed: _busy ? null : _disableBiometrics,
                 child: const Text('Disable biometric access'),

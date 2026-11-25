@@ -30,6 +30,11 @@ const SECURITY_ACTIONS = new Set([
   'issue_student_login_qr',
   'replace_student_login_qr',
   'revoke_student_login_qr',
+  'enroll_student_trusted_device',
+  'replace_student_trusted_device',
+  'revoke_student_trusted_device',
+  'approve_student_device_transfer',
+  'reset_student_trusted_device',
 ]);
 
 const ACTION_LABELS: Record<string, string> = {
@@ -51,6 +56,11 @@ const ACTION_LABELS: Record<string, string> = {
   issue_student_login_qr: 'Student Login QR Issued',
   replace_student_login_qr: 'Student Login QR Replaced',
   revoke_student_login_qr: 'Student Login QR Revoked',
+  enroll_student_trusted_device: 'Student Trusted Device Enrolled',
+  replace_student_trusted_device: 'Student Trusted Device Replaced',
+  revoke_student_trusted_device: 'Student Trusted Device Revoked',
+  approve_student_device_transfer: 'Student Device Transfer Approved',
+  reset_student_trusted_device: 'Student Trusted Device Reset by Admin',
   verify_student_account: 'Student Manually Verified',
   disable_student_account: 'Student Account Disabled',
   enable_student_account: 'Student Account Enabled',

@@ -840,11 +840,81 @@ export const setStudentAccountStatus = onCall(resqmeRuntimeOptions, async (reque
     await authPort.updateUser(studentUid, {disabled: false});
   }
 
-  return {
-    uid: studentUid,
-    accountDisabled: disabling,
-    accountCategory: nextCategory,
-  };
+    return {
+      uid: studentUid,
+      accountDisabled: disabling,
+      accountCategory: nextCategory,
+    };
+  });
+
+export const resetStudentTrustedDevice = onCall(resqmeRuntimeOptions, async (request) => {
+  const adminUid = request.auth?.uid;
+  if (!adminUid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  requireRecentAuth(request.auth?.token.auth_time, undefined, 120);
+  const data = object(request.data);
+  keys(data, ['studentUid', 'reason']);
+  const studentUid = validateStudentUid(data.studentUid);
+  const rawReason = data.reason;
+  const reason =
+    typeof rawReason === 'string' && /^[a-z0-9_-]{3,64}$/i.test(rawReason.trim())
+      ? rawReason.trim().toLowerCase()
+      : 'school_verified_recovery';
+
+  const emailVerified = request.auth?.token.email_verified === true;
+  const db = staffManagementDeps.db(adminUid);
+
+  await db.runTransaction(async (tx) => {
+    const admin = await requireMasterAdmin(db, adminUid, emailVerified, tx);
+    const profileRef = db.doc(`studentProfiles/${studentUid}`);
+    const deviceRef = db.doc(`tier2Devices/${studentUid}`);
+    const [profileSnap, deviceSnap] = await Promise.all([
+      tx.get(profileRef),
+      tx.get(deviceRef),
+    ]);
+    const profile = profileSnap.data();
+    if (
+      !profileSnap.exists ||
+      !profile ||
+      profile.schemaVersion !== 1 ||
+      profile.schoolAssignmentStatus !== 'assigned' ||
+      profile.schoolId !== admin.schoolId
+    ) {
+      throw new HttpsError('permission-denied', 'Student account is unavailable for this school.');
+    }
+
+    if (deviceSnap.exists && deviceSnap.get('status') === 'active') {
+      const priorTokenHash = deviceSnap.get('activePresentationTokenHash');
+      if (typeof priorTokenHash === 'string' && priorTokenHash.length === 64) {
+        tx.set(
+          db.doc(`studentTier2PresentationTokens/${priorTokenHash}`),
+          {status: 'revoked', revokedAt: FieldValue.serverTimestamp()},
+          {merge: true},
+        );
+      }
+      tx.update(deviceRef, {
+        status: 'revoked',
+        activePresentationTokenHash: null,
+        revokedAt: FieldValue.serverTimestamp(),
+        revokedBy: adminUid,
+        revokedReason: reason,
+      });
+    }
+
+    tx.create(
+      db.doc(`staffManagementAudits/${randomBytes(16).toString('hex')}`),
+      auditRecord({
+        actorUid: adminUid,
+        actorRole: admin.role,
+        schoolId: admin.schoolId,
+        action: 'reset_student_trusted_device',
+        targetUid: studentUid,
+        outcome: 'allowed',
+        reason,
+      }),
+    );
+  });
+
+  return {uid: studentUid, status: 'revoked' as const};
 });
 
 export const listSchoolRoster = onCall(resqmeRuntimeOptions, async (request) => {

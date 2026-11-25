@@ -2,13 +2,13 @@ import {randomBytes} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
 import {onboardingDatabase,resqmeRuntimeOptions} from '../onboarding/authorization';
-import {STUDENT_ENROLLMENT_PROOF_VERSION,requireRecentAuth,requireTier2Eligible,tier2Operation,validateChallengeRequest} from './tier2_challenge';
+import {STUDENT_ENROLLMENT_PROOF_VERSION,requireRecentAuth,requireTier2Eligible,tier2ApproveTransferOperation,tier2Operation,validateChallengeRequest} from './tier2_challenge';
 
 export const issueTier2Challenge=onCall(resqmeRuntimeOptions,async request=>{
   const uid=request.auth?.uid,db=onboardingDatabase(uid);
   const input=validateChallengeRequest(request.data);
-  if(input.operation===tier2Operation) {
-    requireRecentAuth(request.auth?.token.auth_time);
+  if(input.operation===tier2Operation||input.operation===tier2ApproveTransferOperation) {
+    requireRecentAuth(request.auth?.token.auth_time,undefined,input.operation===tier2ApproveTransferOperation?120:300);
   }
   const profile=db.doc(`studentProfiles/${uid}`),medical=db.doc(`studentMedicalRecords/${uid}`),guardian=db.doc(`studentGuardianAuthorizations/${uid}`),device=db.doc(`tier2Devices/${uid}`);
   const challengeId=randomBytes(24).toString('hex'),nonce=randomBytes(32).toString('base64url');
