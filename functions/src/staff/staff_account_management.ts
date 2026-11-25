@@ -195,7 +195,7 @@ export const changeMyStaffPassword = onCall(resqmeRuntimeOptions, async (request
 export const syncMasterAdminEmail = onCall(resqmeRuntimeOptions, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in is required.');
-  keys(object(request.data), []);
+  keys(object(request.data ?? {}), []);
   const email = request.auth?.token.email;
   const emailVerified = request.auth?.token.email_verified === true;
   if (!emailVerified || typeof email !== 'string' || !email.includes('@')) {

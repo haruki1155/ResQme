@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../widgets/portal_widgets.dart';
 
@@ -21,17 +22,45 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
   String _category = 'all';
   String _outcome = 'all';
   DateTimeRange? _dateRange;
+  String _appliedCategory = 'all';
+  String _appliedOutcome = 'all';
+  String _appliedSearch = '';
+  String? _appliedStartDate;
+  String? _appliedEndDate;
   List<ActivityLogEntry> _entries = const [];
   String? _nextCursor;
   int _totalMatched = 0;
-  bool _loading = true;
+  PortalLoadStatus _status = PortalLoadStatus.initialLoading;
+  bool _hasLoadedOnce = false;
   bool _loadingMore = false;
+  int _requestSeq = 0;
+  int? _lastObservedMutationVersion;
   String? _error;
+
+  bool get _isInitialLoading =>
+      !_hasLoadedOnce && _status == PortalLoadStatus.initialLoading;
+  bool get _isRefreshing => _status == PortalLoadStatus.refreshing;
 
   @override
   void initState() {
     super.initState();
     _loadInitial();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final coordinator = PortalScope.maybeOf(context)?.notifier;
+    if (coordinator != null) {
+      final currentMutation = coordinator.mutationVersion;
+      if (_lastObservedMutationVersion != null &&
+          _lastObservedMutationVersion != currentMutation) {
+        _lastObservedMutationVersion = currentMutation;
+        _loadInitial();
+      } else {
+        _lastObservedMutationVersion = currentMutation;
+      }
+    }
   }
 
   @override
@@ -46,59 +75,102 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
       : '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   Future<void> _loadInitial() async {
+    final seq = ++_requestSeq;
+    final categorySnapshot = _category;
+    final outcomeSnapshot = _outcome;
+    final searchSnapshot = _searchController.text;
+    final startSnapshot = _fmtDate(_dateRange?.start);
+    final endSnapshot = _fmtDate(_dateRange?.end);
+    _appliedCategory = categorySnapshot;
+    _appliedOutcome = outcomeSnapshot;
+    _appliedSearch = searchSnapshot;
+    _appliedStartDate = startSnapshot;
+    _appliedEndDate = endSnapshot;
     setState(() {
-      _loading = true;
+      _loadingMore = false;
+      _status = _hasLoadedOnce
+          ? PortalLoadStatus.refreshing
+          : PortalLoadStatus.initialLoading;
       _error = null;
     });
     try {
       final page = await widget.repository.listActivityLogs(
-        category: _category,
-        outcome: _outcome,
-        search: _searchController.text,
-        startDate: _fmtDate(_dateRange?.start),
-        endDate: _fmtDate(_dateRange?.end),
+        category: categorySnapshot,
+        outcome: outcomeSnapshot,
+        search: searchSnapshot,
+        startDate: startSnapshot,
+        endDate: endSnapshot,
         limit: 25,
       );
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
       setState(() {
+        _hasLoadedOnce = true;
         _entries = page.entries;
         _nextCursor = page.nextCursor;
         _totalMatched = page.totalMatched;
+        _error = null;
+        _status = page.entries.isEmpty
+            ? PortalLoadStatus.empty
+            : PortalLoadStatus.loaded;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error) ||
+          (error is PortalStudentException && error.isSessionAuthLoss)) {
+        setState(() {
+          _hasLoadedOnce = false;
+          _entries = const [];
+          _nextCursor = null;
+          _totalMatched = 0;
+          _status = PortalLoadStatus.authorizationError;
+          _error = error is PortalStudentException
+              ? error.message
+              : 'Session authorization expired. Sign in again.';
+        });
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
       setState(() {
+        _status = PortalLoadStatus.transientError;
         _error = error is PortalStudentException
             ? error.message
             : 'Unable to load school activity logs.';
       });
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _loadMore() async {
     final cursor = _nextCursor;
-    if (cursor == null || _loadingMore || _loading) return;
+    if (cursor == null || _loadingMore || _isInitialLoading || _isRefreshing) {
+      return;
+    }
+    final seq = _requestSeq;
     setState(() => _loadingMore = true);
     try {
       final page = await widget.repository.listActivityLogs(
-        category: _category,
-        outcome: _outcome,
-        search: _searchController.text,
-        startDate: _fmtDate(_dateRange?.start),
-        endDate: _fmtDate(_dateRange?.end),
+        category: _appliedCategory,
+        outcome: _appliedOutcome,
+        search: _appliedSearch,
+        startDate: _appliedStartDate,
+        endDate: _appliedEndDate,
         limit: 25,
         cursor: cursor,
       );
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
       setState(() {
         _entries = [..._entries, ...page.entries];
         _nextCursor = page.nextCursor;
         _totalMatched = page.totalMatched;
+        _status =
+            _entries.isEmpty ? PortalLoadStatus.empty : PortalLoadStatus.loaded;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error) ||
+          (error is PortalStudentException && error.isSessionAuthLoss)) {
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -109,7 +181,9 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _loadingMore = false);
+      if (mounted && seq == _requestSeq) {
+        setState(() => _loadingMore = false);
+      }
     }
   }
 
@@ -194,12 +268,13 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
         actions: [
           IconButton(
             tooltip: 'Filter by date range',
-            onPressed: _loading ? null : _pickDateRange,
+            onPressed: _isInitialLoading ? null : _pickDateRange,
             icon: const Icon(Icons.date_range_outlined),
           ),
           IconButton(
             tooltip: 'Refresh activity logs',
-            onPressed: _loading ? null : _loadInitial,
+            onPressed:
+                _isInitialLoading || _isRefreshing ? null : _loadInitial,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -213,7 +288,7 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
               children: [
                 PortalSectionHeader(
                   title: 'School Security & Supervision Logs',
-                  subtitle: _loading
+                  subtitle: _isInitialLoading
                       ? 'Loading chronological audit trail...'
                       : '$_totalMatched recorded event${_totalMatched == 1 ? '' : 's'} (newest first, redacted)',
                 ),
@@ -300,12 +375,18 @@ class _ActivityLogsScreenState extends State<ActivityLogsScreen> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                if (_loading)
+                PortalRefreshStrip(refreshing: _isRefreshing),
+                if (_hasLoadedOnce && _error != null)
+                  PortalInlineErrorBanner(
+                    message: _error!,
+                    onRetry: _loadInitial,
+                  ),
+                if (_isInitialLoading)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 36),
                     child: Center(child: CircularProgressIndicator()),
                   )
-                else if (_error != null)
+                else if (!_hasLoadedOnce && _error != null)
                   PortalStateView(
                     icon: Icons.error_outline,
                     title: 'Activity Logs Unavailable',

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../services/staff_access_repository.dart';
 import '../widgets/portal_widgets.dart';
@@ -25,37 +26,103 @@ class PortalDashboardScreen extends StatefulWidget {
 
 class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
   PortalDashboardStats? _stats;
-  bool _loading = false;
+  PortalLoadStatus _status = PortalLoadStatus.initialLoading;
+  int _requestSeq = 0;
+  int? _lastObservedMutationVersion;
   String? _error;
+
+  bool get _isInitialLoading =>
+      _status == PortalLoadStatus.initialLoading && _stats == null;
+  bool get _isRefreshing => _status == PortalLoadStatus.refreshing;
 
   @override
   void initState() {
     super.initState();
     if (widget.portalStudentRepository != null) {
       _loadStats();
+    } else {
+      _status = PortalLoadStatus.loaded;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final coordinator = PortalScope.maybeOf(context)?.notifier;
+    if (coordinator != null) {
+      final cached =
+          coordinator.peekCached<PortalDashboardStats>('getPortalDashboardStats');
+      if (_stats == null && cached != null) {
+        _stats = cached;
+        _status = PortalLoadStatus.loaded;
+      }
+      final currentMutation = coordinator.mutationVersion;
+      if (_lastObservedMutationVersion != null &&
+          _lastObservedMutationVersion != currentMutation &&
+          widget.portalStudentRepository != null) {
+        _lastObservedMutationVersion = currentMutation;
+        _loadStats();
+      } else {
+        _lastObservedMutationVersion = currentMutation;
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant PortalDashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.access.uid != widget.access.uid ||
+        oldWidget.access.schoolId != widget.access.schoolId) {
+      _requestSeq += 1;
+      _stats = null;
+      _error = null;
+      _status = PortalLoadStatus.initialLoading;
+      if (widget.portalStudentRepository != null) {
+        _loadStats();
+      }
     }
   }
 
   Future<void> _loadStats() async {
     final repo = widget.portalStudentRepository;
-    if (repo == null || _loading) return;
+    if (repo == null) return;
+    final seq = ++_requestSeq;
+    final expectedSchoolId = widget.access.schoolId;
     setState(() {
-      _loading = true;
+      _status = _stats != null
+          ? PortalLoadStatus.refreshing
+          : PortalLoadStatus.initialLoading;
       _error = null;
     });
     try {
       final stats = await repo.loadDashboardStats();
-      if (!mounted) return;
-      setState(() => _stats = stats);
-    } catch (error) {
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
+      if (widget.access.schoolId != expectedSchoolId) return;
       setState(() {
+        _stats = stats;
+        _error = null;
+        _status = PortalLoadStatus.loaded;
+      });
+    } catch (error) {
+      if (!mounted || seq != _requestSeq) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error) ||
+          (error is PortalStudentException && error.isSessionAuthLoss)) {
+        setState(() {
+          _stats = null;
+          _status = PortalLoadStatus.authorizationError;
+          _error = error is PortalStudentException
+              ? error.message
+              : 'Session authorization expired. Sign in again.';
+        });
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
+      setState(() {
+        _status = PortalLoadStatus.transientError;
         _error = error is PortalStudentException
             ? error.message
             : 'Unable to load school dashboard statistics.';
       });
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -80,7 +147,8 @@ class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
                 trailing: widget.portalStudentRepository != null
                     ? IconButton(
                         tooltip: 'Refresh statistics',
-                        onPressed: _loading ? null : _loadStats,
+                        onPressed:
+                            _isInitialLoading || _isRefreshing ? null : _loadStats,
                         icon: const Icon(Icons.refresh),
                       )
                     : null,
@@ -245,7 +313,7 @@ class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
                 ),
               ],
               const SizedBox(height: 20),
-              if (_loading && stats == null)
+              if (_isInitialLoading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 36),
                   child: Center(child: CircularProgressIndicator()),
@@ -258,6 +326,12 @@ class _PortalDashboardScreenState extends State<PortalDashboardScreen> {
                   onRetry: _loadStats,
                 )
               else if (stats != null) ...[
+                PortalRefreshStrip(refreshing: _isRefreshing),
+                if (_error != null)
+                  PortalInlineErrorBanner(
+                    message: _error!,
+                    onRetry: _loadStats,
+                  ),
                 const Text(
                   'Official School Roster Baseline',
                   style: TextStyle(

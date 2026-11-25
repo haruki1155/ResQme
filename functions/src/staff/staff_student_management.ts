@@ -111,9 +111,57 @@ function validatePageLimit(raw: unknown): number {
   return Number(raw);
 }
 
+const KEYSET_CURSOR_PREFIX = 'ks1:';
+
+function encodeNameIdCursor(name: string, id: string): string {
+  const payload = JSON.stringify({n: name, id});
+  return `${KEYSET_CURSOR_PREFIX}${Buffer.from(payload, 'utf8').toString('base64url')}`;
+}
+
+function decodeNameIdCursor(
+  cursor: string,
+): {kind: 'keyset'; n: string; id: string} | {kind: 'legacyId'; id: string} {
+  if (cursor.startsWith(KEYSET_CURSOR_PREFIX)) {
+    try {
+      const decoded = JSON.parse(
+        Buffer.from(cursor.slice(KEYSET_CURSOR_PREFIX.length), 'base64url').toString('utf8'),
+      ) as Record<string, unknown>;
+      if (
+        decoded &&
+        typeof decoded === 'object' &&
+        !Array.isArray(decoded) &&
+        typeof decoded.n === 'string' &&
+        decoded.n.length <= 512 &&
+        typeof decoded.id === 'string' &&
+        UID_PATTERN.test(decoded.id)
+      ) {
+        return {kind: 'keyset', n: decoded.n, id: decoded.id};
+      }
+    } catch {
+      // Fall through to invalid-argument below.
+    }
+    throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
+  }
+  if (!UID_PATTERN.test(cursor)) {
+    throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
+  }
+  return {kind: 'legacyId', id: cursor};
+}
+
+function compareNameAndId(
+  aName: string,
+  aId: string,
+  bName: string,
+  bId: string,
+): number {
+  const cmp = aName.localeCompare(bName, 'en', {sensitivity: 'base'});
+  if (cmp !== 0) return cmp;
+  return aId < bId ? -1 : aId > bId ? 1 : 0;
+}
+
 function validateCursor(raw: unknown): string | null {
   if (raw == null || raw === '') return null;
-  if (typeof raw !== 'string' || raw.length > 256) {
+  if (typeof raw !== 'string' || raw.length > 1024) {
     throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
   }
   return raw;
@@ -301,23 +349,30 @@ export const listSchoolStudents = onCall(resqmeRuntimeOptions, async (request) =
     return true;
   });
 
-  filtered.sort((a, b) => {
-    const cmp = a.fullName.localeCompare(b.fullName, 'en', {sensitivity: 'base'});
-    return cmp !== 0 ? cmp : a.uid.localeCompare(b.uid);
-  });
+  filtered.sort((a, b) => compareNameAndId(a.fullName, a.uid, b.fullName, b.uid));
 
   let startIndex = 0;
   if (cursor) {
-    const idx = filtered.findIndex((item) => item.uid === cursor);
-    if (idx === -1) {
-      throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
+    const parsedCursor = decodeNameIdCursor(cursor);
+    if (parsedCursor.kind === 'legacyId') {
+      const idx = filtered.findIndex((item) => item.uid === parsedCursor.id);
+      if (idx === -1) {
+        throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
+      }
+      startIndex = idx + 1;
+    } else {
+      const idx = filtered.findIndex(
+        (item) => compareNameAndId(item.fullName, item.uid, parsedCursor.n, parsedCursor.id) > 0,
+      );
+      startIndex = idx === -1 ? filtered.length : idx;
     }
-    startIndex = idx + 1;
   }
 
   const pageSlice = filtered.slice(startIndex, startIndex + limit);
   const hasMore = startIndex + limit < filtered.length;
-  const nextCursor = hasMore && pageSlice.length > 0 ? pageSlice[pageSlice.length - 1].uid : null;
+  const lastStudent = pageSlice[pageSlice.length - 1];
+  const nextCursor =
+    hasMore && lastStudent ? encodeNameIdCursor(lastStudent.fullName, lastStudent.uid) : null;
 
   // Strip rawLrn before returning over the wire so only maskedLrn leaves the server.
   const page = pageSlice.map(({rawLrn: _omitted, ...publicRow}) => publicRow);
@@ -761,10 +816,16 @@ export const listSchoolRoster = onCall(resqmeRuntimeOptions, async (request) => 
   const adminUid = request.auth?.uid;
   if (!adminUid) throw new HttpsError('unauthenticated', 'Sign in is required.');
   const data = request.data == null ? {} : object(request.data);
-  keys(data, ['search', 'gradeFilter', 'limit', 'cursor']);
+  keys(data, ['search', 'gradeFilter', 'registrationFilter', 'limit', 'cursor']);
 
   const search = validateSearch(data.search);
   const gradeFilter = validateGradeFilter(data.gradeFilter);
+  const registrationFilter = data.registrationFilter == null ? 'all' : data.registrationFilter;
+  if (
+    !['all', 'not_registered', 'registered', 'verified'].includes(registrationFilter as string)
+  ) {
+    throw new HttpsError('invalid-argument', 'Invalid roster registration filter.');
+  }
   const limit = validatePageLimit(data.limit);
   const cursor = validateCursor(data.cursor);
 
@@ -869,6 +930,9 @@ export const listSchoolRoster = onCall(resqmeRuntimeOptions, async (request) => 
   const loweredSearch = search.toLowerCase();
 
   const filtered = allEntries.filter((entry) => {
+    if (registrationFilter !== 'all' && entry.registrationState !== registrationFilter) {
+      return false;
+    }
     if (gradeFilter && entry.gradeLevel !== gradeFilter) return false;
     if (search.length > 0) {
       if (isExactLrnQuery2) return entry.rawLrn === search;
@@ -877,23 +941,31 @@ export const listSchoolRoster = onCall(resqmeRuntimeOptions, async (request) => 
     return true;
   });
 
-  filtered.sort((a, b) => {
-    const cmp = a.displayName.localeCompare(b.displayName, 'en', {sensitivity: 'base'});
-    return cmp !== 0 ? cmp : a.rosterId.localeCompare(b.rosterId);
-  });
+  filtered.sort((a, b) => compareNameAndId(a.displayName, a.rosterId, b.displayName, b.rosterId));
 
   let startIndex = 0;
   if (cursor) {
-    const idx = filtered.findIndex((item) => item.rosterId === cursor);
-    if (idx === -1) {
-      throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
+    const parsedCursor = decodeNameIdCursor(cursor);
+    if (parsedCursor.kind === 'legacyId') {
+      const idx = filtered.findIndex((item) => item.rosterId === parsedCursor.id);
+      if (idx === -1) {
+        throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
+      }
+      startIndex = idx + 1;
+    } else {
+      const idx = filtered.findIndex(
+        (item) =>
+          compareNameAndId(item.displayName, item.rosterId, parsedCursor.n, parsedCursor.id) > 0,
+      );
+      startIndex = idx === -1 ? filtered.length : idx;
     }
-    startIndex = idx + 1;
   }
 
   const pageSlice = filtered.slice(startIndex, startIndex + limit);
   const hasMore = startIndex + limit < filtered.length;
-  const nextCursor = hasMore && pageSlice.length > 0 ? pageSlice[pageSlice.length - 1].rosterId : null;
+  const lastEntry = pageSlice[pageSlice.length - 1];
+  const nextCursor =
+    hasMore && lastEntry ? encodeNameIdCursor(lastEntry.displayName, lastEntry.rosterId) : null;
 
   const page = pageSlice.map(({rawLrn: _omitted, ...publicEntry}) => publicEntry);
 

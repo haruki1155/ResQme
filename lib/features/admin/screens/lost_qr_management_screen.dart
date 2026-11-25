@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../widgets/portal_widgets.dart';
 
@@ -112,6 +113,11 @@ class _QrReplacementDialogState extends State<_QrReplacementDialog> {
       Navigator.of(context).pop(result);
     } catch (error) {
       if (!mounted) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error)) {
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        Navigator.of(context).pop();
+        return;
+      }
       setState(() {
         _error = error is PortalStudentException
             ? error.message
@@ -339,9 +345,16 @@ class _LostQrManagementScreenState extends State<LostQrManagementScreen> {
   final _searchController = TextEditingController();
   Timer? _debounce;
   List<SchoolStudentSummary> _students = const [];
-  bool _loading = true;
+  PortalLoadStatus _status = PortalLoadStatus.initialLoading;
+  bool _hasLoadedOnce = false;
+  bool _startingReplacement = false;
+  int _requestSeq = 0;
   String? _error;
   String? _successMessage;
+
+  bool get _isInitialLoading =>
+      !_hasLoadedOnce && _status == PortalLoadStatus.initialLoading;
+  bool get _isRefreshing => _status == PortalLoadStatus.refreshing;
 
   @override
   void initState() {
@@ -357,32 +370,57 @@ class _LostQrManagementScreenState extends State<LostQrManagementScreen> {
   }
 
   Future<void> _loadStudents() async {
+    final seq = ++_requestSeq;
+    final searchSnapshot = _searchController.text.trim();
     setState(() {
-      _loading = true;
+      _status = _hasLoadedOnce
+          ? PortalLoadStatus.refreshing
+          : PortalLoadStatus.initialLoading;
       _error = null;
     });
     try {
       final page = await widget.repository.listStudents(
-        search: _searchController.text.trim(),
+        search: searchSnapshot,
         statusFilter: 'verified',
         limit: 25,
       );
-      if (!mounted) return;
-      setState(() => _students = page.students);
-    } catch (error) {
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
       setState(() {
+        _hasLoadedOnce = true;
+        _students = page.students;
+        _error = null;
+        _status = page.students.isEmpty
+            ? PortalLoadStatus.empty
+            : PortalLoadStatus.loaded;
+      });
+    } catch (error) {
+      if (!mounted || seq != _requestSeq) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error) ||
+          (error is PortalStudentException && error.isSessionAuthLoss)) {
+        setState(() {
+          _hasLoadedOnce = false;
+          _students = const [];
+          _status = PortalLoadStatus.authorizationError;
+          _error = error is PortalStudentException
+              ? error.message
+              : 'Session authorization expired. Sign in again.';
+        });
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
+      setState(() {
+        _status = PortalLoadStatus.transientError;
         _error = error is PortalStudentException
             ? error.message
             : 'Unable to load verified students.';
       });
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _startReplacement(SchoolStudentSummary student) async {
+    if (_startingReplacement) return;
     setState(() {
+      _startingReplacement = true;
       _error = null;
       _successMessage = null;
     });
@@ -412,6 +450,7 @@ class _LostQrManagementScreenState extends State<LostQrManagementScreen> {
         currentVersion: details.credentialVersion,
       );
       if (result == null || !mounted) return;
+      PortalScope.notifyMutation(context);
       setState(() {
         _successMessage =
             'Replaced QR for ${details.fullName} (Credential v${result.credentialVersion}, reason: ${result.reason}). Previous QR is permanently revoked.';
@@ -419,11 +458,19 @@ class _LostQrManagementScreenState extends State<LostQrManagementScreen> {
       await _loadStudents();
     } catch (error) {
       if (!mounted) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error)) {
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
       setState(() {
         _error = error is PortalStudentException
             ? error.message
             : 'Unable to load student QR details.';
       });
+    } finally {
+      if (mounted) {
+        setState(() => _startingReplacement = false);
+      }
     }
   }
 
@@ -435,7 +482,8 @@ class _LostQrManagementScreenState extends State<LostQrManagementScreen> {
         actions: [
           IconButton(
             tooltip: 'Refresh students',
-            onPressed: _loading ? null : _loadStudents,
+            onPressed:
+                _isInitialLoading || _isRefreshing ? null : _loadStudents,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -511,10 +559,18 @@ class _LostQrManagementScreenState extends State<LostQrManagementScreen> {
                   ),
                 ],
                 const SizedBox(height: 14),
-                if (_loading)
+                PortalRefreshStrip(refreshing: _isRefreshing),
+                if (_isInitialLoading)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 36),
                     child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (!_hasLoadedOnce && _error != null)
+                  PortalStateView(
+                    icon: Icons.error_outline,
+                    title: 'Verified Students Unavailable',
+                    message: _error!,
+                    onRetry: _loadStudents,
                   )
                 else if (_students.isEmpty)
                   const PortalStateView(
@@ -571,7 +627,9 @@ class _LostQrManagementScreenState extends State<LostQrManagementScreen> {
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: OutlinedButton.icon(
-                                  onPressed: () => _startReplacement(student),
+                                  onPressed: _startingReplacement
+                                      ? null
+                                      : () => _startReplacement(student),
                                   icon: const Icon(Icons.qr_code_2, size: 18),
                                   label: const Text('Replace QR'),
                                 ),

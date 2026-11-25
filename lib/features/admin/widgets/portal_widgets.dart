@@ -1,7 +1,122 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../app/resqme_theme.dart';
+import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
+
+/// Inherited scope exposing the active [PortalReadCoordinator], cross-screen
+/// mutation invalidation, and immediate authorization-loss handling to all
+/// Portal screens without breaking standalone screen instantiation in tests.
+class PortalScope extends InheritedNotifier<PortalReadCoordinator> {
+  const PortalScope({
+    super.key,
+    required PortalReadCoordinator super.notifier,
+    required this.onAuthorizationLost,
+    required super.child,
+  });
+
+  final void Function(Object error) onAuthorizationLost;
+
+  static PortalScope? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<PortalScope>();
+  }
+
+  static void notifyMutation(BuildContext context) {
+    context
+        .getInheritedWidgetOfExactType<PortalScope>()
+        ?.notifier
+        ?.notifyMutation();
+  }
+
+  static void reportIfSessionAuthorizationLost(
+    BuildContext context,
+    Object error,
+  ) {
+    if (PortalErrorClassifier.isSessionAuthorizationError(error)) {
+      context
+          .getInheritedWidgetOfExactType<PortalScope>()
+          ?.onAuthorizationLost(error);
+    }
+  }
+}
+
+/// Non-blocking refresh indicator rendered above preserved Portal data.
+class PortalRefreshStrip extends StatelessWidget {
+  const PortalRefreshStrip({super.key, required this.refreshing});
+
+  final bool refreshing;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!refreshing) return const SizedBox.shrink();
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(999),
+        child: LinearProgressIndicator(
+          minHeight: 3,
+          value: disableAnimations ? 0.5 : null,
+          color: PortalColors.brandRed,
+          backgroundColor: PortalColors.brandRedSoft,
+        ),
+      ),
+    );
+  }
+}
+
+/// Non-destructive inline error banner displayed above retained valid data
+/// when a background refresh encounters a transient or operational error.
+class PortalInlineErrorBanner extends StatelessWidget {
+  const PortalInlineErrorBanner({
+    super.key,
+    required this.message,
+    this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: PortalColors.alertBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: PortalColors.brandRed.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.cloud_off_outlined,
+            size: 18,
+            color: PortalColors.alertFg,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: PortalColors.alertFg,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: onRetry,
+              child: const Text('Retry'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 abstract final class PortalColors {
   static const brandRed = Color(0xFFE92B32);

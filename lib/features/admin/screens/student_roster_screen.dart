@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../widgets/portal_widgets.dart';
 
@@ -19,15 +20,25 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
   final _searchController = TextEditingController();
   String _gradeFilter = 'all';
   String _registrationFilter = 'all';
+  String _appliedSearch = '';
+  String? _appliedGradeFilter;
+  String _appliedRegistrationFilter = 'all';
   bool _rosterAvailable = false;
   List<String> _availableGrades = const [];
   List<SchoolRosterEntry> _entries = const [];
   String? _nextCursor;
   int _totalMatched = 0;
-  bool _loading = true;
+  PortalLoadStatus _status = PortalLoadStatus.initialLoading;
+  bool _hasLoadedOnce = false;
   bool _loadingMore = false;
   bool _importing = false;
+  int _requestSeq = 0;
+  int? _lastObservedMutationVersion;
   String? _error;
+
+  bool get _isInitialLoading =>
+      !_hasLoadedOnce && _status == PortalLoadStatus.initialLoading;
+  bool get _isRefreshing => _status == PortalLoadStatus.refreshing;
 
   @override
   void initState() {
@@ -36,24 +47,104 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final coordinator = PortalScope.maybeOf(context)?.notifier;
+    if (coordinator != null) {
+      if (!_hasLoadedOnce) {
+        final cached = coordinator.peekCached<SchoolRosterPage>(
+          'listSchoolRoster:s=${_searchController.text.trim()}|g=${_gradeFilter == 'all' ? '' : _gradeFilter}|rf=$_registrationFilter|l=20|c=',
+        );
+        if (cached != null) {
+          _hasLoadedOnce = true;
+          _rosterAvailable = cached.rosterAvailable;
+          _entries = cached.entries;
+          _nextCursor = cached.nextCursor;
+          _totalMatched = cached.totalMatched;
+          _availableGrades = cached.availableGrades;
+          _status = (!cached.rosterAvailable || cached.entries.isEmpty)
+              ? PortalLoadStatus.empty
+              : PortalLoadStatus.loaded;
+        }
+      }
+      final currentMutation = coordinator.mutationVersion;
+      if (_lastObservedMutationVersion != null &&
+          _lastObservedMutationVersion != currentMutation) {
+        _lastObservedMutationVersion = currentMutation;
+        _loadInitial();
+      } else {
+        _lastObservedMutationVersion = currentMutation;
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
+  Future<SchoolRosterPage> _fetchRoster({
+    required String search,
+    required String? gradeFilter,
+    required String registrationFilter,
+    required int limit,
+    String? cursor,
+  }) async {
+    final repo = widget.portalStudentRepository;
+    if (repo is RegistrationFilterableRosterRepository) {
+      return repo.listRosterFiltered(
+        search: search,
+        gradeFilter: gradeFilter,
+        registrationFilter: registrationFilter,
+        limit: limit,
+        cursor: cursor,
+      );
+    }
+    final raw = await repo.listRoster(
+      search: search,
+      gradeFilter: gradeFilter,
+      limit: limit,
+      cursor: cursor,
+    );
+    if (registrationFilter == 'all') return raw;
+    final filtered = raw.entries
+        .where((e) => e.registrationState == registrationFilter)
+        .toList();
+    return SchoolRosterPage(
+      rosterAvailable: raw.rosterAvailable,
+      entries: filtered,
+      nextCursor: raw.nextCursor,
+      totalMatched: filtered.length,
+      availableGrades: raw.availableGrades,
+    );
+  }
+
   Future<void> _loadInitial() async {
+    final seq = ++_requestSeq;
+    final searchSnapshot = _searchController.text;
+    final gradeSnapshot = _gradeFilter == 'all' ? null : _gradeFilter;
+    final regSnapshot = _registrationFilter;
+    _appliedSearch = searchSnapshot;
+    _appliedGradeFilter = gradeSnapshot;
+    _appliedRegistrationFilter = regSnapshot;
     setState(() {
-      _loading = true;
+      _loadingMore = false;
+      _status = _hasLoadedOnce
+          ? PortalLoadStatus.refreshing
+          : PortalLoadStatus.initialLoading;
       _error = null;
     });
     try {
-      final page = await widget.portalStudentRepository.listRoster(
-        search: _searchController.text,
-        gradeFilter: _gradeFilter == 'all' ? null : _gradeFilter,
+      final page = await _fetchRoster(
+        search: searchSnapshot,
+        gradeFilter: gradeSnapshot,
+        registrationFilter: regSnapshot,
         limit: 20,
       );
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
       setState(() {
+        _hasLoadedOnce = true;
         _rosterAvailable = page.rosterAvailable;
         _entries = page.entries;
         _nextCursor = page.nextCursor;
@@ -62,38 +153,68 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
         if (_gradeFilter != 'all' && !_availableGrades.contains(_gradeFilter)) {
           _gradeFilter = 'all';
         }
+        _error = null;
+        _status = (!page.rosterAvailable || page.entries.isEmpty)
+            ? PortalLoadStatus.empty
+            : PortalLoadStatus.loaded;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error) ||
+          (error is PortalStudentException && error.isSessionAuthLoss)) {
+        setState(() {
+          _hasLoadedOnce = false;
+          _rosterAvailable = false;
+          _entries = const [];
+          _nextCursor = null;
+          _totalMatched = 0;
+          _status = PortalLoadStatus.authorizationError;
+          _error = error is PortalStudentException
+              ? error.message
+              : 'Session authorization expired. Sign in again.';
+        });
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
       setState(() {
+        _status = PortalLoadStatus.transientError;
         _error = error is PortalStudentException
             ? error.message
             : 'Unable to load official school roster.';
       });
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _loadMore() async {
     final cursor = _nextCursor;
-    if (cursor == null || _loadingMore || _loading) return;
+    if (cursor == null || _loadingMore || _isInitialLoading || _isRefreshing) {
+      return;
+    }
+    final seq = _requestSeq;
     setState(() => _loadingMore = true);
     try {
-      final page = await widget.portalStudentRepository.listRoster(
-        search: _searchController.text,
-        gradeFilter: _gradeFilter == 'all' ? null : _gradeFilter,
+      final page = await _fetchRoster(
+        search: _appliedSearch,
+        gradeFilter: _appliedGradeFilter,
+        registrationFilter: _appliedRegistrationFilter,
         limit: 20,
         cursor: cursor,
       );
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
       setState(() {
         _entries = [..._entries, ...page.entries];
         _nextCursor = page.nextCursor;
         _totalMatched = page.totalMatched;
+        _status =
+            _entries.isEmpty ? PortalLoadStatus.empty : PortalLoadStatus.loaded;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error) ||
+          (error is PortalStudentException && error.isSessionAuthLoss)) {
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -104,7 +225,9 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _loadingMore = false);
+      if (mounted && seq == _requestSeq) {
+        setState(() => _loadingMore = false);
+      }
     }
   }
 
@@ -188,14 +311,21 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
         requestId: requestId,
       );
       if (!mounted) return;
+      PortalScope.notifyMutation(context);
 
       await showDialog<void>(
         context: context,
         builder: (ctx) => _RosterCommitResultDialog(result: commitResult),
       );
-      await _loadInitial();
+      if (mounted) {
+        await _loadInitial();
+      }
     } catch (error) {
       if (!mounted) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error)) {
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -268,6 +398,10 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
       );
     } catch (error) {
       if (!mounted) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error)) {
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -386,11 +520,7 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
         DropdownMenuItem(value: grade, child: Text(grade)),
     ];
 
-    final visibleEntries = _registrationFilter == 'all'
-        ? _entries
-        : _entries
-            .where((e) => e.registrationState == _registrationFilter)
-            .toList();
+    final visibleEntries = _entries;
 
     return Center(
       child: ConstrainedBox(
@@ -409,7 +539,9 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                         'Official school enrollment baseline including unregistered and registered students.',
                     trailing: IconButton(
                       tooltip: 'Refresh roster',
-                      onPressed: _loading ? null : _loadInitial,
+                      onPressed: _isInitialLoading || _isRefreshing
+                          ? null
+                          : _loadInitial,
                       icon: const Icon(Icons.refresh),
                     ),
                   ),
@@ -419,8 +551,9 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                     runSpacing: 8,
                     children: [
                       FilledButton.icon(
-                        onPressed:
-                            _loading || _importing ? null : _startSf1Import,
+                        onPressed: _isInitialLoading || _importing
+                            ? null
+                            : _startSf1Import,
                         icon: _importing
                             ? const SizedBox(
                                 width: 16,
@@ -434,8 +567,9 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                         label: const Text('Import Student Roster'),
                       ),
                       OutlinedButton.icon(
-                        onPressed:
-                            _loading || _importing ? null : _showImportHistory,
+                        onPressed: _isInitialLoading || _importing
+                            ? null
+                            : _showImportHistory,
                         icon: const Icon(Icons.history_outlined, size: 18),
                         label: const Text('Import History'),
                       ),
@@ -444,11 +578,11 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                 ],
               ),
             ),
-            if (_loading)
+            if (_isInitialLoading)
               const Expanded(
                 child: Center(child: CircularProgressIndicator()),
               )
-            else if (_error != null)
+            else if (!_hasLoadedOnce && _error != null)
               Expanded(
                 child: PortalStateView(
                   icon: Icons.error_outline,
@@ -458,16 +592,50 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                 ),
               )
             else if (!_rosterAvailable)
-              const Expanded(
-                child: PortalStateView(
-                  icon: Icons.fact_check_outlined,
-                  title: 'No Official Roster Records Yet',
-                  message:
-                      'No official school roster records are on file for this school yet. '
-                      'Use Import Student Roster to upload a DepEd SF1 (.xls or .xlsx) file.',
+              Expanded(
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          PortalRefreshStrip(refreshing: _isRefreshing),
+                          if (_error != null)
+                            PortalInlineErrorBanner(
+                              message: _error!,
+                              onRetry: _loadInitial,
+                            ),
+                        ],
+                      ),
+                    ),
+                    const Expanded(
+                      child: PortalStateView(
+                        icon: Icons.fact_check_outlined,
+                        title: 'No Official Roster Records Yet',
+                        message:
+                            'No official school roster records are on file for this school yet. '
+                            'Use Import Student Roster to upload a DepEd SF1 (.xls or .xlsx) file.',
+                      ),
+                    ),
+                  ],
                 ),
               )
             else ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    PortalRefreshStrip(refreshing: _isRefreshing),
+                    if (_error != null)
+                      PortalInlineErrorBanner(
+                        message: _error!,
+                        onRetry: _loadInitial,
+                      ),
+                  ],
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: TextField(
@@ -493,6 +661,7 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
+                        key: ValueKey('roster-grade-dropdown-$_gradeFilter'),
                         initialValue: _gradeFilter,
                         isExpanded: true,
                         decoration: const InputDecoration(
@@ -540,7 +709,9 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                           label: Text(f.label),
                           selected: _registrationFilter == f.id,
                           onSelected: (_) {
+                            if (_registrationFilter == f.id) return;
                             setState(() => _registrationFilter = f.id);
+                            _loadInitial();
                           },
                         ),
                       ),

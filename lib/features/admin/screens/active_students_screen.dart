@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../services/staff_access_repository.dart';
 import '../widgets/portal_widgets.dart';
@@ -22,12 +23,18 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
   final _searchController = TextEditingController();
   String _statusFilter = 'all';
   String _gradeFilter = 'all';
+  String _appliedSearch = '';
+  String _appliedStatusFilter = 'all';
+  String? _appliedGradeFilter;
   List<String> _availableGrades = const [];
   List<SchoolStudentSummary> _students = const [];
   String? _nextCursor;
   int _totalMatched = 0;
-  bool _loading = true;
+  PortalLoadStatus _status = PortalLoadStatus.initialLoading;
+  bool _hasLoadedOnce = false;
   bool _loadingMore = false;
+  int _requestSeq = 0;
+  int? _lastObservedMutationVersion;
   String? _error;
 
   static const _statusFilters = <(String, String)>[
@@ -37,10 +44,45 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
     ('disabled', 'Disabled'),
   ];
 
+  bool get _isInitialLoading =>
+      !_hasLoadedOnce && _status == PortalLoadStatus.initialLoading;
+  bool get _isRefreshing => _status == PortalLoadStatus.refreshing;
+
   @override
   void initState() {
     super.initState();
     _loadInitial();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final coordinator = PortalScope.maybeOf(context)?.notifier;
+    if (coordinator != null) {
+      if (!_hasLoadedOnce) {
+        final cached = coordinator.peekCached<SchoolStudentPage>(
+          'listSchoolStudents:s=${_searchController.text.trim()}|st=$_statusFilter|g=${_gradeFilter == 'all' ? '' : _gradeFilter}|l=20|c=',
+        );
+        if (cached != null) {
+          _hasLoadedOnce = true;
+          _students = cached.students;
+          _nextCursor = cached.nextCursor;
+          _totalMatched = cached.totalMatched;
+          _availableGrades = cached.availableGrades;
+          _status = cached.students.isEmpty
+              ? PortalLoadStatus.empty
+              : PortalLoadStatus.loaded;
+        }
+      }
+      final currentMutation = coordinator.mutationVersion;
+      if (_lastObservedMutationVersion != null &&
+          _lastObservedMutationVersion != currentMutation) {
+        _lastObservedMutationVersion = currentMutation;
+        _loadInitial();
+      } else {
+        _lastObservedMutationVersion = currentMutation;
+      }
+    }
   }
 
   @override
@@ -50,19 +92,30 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
   }
 
   Future<void> _loadInitial() async {
+    final seq = ++_requestSeq;
+    final searchSnapshot = _searchController.text;
+    final statusSnapshot = _statusFilter;
+    final gradeSnapshot = _gradeFilter == 'all' ? null : _gradeFilter;
+    _appliedSearch = searchSnapshot;
+    _appliedStatusFilter = statusSnapshot;
+    _appliedGradeFilter = gradeSnapshot;
     setState(() {
-      _loading = true;
+      _loadingMore = false;
+      _status = _hasLoadedOnce
+          ? PortalLoadStatus.refreshing
+          : PortalLoadStatus.initialLoading;
       _error = null;
     });
     try {
       final page = await widget.portalStudentRepository.listStudents(
-        search: _searchController.text,
-        statusFilter: _statusFilter,
-        gradeFilter: _gradeFilter == 'all' ? null : _gradeFilter,
+        search: searchSnapshot,
+        statusFilter: statusSnapshot,
+        gradeFilter: gradeSnapshot,
         limit: 20,
       );
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
       setState(() {
+        _hasLoadedOnce = true;
         _students = page.students;
         _nextCursor = page.nextCursor;
         _totalMatched = page.totalMatched;
@@ -70,39 +123,68 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
         if (_gradeFilter != 'all' && !_availableGrades.contains(_gradeFilter)) {
           _gradeFilter = 'all';
         }
+        _error = null;
+        _status = page.students.isEmpty
+            ? PortalLoadStatus.empty
+            : PortalLoadStatus.loaded;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error) ||
+          (error is PortalStudentException && error.isSessionAuthLoss)) {
+        setState(() {
+          _hasLoadedOnce = false;
+          _students = const [];
+          _nextCursor = null;
+          _totalMatched = 0;
+          _status = PortalLoadStatus.authorizationError;
+          _error = error is PortalStudentException
+              ? error.message
+              : 'Session authorization expired. Sign in again.';
+        });
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
       setState(() {
+        _status = PortalLoadStatus.transientError;
         _error = error is PortalStudentException
             ? error.message
             : 'Unable to load school student accounts.';
       });
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _loadMore() async {
     final cursor = _nextCursor;
-    if (cursor == null || _loadingMore || _loading) return;
+    if (cursor == null || _loadingMore || _isInitialLoading || _isRefreshing) {
+      return;
+    }
+    final seq = _requestSeq;
     setState(() => _loadingMore = true);
     try {
       final page = await widget.portalStudentRepository.listStudents(
-        search: _searchController.text,
-        statusFilter: _statusFilter,
-        gradeFilter: _gradeFilter == 'all' ? null : _gradeFilter,
+        search: _appliedSearch,
+        statusFilter: _appliedStatusFilter,
+        gradeFilter: _appliedGradeFilter,
         limit: 20,
         cursor: cursor,
       );
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
       setState(() {
         _students = [..._students, ...page.students];
         _nextCursor = page.nextCursor;
         _totalMatched = page.totalMatched;
+        _status = _students.isEmpty
+            ? PortalLoadStatus.empty
+            : PortalLoadStatus.loaded;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || seq != _requestSeq) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error) ||
+          (error is PortalStudentException && error.isSessionAuthLoss)) {
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -113,7 +195,9 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _loadingMore = false);
+      if (mounted && seq == _requestSeq) {
+        setState(() => _loadingMore = false);
+      }
     }
   }
 
@@ -139,7 +223,8 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
                     'Review registered student accounts, manual school verification, and account state.',
                 trailing: IconButton(
                   tooltip: 'Refresh students',
-                  onPressed: _loading ? null : _loadInitial,
+                  onPressed:
+                      _isInitialLoading || _isRefreshing ? null : _loadInitial,
                   icon: const Icon(Icons.refresh),
                 ),
               ),
@@ -173,13 +258,11 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
                     ChoiceChip(
                       label: Text(label),
                       selected: _statusFilter == value,
-                      onSelected: _loading
-                          ? null
-                          : (selected) {
-                              if (!selected || _statusFilter == value) return;
-                              setState(() => _statusFilter = value);
-                              _loadInitial();
-                            },
+                      onSelected: (selected) {
+                        if (!selected || _statusFilter == value) return;
+                        setState(() => _statusFilter = value);
+                        _loadInitial();
+                      },
                     ),
                 ],
               ),
@@ -191,6 +274,7 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
+                      key: ValueKey('active-grade-dropdown-$_gradeFilter'),
                       initialValue: _gradeFilter,
                       isExpanded: true,
                       decoration: const InputDecoration(
@@ -201,18 +285,16 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
                         ),
                       ),
                       items: gradeItems,
-                      onChanged: _loading
-                          ? null
-                          : (next) {
-                              if (next == null || next == _gradeFilter) return;
-                              setState(() => _gradeFilter = next);
-                              _loadInitial();
-                            },
+                      onChanged: (next) {
+                        if (next == null || next == _gradeFilter) return;
+                        setState(() => _gradeFilter = next);
+                        _loadInitial();
+                      },
                     ),
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    '$_totalMatched ${ _totalMatched == 1 ? 'account' : 'accounts'}',
+                    '$_totalMatched ${_totalMatched == 1 ? 'account' : 'accounts'}',
                     style: const TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
@@ -223,10 +305,24 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
               ),
             ),
             const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PortalRefreshStrip(refreshing: _isRefreshing),
+                  if (_hasLoadedOnce && _error != null)
+                    PortalInlineErrorBanner(
+                      message: _error!,
+                      onRetry: _loadInitial,
+                    ),
+                ],
+              ),
+            ),
             Expanded(
-              child: _loading
+              child: _isInitialLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : _error != null
+                  : !_hasLoadedOnce && _error != null
                       ? PortalStateView(
                           icon: Icons.error_outline,
                           title: 'Unable to Load Students',
@@ -267,19 +363,35 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
                                   child: InkWell(
                                     borderRadius: BorderRadius.circular(14),
                                     onTap: () async {
+                                      final scope = PortalScope.maybeOf(ctx);
+                                      final detailScreen = StudentDetailsScreen(
+                                        studentUid: student.uid,
+                                        initialName: student.fullName,
+                                        accessRepository:
+                                            widget.accessRepository,
+                                        portalStudentRepository:
+                                            widget.portalStudentRepository,
+                                      );
                                       await Navigator.of(ctx).push(
                                         MaterialPageRoute<void>(
-                                          builder: (_) => StudentDetailsScreen(
-                                            studentUid: student.uid,
-                                            initialName: student.fullName,
-                                            accessRepository:
-                                                widget.accessRepository,
-                                            portalStudentRepository:
-                                                widget.portalStudentRepository,
-                                          ),
+                                          builder: (_) =>
+                                              scope != null &&
+                                                  scope.notifier != null
+                                              ? PortalScope(
+                                                  notifier: scope.notifier!,
+                                                  onAuthorizationLost: scope
+                                                      .onAuthorizationLost,
+                                                  child: detailScreen,
+                                                )
+                                              : detailScreen,
                                         ),
                                       );
-                                      await _loadInitial();
+                                      if (mounted &&
+                                          (scope?.notifier == null ||
+                                              scope!.notifier!.activeScopeKey !=
+                                                  null)) {
+                                        await _loadInitial();
+                                      }
                                     },
                                     child: Padding(
                                       padding: const EdgeInsets.all(14),

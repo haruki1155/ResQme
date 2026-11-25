@@ -23,6 +23,9 @@ const SECURITY_ACTIONS = new Set([
   'enable_student_account',
   'disable_authorized_account',
   'enable_authorized_account',
+  'suspend_authorized_account',
+  'reactivate_authorized_account',
+  'revoke_authorized_account',
 ]);
 
 const ACTION_LABELS: Record<string, string> = {
@@ -33,6 +36,9 @@ const ACTION_LABELS: Record<string, string> = {
   update_authorized_account: 'Authorized Account Updated',
   disable_authorized_account: 'Authorized Account Disabled',
   enable_authorized_account: 'Authorized Account Enabled',
+  suspend_authorized_account: 'Authorized Account Suspended',
+  reactivate_authorized_account: 'Authorized Account Reactivated',
+  revoke_authorized_account: 'Authorized Account Revoked',
   reset_authorized_password: 'Authorized Password Reset',
   revoke_authorized_device: 'Authorized Device Revoked',
   enroll_staff_tier2_device: 'Biometric Device Enrolled',
@@ -214,7 +220,22 @@ export const listSchoolActivityLogs = onCall(resqmeRuntimeOptions, async (reques
     throw new HttpsError('invalid-argument', 'Invalid pagination limit.');
   }
   const limit = Number(rawLimit);
-  const cursor = typeof data.cursor === 'string' && data.cursor.length > 0 ? data.cursor : null;
+
+  let cursor: string | null = null;
+  if (data.cursor != null && data.cursor !== '') {
+    if (typeof data.cursor !== 'string' || data.cursor.length > 256) {
+      throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
+    }
+    const validV2 =
+      /^(\d+):(staffManagementAudits|tier2AccessAudits):([A-Za-z0-9_-]{1,128})$/.test(
+        data.cursor,
+      );
+    const validLegacy = /^(\d+):([A-Za-z0-9_-]{1,128})$/.test(data.cursor);
+    if (!validV2 && !validLegacy) {
+      throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
+    }
+    cursor = data.cursor;
+  }
 
   const db = staffManagementDeps.db(adminUid);
   const admin = await requireMasterAdmin(
@@ -246,24 +267,55 @@ export const listSchoolActivityLogs = onCall(resqmeRuntimeOptions, async (reques
     return true;
   });
 
-  filtered.sort((a, b) => {
+  const compareAuditOrder = (
+    a: {timestampMs: number; sourceCollection: string; id: string},
+    b: {timestampMs: number; sourceCollection: string; id: string},
+  ): number => {
     if (b.timestampMs !== a.timestampMs) return b.timestampMs - a.timestampMs;
-    return b.id.localeCompare(a.id);
-  });
+    const srcCmp =
+      b.sourceCollection < a.sourceCollection
+        ? -1
+        : b.sourceCollection > a.sourceCollection
+          ? 1
+          : 0;
+    if (srcCmp !== 0) return srcCmp;
+    return b.id < a.id ? -1 : b.id > a.id ? 1 : 0;
+  };
+
+  filtered.sort(compareAuditOrder);
 
   let startIndex = 0;
   if (cursor) {
-    const idx = filtered.findIndex((item) => `${item.timestampMs}:${item.id}` === cursor);
-    if (idx === -1) {
+    const v2Match = /^(\d+):(staffManagementAudits|tier2AccessAudits):([A-Za-z0-9_-]{1,128})$/.exec(
+      cursor,
+    );
+    const legacyMatch = v2Match ? null : /^(\d+):([A-Za-z0-9_-]{1,128})$/.exec(cursor);
+    if (v2Match) {
+      const curTs = Number(v2Match[1]);
+      const curSource = v2Match[2];
+      const curId = v2Match[3];
+      if (!Number.isSafeInteger(curTs)) {
+        throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
+      }
+      const anchor = {timestampMs: curTs, sourceCollection: curSource, id: curId};
+      const idx = filtered.findIndex((item) => compareAuditOrder(anchor, item) < 0);
+      startIndex = idx === -1 ? filtered.length : idx;
+    } else if (legacyMatch) {
+      const idx = filtered.findIndex((item) => `${item.timestampMs}:${item.id}` === cursor);
+      if (idx === -1) {
+        throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
+      }
+      startIndex = idx + 1;
+    } else {
       throw new HttpsError('invalid-argument', 'Invalid pagination cursor.');
     }
-    startIndex = idx + 1;
   }
 
   const pageSlice = filtered.slice(startIndex, startIndex + limit);
   const hasMore = startIndex + limit < filtered.length;
   const last = pageSlice[pageSlice.length - 1];
-  const nextCursor = hasMore && last ? `${last.timestampMs}:${last.id}` : null;
+  const nextCursor =
+    hasMore && last ? `${last.timestampMs}:${last.sourceCollection}:${last.id}` : null;
 
   return {
     entries: pageSlice.map(({timestampMs: _omitted, ...safeEntry}) => safeEntry),

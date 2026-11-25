@@ -1,13 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'screens/active_students_screen.dart';
-import 'screens/authorized_personnel_screen.dart';
-import 'screens/master_admin_email_screen.dart';
 import 'screens/activity_logs_screen.dart';
+import 'screens/authorized_personnel_screen.dart';
 import 'screens/lost_qr_management_screen.dart';
+import 'screens/master_admin_email_screen.dart';
 import 'screens/portal_dashboard_screen.dart';
 import 'screens/staff_account_setup_screen.dart';
 import 'screens/staff_change_password_screen.dart';
 import 'screens/student_roster_screen.dart';
+import 'services/portal_read_coordinator.dart';
 import 'services/portal_student_repository.dart';
 import 'services/staff_access_repository.dart';
 import 'services/staff_management_repository.dart';
@@ -19,6 +21,7 @@ class AdminApp extends StatelessWidget {
     required this.accessRepository,
     this.managementRepository,
     this.portalStudentRepository,
+    this.readCoordinator,
     this.scannerBuilder,
     this.deviceSetupBuilder,
   });
@@ -26,7 +29,9 @@ class AdminApp extends StatelessWidget {
   final StaffAccessRepository accessRepository;
   final StaffManagementRepository? managementRepository;
   final PortalStudentRepository? portalStudentRepository;
-  final Widget Function(BuildContext context, StaffAccess access)? scannerBuilder;
+  final PortalReadCoordinator? readCoordinator;
+  final Widget Function(BuildContext context, StaffAccess access)?
+      scannerBuilder;
   final Widget Function(BuildContext context, StaffAccess access)?
       deviceSetupBuilder;
 
@@ -40,6 +45,7 @@ class AdminApp extends StatelessWidget {
         accessRepository: accessRepository,
         managementRepository: managementRepository,
         portalStudentRepository: portalStudentRepository,
+        readCoordinator: readCoordinator,
         scannerBuilder: scannerBuilder,
         deviceSetupBuilder: deviceSetupBuilder,
       ),
@@ -64,6 +70,7 @@ class _StaffAccessShell extends StatefulWidget {
     required this.accessRepository,
     this.managementRepository,
     this.portalStudentRepository,
+    this.readCoordinator,
     this.scannerBuilder,
     this.deviceSetupBuilder,
   });
@@ -71,7 +78,9 @@ class _StaffAccessShell extends StatefulWidget {
   final StaffAccessRepository accessRepository;
   final StaffManagementRepository? managementRepository;
   final PortalStudentRepository? portalStudentRepository;
-  final Widget Function(BuildContext context, StaffAccess access)? scannerBuilder;
+  final PortalReadCoordinator? readCoordinator;
+  final Widget Function(BuildContext context, StaffAccess access)?
+      scannerBuilder;
   final Widget Function(BuildContext context, StaffAccess access)?
       deviceSetupBuilder;
 
@@ -79,53 +88,237 @@ class _StaffAccessShell extends StatefulWidget {
   State<_StaffAccessShell> createState() => _StaffAccessShellState();
 }
 
-class _StaffAccessShellState extends State<_StaffAccessShell> {
+class _StaffAccessShellState extends State<_StaffAccessShell>
+    with WidgetsBindingObserver {
   final _identifier = TextEditingController();
   final _password = TextEditingController();
+  late PortalReadCoordinator _coordinator;
+  bool _ownsCoordinator = false;
+  StreamSubscription<String?>? _authSub;
+
   StaffAccess? _access;
   int _selectedTab = 0;
+  int _sessionEpoch = 0;
   bool _busy = false;
+  bool _bootstrappingSession = false;
+  String? _transientSessionError;
   String? _message;
   String? _infoMessage;
 
   @override
   void initState() {
     super.initState();
-    if (widget.accessRepository.currentUid != null) {
-      _verifyExistingSession();
+    WidgetsBinding.instance.addObserver(this);
+    _initCoordinator();
+    _attachAuthListener();
+    _bootstrapInitialSession();
+  }
+
+  void _initCoordinator() {
+    if (widget.readCoordinator != null) {
+      _coordinator = widget.readCoordinator!;
+      _ownsCoordinator = false;
+    } else {
+      _coordinator = PortalReadCoordinator(
+        currentUidProvider: () => widget.accessRepository.currentUid,
+        requireBoundScope: true,
+      );
+      _ownsCoordinator = true;
+    }
+    _coordinator.onSessionAuthorizationLost = _handleSessionAuthorizationLost;
+  }
+
+  void _attachAuthListener() {
+    _authSub?.cancel();
+    _authSub = null;
+    final repo = widget.accessRepository;
+    if (repo is SessionLifecycleAccessRepository) {
+      _authSub = repo.authUidChanges.listen((nextUid) {
+        if (!mounted || _bootstrappingSession) return;
+        if (nextUid == null && _transientSessionError != null && !_busy) {
+          setState(() => _transientSessionError = null);
+          return;
+        }
+        final active = _access;
+        if (active != null && nextUid != active.uid && !_busy) {
+          _purgeProtectedState(
+            message: nextUid == null ? null : 'Staff session changed.',
+          );
+          if (nextUid != null) {
+            _verifyExistingSession();
+          }
+        }
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _StaffAccessShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.readCoordinator != widget.readCoordinator ||
+        oldWidget.accessRepository != widget.accessRepository) {
+      if (_ownsCoordinator) {
+        _coordinator.onSessionAuthorizationLost = null;
+        _coordinator.dispose();
+      }
+      _initCoordinator();
+      _attachAuthListener();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        _access != null &&
+        !_busy &&
+        !_bootstrappingSession) {
+      _revalidateSessionOnResume();
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _authSub?.cancel();
+    if (_coordinator.onSessionAuthorizationLost ==
+        _handleSessionAuthorizationLost) {
+      _coordinator.onSessionAuthorizationLost = null;
+    }
+    if (_ownsCoordinator) {
+      _coordinator.dispose();
+    }
     _identifier.dispose();
     _password.dispose();
     super.dispose();
   }
 
+  Future<void> _bootstrapInitialSession() async {
+    final repo = widget.accessRepository;
+    if (repo is SessionLifecycleAccessRepository) {
+      setState(() => _bootstrappingSession = true);
+      final restoredUid = await repo.waitForInitialAuthUid();
+      if (!mounted) return;
+      if (restoredUid == null) {
+        setState(() => _bootstrappingSession = false);
+        return;
+      }
+      await _verifyExistingSession();
+      if (mounted) {
+        setState(() => _bootstrappingSession = false);
+      }
+      return;
+    }
+    if (repo.currentUid != null) {
+      await _verifyExistingSession();
+    }
+  }
+
+  void _purgeProtectedState({String? message}) {
+    _sessionEpoch += 1;
+    _coordinator.clearScope();
+    if (!mounted) return;
+    // Pop any pushed protected routes (Student Details, Activity Logs, Lost QR, etc.)
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    setState(() {
+      _access = null;
+      _selectedTab = 0;
+      _transientSessionError = null;
+      _infoMessage = null;
+      if (message != null) {
+        _message = message;
+      }
+    });
+  }
+
+  Future<void> _handleSessionAuthorizationLost(Object error) async {
+    final msg = error is StaffAccessDenied
+        ? error.message
+        : error is PortalStudentException
+            ? error.message
+            : 'Your staff session is no longer authorized. Please sign in again.';
+    _purgeProtectedState(message: msg);
+    await _safeSignOut();
+  }
+
+  Future<void> _revalidateSessionOnResume() async {
+    final active = _access;
+    if (active == null) return;
+    final epoch = _sessionEpoch;
+    try {
+      final refreshed = await widget.accessRepository.loadAccess();
+      if (!mounted || epoch != _sessionEpoch) return;
+      if (refreshed.uid != active.uid ||
+          refreshed.schoolId != active.schoolId ||
+          refreshed.role != active.role ||
+          !refreshed.active) {
+        _purgeProtectedState(
+          message: 'Staff authorization changed. Please sign in again.',
+        );
+        await _safeSignOut();
+        return;
+      }
+      _coordinator.bindScope(
+        uid: refreshed.uid,
+        schoolId: refreshed.schoolId,
+        role: refreshed.role,
+      );
+      setState(() => _access = refreshed);
+    } catch (error) {
+      if (!mounted || epoch != _sessionEpoch) return;
+      if (PortalErrorClassifier.isTransientError(error)) {
+        // Keep current verified session during temporary resume connectivity loss.
+        return;
+      }
+      await _handleSessionAuthorizationLost(error);
+    }
+  }
+
   Future<void> _verifyExistingSession() async {
+    final epoch = ++_sessionEpoch;
     setState(() {
       _busy = true;
       _message = null;
+      _transientSessionError = null;
     });
     try {
       final access = await widget.accessRepository.loadAccess();
-      if (!mounted) return;
+      if (!mounted || epoch != _sessionEpoch) return;
+      _coordinator.bindScope(
+        uid: access.uid,
+        schoolId: access.schoolId,
+        role: access.role,
+      );
       setState(() {
         _access = access;
         _selectedTab = 0;
+        _transientSessionError = null;
       });
     } catch (error) {
+      if (!mounted || epoch != _sessionEpoch) return;
+      if (PortalErrorClassifier.isTransientError(error)) {
+        // Do NOT sign out on cold-start or temporary network errors!
+        setState(() {
+          _access = null;
+          _transientSessionError = error is StaffAccessTransientError
+              ? error.message
+              : 'Portal connection is temporarily unavailable. Check your internet connection and retry.';
+        });
+        return;
+      }
+      _coordinator.clearScope();
       await _safeSignOut();
-      if (!mounted) return;
+      if (!mounted || epoch != _sessionEpoch) return;
       setState(() {
         _access = null;
+        _transientSessionError = null;
         _message = error is StaffAccessDenied
             ? error.message
             : 'Staff access is unavailable for this account.';
       });
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && epoch == _sessionEpoch) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -137,24 +330,44 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
 
   Future<void> _signIn() async {
     if (_busy) return;
+    final epoch = ++_sessionEpoch;
+    _coordinator.clearScope();
     setState(() {
       _busy = true;
       _message = null;
       _infoMessage = null;
+      _transientSessionError = null;
     });
     try {
       await widget.accessRepository.signIn(_identifier.text, _password.text);
       _password.clear();
       final access = await widget.accessRepository.loadAccess();
-      if (!mounted) return;
+      if (!mounted || epoch != _sessionEpoch) return;
+      _coordinator.bindScope(
+        uid: access.uid,
+        schoolId: access.schoolId,
+        role: access.role,
+      );
       setState(() {
         _access = access;
         _selectedTab = 0;
       });
     } catch (error) {
       _password.clear();
+      if (!mounted || epoch != _sessionEpoch) return;
+      if (PortalErrorClassifier.isTransientError(error) &&
+          widget.accessRepository.currentUid != null) {
+        setState(() {
+          _access = null;
+          _transientSessionError = error is StaffAccessTransientError
+              ? error.message
+              : 'Signed in, but Portal authorization could not be verified due to a temporary network delay. Tap Retry to continue.';
+        });
+        return;
+      }
+      _coordinator.clearScope();
       await _safeSignOut();
-      if (!mounted) return;
+      if (!mounted || epoch != _sessionEpoch) return;
       setState(() {
         _access = null;
         _message = error is StaffAccessDenied
@@ -162,7 +375,9 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
             : 'Unable to sign in with this staff account.';
       });
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && epoch == _sessionEpoch) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -204,6 +419,7 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
   Future<void> _signOut() async {
     if (_busy) return;
     setState(() => _busy = true);
+    _purgeProtectedState();
     await _safeSignOut();
     if (!mounted) return;
     setState(() {
@@ -211,6 +427,7 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
       _selectedTab = 0;
       _message = null;
       _infoMessage = null;
+      _transientSessionError = null;
       _busy = false;
     });
   }
@@ -252,6 +469,11 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
               access: access,
               onAccessUpdated: (updated) {
                 if (!mounted) return;
+                _coordinator.bindScope(
+                  uid: updated.uid,
+                  schoolId: updated.schoolId,
+                  role: updated.role,
+                );
                 setState(() => _access = updated);
               },
             ),
@@ -264,11 +486,11 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
 
   PreferredSizeWidget _buildPortalAppBar(StaffAccess access) {
     return AppBar(
-      title: Row(
+      title: const Row(
         children: [
-          const PortalBrandMark(size: 28),
-          const SizedBox(width: 10),
-          const Flexible(
+          PortalBrandMark(size: 28),
+          SizedBox(width: 10),
+          Flexible(
             child: Text(
               'ResQMe Portal',
               overflow: TextOverflow.ellipsis,
@@ -337,6 +559,35 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildTransientSessionRecoveryScreen() {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                PortalStateView(
+                  icon: Icons.cloud_off_outlined,
+                  title: 'Connection Temporarily Unavailable',
+                  message: _transientSessionError!,
+                  retryLabel: 'Retry',
+                  onRetry: _busy ? null : _verifyExistingSession,
+                ),
+                TextButton.icon(
+                  onPressed: _busy ? null : _signOut,
+                  icon: const Icon(Icons.logout, size: 18),
+                  label: const Text('Sign Out Instead'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -598,9 +849,9 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
   }
 
   Widget _buildMasterAdminTabBody(StaffAccess access) {
+    final studentRepo = widget.portalStudentRepository;
     switch (_selectedTab) {
       case 0:
-        final studentRepo = widget.portalStudentRepository;
         return PortalDashboardScreen(
           access: access,
           portalStudentRepository: studentRepo,
@@ -609,21 +860,26 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
               ? null
               : () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) =>
-                          LostQrManagementScreen(repository: studentRepo),
+                      builder: (_) => PortalScope(
+                        notifier: _coordinator,
+                        onAuthorizationLost: _handleSessionAuthorizationLost,
+                        child: LostQrManagementScreen(repository: studentRepo),
+                      ),
                     ),
                   ),
           onOpenActivityLogs: studentRepo == null
               ? null
               : () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) =>
-                          ActivityLogsScreen(repository: studentRepo),
+                      builder: (_) => PortalScope(
+                        notifier: _coordinator,
+                        onAuthorizationLost: _handleSessionAuthorizationLost,
+                        child: ActivityLogsScreen(repository: studentRepo),
+                      ),
                     ),
                   ),
         );
       case 1:
-        final studentRepo = widget.portalStudentRepository;
         if (studentRepo == null) {
           return const PortalStateView(
             icon: Icons.people_outline,
@@ -636,7 +892,6 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
           portalStudentRepository: studentRepo,
         );
       case 2:
-        final studentRepo = widget.portalStudentRepository;
         if (studentRepo == null) {
           return const PortalStateView(
             icon: Icons.fact_check_outlined,
@@ -666,6 +921,21 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
 
   @override
   Widget build(BuildContext context) {
+    if (_bootstrappingSession && _access == null) {
+      final disableAnimations = MediaQuery.disableAnimationsOf(context);
+      return Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(
+            value: disableAnimations ? 0.5 : null,
+          ),
+        ),
+      );
+    }
+
+    if (_transientSessionError != null && _access == null) {
+      return _buildTransientSessionRecoveryScreen();
+    }
+
     final access = _access;
     if (access == null) {
       return _buildSignInScreen();
@@ -673,52 +943,72 @@ class _StaffAccessShellState extends State<_StaffAccessShell> {
 
     if (!access.isSetupComplete) {
       return StaffAccountSetupScreen(
+        key: ValueKey('setup-${access.uid}-${access.schoolId}'),
         accessRepository: widget.accessRepository,
         access: access,
         onSetupUpdated: (updated) {
           if (!mounted) return;
+          _coordinator.bindScope(
+            uid: updated.uid,
+            schoolId: updated.schoolId,
+            role: updated.role,
+          );
           setState(() => _access = updated);
         },
         onSignOut: _signOut,
       );
     }
 
+    final scopeKey = ValueKey(
+      'portal-scope-${access.uid}-${access.schoolId}-${access.role}',
+    );
+
     if (!access.isAdmin || !access.isMasterAdmin) {
-      return _buildRestrictedAuthorizedShell(access);
+      return PortalScope(
+        key: scopeKey,
+        notifier: _coordinator,
+        onAuthorizationLost: _handleSessionAuthorizationLost,
+        child: _buildRestrictedAuthorizedShell(access),
+      );
     }
 
-    return Scaffold(
-      appBar: _buildPortalAppBar(access),
-      body: SafeArea(child: _buildMasterAdminTabBody(access)),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedTab,
-        onDestinationSelected: _busy
-            ? null
-            : (index) {
-                setState(() => _selectedTab = index);
-              },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Dashboard',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Active Students',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.fact_check_outlined),
-            selectedIcon: Icon(Icons.fact_check),
-            label: 'Student Roster',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.manage_accounts_outlined),
-            selectedIcon: Icon(Icons.manage_accounts),
-            label: 'Authorized Personnel',
-          ),
-        ],
+    return PortalScope(
+      key: scopeKey,
+      notifier: _coordinator,
+      onAuthorizationLost: _handleSessionAuthorizationLost,
+      child: Scaffold(
+        appBar: _buildPortalAppBar(access),
+        body: SafeArea(child: _buildMasterAdminTabBody(access)),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _selectedTab,
+          onDestinationSelected: _busy
+              ? null
+              : (index) {
+                  setState(() => _selectedTab = index);
+                },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.dashboard_outlined),
+              selectedIcon: Icon(Icons.dashboard),
+              label: 'Dashboard',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.people_outline),
+              selectedIcon: Icon(Icons.people),
+              label: 'Active Students',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.fact_check_outlined),
+              selectedIcon: Icon(Icons.fact_check),
+              label: 'Student Roster',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.manage_accounts_outlined),
+              selectedIcon: Icon(Icons.manage_accounts),
+              label: 'Authorized Personnel',
+            ),
+          ],
+        ),
       ),
     );
   }

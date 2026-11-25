@@ -4,11 +4,26 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/data/account_operation_lock.dart';
 import '../../medical/services/platform_tier2_key.dart';
+import 'portal_read_coordinator.dart';
 import 'staff_tier2_repository.dart';
 
-class PortalStudentException implements Exception {
-  const PortalStudentException(this.message);
+class PortalStudentException implements Exception, PortalSessionAuthError {
+  const PortalStudentException(
+    this.message, {
+    this.kind = PortalErrorKind.transient,
+    this.firebaseCode,
+    this.isSessionAuthLoss = false,
+  });
+
   final String message;
+  final PortalErrorKind kind;
+  final String? firebaseCode;
+
+  @override
+  final bool isSessionAuthLoss;
+
+  bool get isAuthorizationError => kind == PortalErrorKind.authorization;
+  bool get isTransient => kind == PortalErrorKind.transient;
 
   @override
   String toString() => message;
@@ -403,14 +418,34 @@ abstract interface class PortalStudentRepository {
   Future<void> setSecureScreen(bool enabled);
 }
 
-class FirebasePortalStudentRepository implements PortalStudentRepository {
+/// Optional server-side roster registration-state filter extension so
+/// [StudentRosterScreen] filters across all pages on the server while keeping
+/// lightweight test fakes backward-compatible.
+abstract interface class RegistrationFilterableRosterRepository
+    implements PortalStudentRepository {
+  Future<SchoolRosterPage> listRosterFiltered({
+    String search = '',
+    String? gradeFilter,
+    String registrationFilter = 'all',
+    int limit = 20,
+    String? cursor,
+  });
+}
+
+class FirebasePortalStudentRepository
+    implements RegistrationFilterableRosterRepository {
   FirebasePortalStudentRepository({
     required this.auth,
     required this.functions,
     required this.operationLock,
     required String expectedProjectId,
     PlatformTier2Key? keyProvider,
-  }) : keyProvider = keyProvider ?? PlatformTier2Key() {
+    PortalReadCoordinator? readCoordinator,
+  })  : keyProvider = keyProvider ?? PlatformTier2Key(),
+        readCoordinator = readCoordinator ??
+            PortalReadCoordinator(
+              currentUidProvider: () => auth.currentUser?.uid,
+            ) {
     if (!['demo-resqme', 'resqme-943ee'].contains(expectedProjectId) ||
         auth.app.options.projectId != expectedProjectId ||
         functions.app.options.projectId != expectedProjectId ||
@@ -423,17 +458,41 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
   final FirebaseFunctions functions;
   final AccountOperationLock operationLock;
   final PlatformTier2Key keyProvider;
+  final PortalReadCoordinator readCoordinator;
 
   @override
   String? get currentAdminUid => auth.currentUser?.uid;
 
   HttpsCallable _callable(String name) => functions.httpsCallable(
         name,
-        options: HttpsCallableOptions(timeout: const Duration(seconds: 15)),
+        options: HttpsCallableOptions(timeout: const Duration(seconds: 20)),
       );
 
   Never _rethrowMapped(Object error, String fallback) {
-    if (error is PortalStudentException) throw error;
+    if (error is PortalStudentException) {
+      if (error.isSessionAuthLoss) {
+        readCoordinator.reportExternalError(error);
+      }
+      throw error;
+    }
+    if (error is StateError &&
+        (error.message == 'unauthenticated' ||
+            error.message == 'scope_invalidated')) {
+      const mapped = PortalStudentException(
+        'Sign in is required.',
+        kind: PortalErrorKind.authorization,
+        firebaseCode: 'unauthenticated',
+        isSessionAuthLoss: true,
+      );
+      readCoordinator.reportExternalError(mapped);
+      throw mapped;
+    }
+    final kind = PortalErrorClassifier.classify(error);
+    final code = PortalErrorClassifier.sanitizedCode(error);
+    final sessionLoss = PortalErrorClassifier.isSessionAuthorizationError(error);
+    if (sessionLoss) {
+      readCoordinator.reportExternalError(error);
+    }
     if (error is FirebaseAuthException) {
       final msg = switch (error.code) {
         'wrong-password' ||
@@ -441,16 +500,33 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
         'invalid-login-credentials' =>
           'Admin password verification failed. Check your password and try again.',
         'too-many-requests' => 'Too many attempts. Please wait before retrying.',
+        'network-request-failed' =>
+          'Network connection failed. Check your internet connection and retry.',
         _ => 'Admin authentication failed. Sign in again.',
       };
-      throw PortalStudentException(msg);
+      throw PortalStudentException(
+        msg,
+        kind: kind,
+        firebaseCode: code,
+        isSessionAuthLoss: sessionLoss,
+      );
     }
     if (error is FirebaseFunctionsException &&
         error.message != null &&
         error.message!.trim().isNotEmpty) {
-      throw PortalStudentException(error.message!.trim());
+      throw PortalStudentException(
+        error.message!.trim(),
+        kind: kind,
+        firebaseCode: code,
+        isSessionAuthLoss: sessionLoss,
+      );
     }
-    throw PortalStudentException(fallback);
+    throw PortalStudentException(
+      fallback,
+      kind: kind,
+      firebaseCode: code,
+      isSessionAuthLoss: sessionLoss,
+    );
   }
 
   @override
@@ -461,9 +537,11 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
   }
 
   @override
-  Future<PortalDashboardStats> loadDashboardStats() =>
-      operationLock.run(() async {
-        try {
+  Future<PortalDashboardStats> loadDashboardStats() async {
+    try {
+      return await readCoordinator.runRead<PortalDashboardStats>(
+        key: 'getPortalDashboardStats',
+        action: () async {
           final result = await _callable('getPortalDashboardStats')
               .call<dynamic>(<String, dynamic>{});
           final row = Map<String, dynamic>.from(result.data as Map);
@@ -481,10 +559,12 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
             authorizedPersonnelCount:
                 (row['authorizedPersonnelCount'] as num?)?.toInt() ?? 0,
           );
-        } catch (error) {
-          _rethrowMapped(error, 'Unable to load school dashboard statistics.');
-        }
-      });
+        },
+      );
+    } catch (error) {
+      _rethrowMapped(error, 'Unable to load school dashboard statistics.');
+    }
+  }
 
   @override
   Future<SchoolStudentPage> listStudents({
@@ -493,12 +573,17 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
     String? gradeFilter,
     int limit = 20,
     String? cursor,
-  }) =>
-      operationLock.run(() async {
-        try {
+  }) async {
+    final normalizedSearch = search.trim();
+    try {
+      return await readCoordinator.runRead<SchoolStudentPage>(
+        key:
+            'listSchoolStudents:s=$normalizedSearch|st=$statusFilter|g=${gradeFilter ?? ''}|l=$limit|c=${cursor ?? ''}',
+        cacheResult: cursor == null,
+        action: () async {
           final result = await _callable('listSchoolStudents').call<dynamic>(
             <String, dynamic>{
-              'search': search.trim(),
+              'search': normalizedSearch,
               'statusFilter': statusFilter,
               'gradeFilter': gradeFilter,
               'limit': limit,
@@ -529,15 +614,19 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
             totalMatched: (raw['totalMatched'] as num?)?.toInt() ?? 0,
             availableGrades: grades.map((g) => g.toString()).toList(),
           );
-        } catch (error) {
-          _rethrowMapped(error, 'Unable to load school student accounts.');
-        }
-      });
+        },
+      );
+    } catch (error) {
+      _rethrowMapped(error, 'Unable to load school student accounts.');
+    }
+  }
 
   @override
-  Future<SchoolStudentDetails> getStudentDetails(String studentUid) =>
-      operationLock.run(() async {
-        try {
+  Future<SchoolStudentDetails> getStudentDetails(String studentUid) async {
+    try {
+      return await readCoordinator.runRead<SchoolStudentDetails>(
+        key: 'getSchoolStudentDetails:$studentUid',
+        action: () async {
           final result = await _callable('getSchoolStudentDetails')
               .call<dynamic>(<String, dynamic>{'studentUid': studentUid});
           final row = Map<String, dynamic>.from(result.data as Map);
@@ -570,10 +659,12 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
                 (row['credentialVersion'] as num?)?.toInt() ?? 0,
             canVerifyManually: row['canVerifyManually'] == true,
           );
-        } catch (error) {
-          _rethrowMapped(error, 'Unable to load student account details.');
-        }
-      });
+        },
+      );
+    } catch (error) {
+      _rethrowMapped(error, 'Unable to load student account details.');
+    }
+  }
 
   @override
   Future<void> verifyStudentAccount({
@@ -588,6 +679,7 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
               'requestId': requestId,
             },
           );
+          readCoordinator.notifyMutation();
         } catch (error) {
           _rethrowMapped(error, 'Unable to verify student account.');
         }
@@ -606,6 +698,7 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
               'action': action,
             },
           );
+          readCoordinator.notifyMutation();
         } catch (error) {
           _rethrowMapped(error, 'Unable to update student account status.');
         }
@@ -618,12 +711,34 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
     int limit = 20,
     String? cursor,
   }) =>
-      operationLock.run(() async {
-        try {
+      listRosterFiltered(
+        search: search,
+        gradeFilter: gradeFilter,
+        registrationFilter: 'all',
+        limit: limit,
+        cursor: cursor,
+      );
+
+  @override
+  Future<SchoolRosterPage> listRosterFiltered({
+    String search = '',
+    String? gradeFilter,
+    String registrationFilter = 'all',
+    int limit = 20,
+    String? cursor,
+  }) async {
+    final normalizedSearch = search.trim();
+    try {
+      return await readCoordinator.runRead<SchoolRosterPage>(
+        key:
+            'listSchoolRoster:s=$normalizedSearch|g=${gradeFilter ?? ''}|rf=$registrationFilter|l=$limit|c=${cursor ?? ''}',
+        cacheResult: cursor == null,
+        action: () async {
           final result = await _callable('listSchoolRoster').call<dynamic>(
             <String, dynamic>{
-              'search': search.trim(),
+              'search': normalizedSearch,
               'gradeFilter': gradeFilter,
+              'registrationFilter': registrationFilter,
               'limit': limit,
               'cursor': cursor,
             },
@@ -653,10 +768,12 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
             totalMatched: (raw['totalMatched'] as num?)?.toInt() ?? 0,
             availableGrades: grades.map((g) => g.toString()).toList(),
           );
-        } catch (error) {
-          _rethrowMapped(error, 'Unable to load official school roster.');
-        }
-      });
+        },
+      );
+    } catch (error) {
+      _rethrowMapped(error, 'Unable to load official school roster.');
+    }
+  }
 
   @override
   Future<String> revealLrnWithPassword({
@@ -848,11 +965,13 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
               'signature': null,
             },
           );
-          return _parseReplacementResult(
+          final parsed = _parseReplacementResult(
             Map<String, dynamic>.from(result.data as Map),
             studentUid,
             reason,
           );
+          readCoordinator.notifyMutation();
+          return parsed;
         } catch (error) {
           _rethrowMapped(error, 'Unable to replace student QR.');
         }
@@ -868,13 +987,19 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
         try {
           final uid = auth.currentUser?.uid;
           if (uid == null) {
-            throw const PortalStudentException('Sign in is required.');
+            throw const PortalStudentException(
+              'Sign in is required.',
+              kind: PortalErrorKind.authorization,
+              firebaseCode: 'unauthenticated',
+              isSessionAuthLoss: true,
+            );
           }
           final prefs = await SharedPreferences.getInstance();
           final deviceId = prefs.getString('resqme_staff_tier2_device_$uid');
           if (deviceId == null || deviceId.length < 20) {
             throw const PortalStudentException(
               'Enroll this device in Biometric Device Setup first, or confirm with your Admin password.',
+              kind: PortalErrorKind.operation,
             );
           }
           final challengeRes =
@@ -899,7 +1024,10 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
           try {
             signature = await keyProvider.signStaff(deviceId, message);
           } catch (bioError) {
-            throw PortalStudentException(mapStaffTier2Error(bioError).message);
+            throw PortalStudentException(
+              mapStaffTier2Error(bioError).message,
+              kind: PortalErrorKind.operation,
+            );
           }
           final result =
               await _callable('replaceSchoolStudentQr').call<dynamic>(
@@ -913,11 +1041,13 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
               'signature': signature,
             },
           );
-          return _parseReplacementResult(
+          final parsed = _parseReplacementResult(
             Map<String, dynamic>.from(result.data as Map),
             studentUid,
             reason,
           );
+          readCoordinator.notifyMutation();
+          return parsed;
         } catch (error) {
           _rethrowMapped(
             error,
@@ -936,16 +1066,21 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
     String? endDate,
     int limit = 25,
     String? cursor,
-  }) =>
-      operationLock.run(() async {
-        try {
+  }) async {
+    final normalizedSearch = search.trim();
+    try {
+      return await readCoordinator.runRead<ActivityLogPage>(
+        key:
+            'listSchoolActivityLogs:cat=$category|out=$outcome|act=${actorUid ?? ''}|s=$normalizedSearch|sd=${startDate ?? ''}|ed=${endDate ?? ''}|l=$limit|c=${cursor ?? ''}',
+        cacheResult: cursor == null,
+        action: () async {
           final result =
               await _callable('listSchoolActivityLogs').call<dynamic>(
             <String, dynamic>{
               'category': category,
               'outcome': outcome,
               'actorUid': actorUid,
-              'search': search.trim(),
+              'search': normalizedSearch,
               'startDate': startDate,
               'endDate': endDate,
               'limit': limit,
@@ -976,10 +1111,12 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
             nextCursor: raw['nextCursor'] as String?,
             totalMatched: (raw['totalMatched'] as num?)?.toInt() ?? 0,
           );
-        } catch (error) {
-          _rethrowMapped(error, 'Unable to load school activity logs.');
-        }
-      });
+        },
+      );
+    } catch (error) {
+      _rethrowMapped(error, 'Unable to load school activity logs.');
+    }
+  }
 
   @override
   Future<Sf1PickedFile?> pickSf1ExcelFile() async {
@@ -995,6 +1132,7 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
     } on PlatformException catch (error) {
       throw PortalStudentException(
         error.message ?? 'Unable to open spreadsheet file.',
+        kind: PortalErrorKind.operation,
       );
     }
   }
@@ -1004,52 +1142,59 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
     required String fileName,
     required String fileBase64,
     String? confirmedGradeLevel,
-  }) =>
-      operationLock.run(() async {
-        try {
-          final result =
-              await _callable('previewSchoolRosterImport').call<dynamic>(
-            <String, dynamic>{
-              'fileName': fileName,
-              'fileBase64': fileBase64,
-              'confirmedGradeLevel': confirmedGradeLevel,
-            },
+  }) async {
+    try {
+      if (auth.currentUser?.uid == null) {
+        throw const PortalStudentException(
+          'Sign in is required.',
+          kind: PortalErrorKind.authorization,
+          firebaseCode: 'unauthenticated',
+          isSessionAuthLoss: true,
+        );
+      }
+      final result =
+          await _callable('previewSchoolRosterImport').call<dynamic>(
+        <String, dynamic>{
+          'fileName': fileName,
+          'fileBase64': fileBase64,
+          'confirmedGradeLevel': confirmedGradeLevel,
+        },
+      );
+      final raw = Map<String, dynamic>.from(result.data as Map);
+      final summary =
+          Map<String, dynamic>.from(raw['summary'] as Map? ?? const {});
+      final rows = (raw['rows'] as List?) ?? const [];
+      return RosterImportPreview(
+        previewId: raw['previewId'] as String? ?? '',
+        fileName: raw['fileName'] as String? ?? fileName,
+        detectedGradeLevel: raw['detectedGradeLevel'] as String?,
+        confirmedGradeLevel: raw['confirmedGradeLevel'] as String? ?? '',
+        totalRows: (summary['totalRows'] as num?)?.toInt() ?? 0,
+        newCount: (summary['newCount'] as num?)?.toInt() ?? 0,
+        unchangedCount: (summary['unchangedCount'] as num?)?.toInt() ?? 0,
+        proposedUpdateCount:
+            (summary['proposedUpdateCount'] as num?)?.toInt() ?? 0,
+        duplicateCount: (summary['duplicateCount'] as num?)?.toInt() ?? 0,
+        conflictCount: (summary['conflictCount'] as num?)?.toInt() ?? 0,
+        invalidCount: (summary['invalidCount'] as num?)?.toInt() ?? 0,
+        rows: rows.map((item) {
+          final r = Map<String, dynamic>.from(item as Map);
+          return RosterImportPreviewRow(
+            rowNumber: (r['rowNumber'] as num?)?.toInt() ?? 0,
+            status: r['status'] as String? ?? 'invalid',
+            maskedLrn: r['maskedLrn'] as String?,
+            fullName: r['fullName'] as String? ?? '',
+            gradeLevel: r['gradeLevel'] as String? ?? '',
+            sex: r['sex'] as String?,
+            birthDate: r['birthDate'] as String?,
+            reason: r['reason'] as String?,
           );
-          final raw = Map<String, dynamic>.from(result.data as Map);
-          final summary =
-              Map<String, dynamic>.from(raw['summary'] as Map? ?? const {});
-          final rows = (raw['rows'] as List?) ?? const [];
-          return RosterImportPreview(
-            previewId: raw['previewId'] as String? ?? '',
-            fileName: raw['fileName'] as String? ?? fileName,
-            detectedGradeLevel: raw['detectedGradeLevel'] as String?,
-            confirmedGradeLevel: raw['confirmedGradeLevel'] as String? ?? '',
-            totalRows: (summary['totalRows'] as num?)?.toInt() ?? 0,
-            newCount: (summary['newCount'] as num?)?.toInt() ?? 0,
-            unchangedCount: (summary['unchangedCount'] as num?)?.toInt() ?? 0,
-            proposedUpdateCount:
-                (summary['proposedUpdateCount'] as num?)?.toInt() ?? 0,
-            duplicateCount: (summary['duplicateCount'] as num?)?.toInt() ?? 0,
-            conflictCount: (summary['conflictCount'] as num?)?.toInt() ?? 0,
-            invalidCount: (summary['invalidCount'] as num?)?.toInt() ?? 0,
-            rows: rows.map((item) {
-              final r = Map<String, dynamic>.from(item as Map);
-              return RosterImportPreviewRow(
-                rowNumber: (r['rowNumber'] as num?)?.toInt() ?? 0,
-                status: r['status'] as String? ?? 'invalid',
-                maskedLrn: r['maskedLrn'] as String?,
-                fullName: r['fullName'] as String? ?? '',
-                gradeLevel: r['gradeLevel'] as String? ?? '',
-                sex: r['sex'] as String?,
-                birthDate: r['birthDate'] as String?,
-                reason: r['reason'] as String?,
-              );
-            }).toList(),
-          );
-        } catch (error) {
-          _rethrowMapped(error, 'Unable to preview SF1 roster import.');
-        }
-      });
+        }).toList(),
+      );
+    } catch (error) {
+      _rethrowMapped(error, 'Unable to preview SF1 roster import.');
+    }
+  }
 
   @override
   Future<RosterImportCommitResult> commitRosterImport({
@@ -1065,6 +1210,7 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
               'requestId': requestId,
             },
           );
+          readCoordinator.notifyMutation();
           final raw = Map<String, dynamic>.from(result.data as Map);
           final creds = (raw['generatedCredentials'] as List?) ?? const [];
           return RosterImportCommitResult(
@@ -1089,9 +1235,11 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
       });
 
   @override
-  Future<List<RosterImportHistoryItem>> listRosterImports() =>
-      operationLock.run(() async {
-        try {
+  Future<List<RosterImportHistoryItem>> listRosterImports() async {
+    try {
+      return await readCoordinator.runRead<List<RosterImportHistoryItem>>(
+        key: 'listSchoolRosterImports',
+        action: () async {
           final result =
               await _callable('listSchoolRosterImports').call<dynamic>({});
           final raw = Map<String, dynamic>.from(result.data as Map);
@@ -1110,8 +1258,10 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
               timestamp: row['timestamp'] as String? ?? '',
             );
           }).toList();
-        } catch (error) {
-          _rethrowMapped(error, 'Unable to load roster import history.');
-        }
-      });
+        },
+      );
+    } catch (error) {
+      _rethrowMapped(error, 'Unable to load roster import history.');
+    }
+  }
 }

@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../services/staff_access_repository.dart';
 import '../widgets/portal_widgets.dart';
@@ -25,10 +26,15 @@ class StudentDetailsScreen extends StatefulWidget {
 
 class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
   SchoolStudentDetails? _details;
-  bool _loading = true;
+  PortalLoadStatus _status = PortalLoadStatus.initialLoading;
   bool _busy = false;
+  int _requestSeq = 0;
   String? _error;
   String? _feedbackMessage;
+
+  bool get _isInitialLoading =>
+      _details == null && _status == PortalLoadStatus.initialLoading;
+  bool get _isRefreshing => _status == PortalLoadStatus.refreshing;
 
   @override
   void initState() {
@@ -36,25 +42,59 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant StudentDetailsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.studentUid != widget.studentUid) {
+      _requestSeq += 1;
+      _details = null;
+      _error = null;
+      _feedbackMessage = null;
+      _status = PortalLoadStatus.initialLoading;
+      _load();
+    }
+  }
+
   Future<void> _load() async {
+    final seq = ++_requestSeq;
+    final targetUid = widget.studentUid;
     setState(() {
-      _loading = true;
+      _status = _details != null
+          ? PortalLoadStatus.refreshing
+          : PortalLoadStatus.initialLoading;
       _error = null;
     });
     try {
       final details = await widget.portalStudentRepository
-          .getStudentDetails(widget.studentUid);
-      if (!mounted) return;
-      setState(() => _details = details);
-    } catch (error) {
-      if (!mounted) return;
+          .getStudentDetails(targetUid);
+      if (!mounted || seq != _requestSeq || widget.studentUid != targetUid) {
+        return;
+      }
       setState(() {
+        _details = details;
+        _error = null;
+        _status = PortalLoadStatus.loaded;
+      });
+    } catch (error) {
+      if (!mounted || seq != _requestSeq) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error) ||
+          (error is PortalStudentException && error.isSessionAuthLoss)) {
+        setState(() {
+          _details = null;
+          _status = PortalLoadStatus.authorizationError;
+          _error = error is PortalStudentException
+              ? error.message
+              : 'Session authorization expired. Sign in again.';
+        });
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
+      setState(() {
+        _status = PortalLoadStatus.transientError;
         _error = error is PortalStudentException
             ? error.message
             : 'Unable to load student account details.';
       });
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -100,6 +140,9 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
         studentUid: details.uid,
         requestId: _generateRequestId(),
       );
+      if (mounted) {
+        PortalScope.notifyMutation(context);
+      }
       await _load();
       if (!mounted) return;
       setState(() {
@@ -108,6 +151,10 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
       });
     } catch (error) {
       if (!mounted) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error)) {
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
       setState(() {
         _error = error is PortalStudentException
             ? error.message
@@ -142,6 +189,9 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
         studentUid: details.uid,
         action: disabling ? 'disable' : 'enable',
       );
+      if (mounted) {
+        PortalScope.notifyMutation(context);
+      }
       await _load();
       if (!mounted) return;
       setState(() {
@@ -151,6 +201,10 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
       });
     } catch (error) {
       if (!mounted) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error)) {
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
       setState(() {
         _error = error is PortalStudentException
             ? error.message
@@ -174,6 +228,7 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
       currentVersion: details.credentialVersion,
     );
     if (result == null || !mounted) return;
+    PortalScope.notifyMutation(context);
     setState(() {
       _error = null;
       _feedbackMessage =
@@ -268,13 +323,15 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
         actions: [
           IconButton(
             tooltip: 'Refresh details',
-            onPressed: _loading || _busy ? null : _load,
+            onPressed: _isInitialLoading || _isRefreshing || _busy
+                ? null
+                : _load,
             icon: const Icon(Icons.refresh),
           ),
         ],
       ),
       body: SafeArea(
-        child: _loading && details == null
+        child: _isInitialLoading
             ? const Center(child: CircularProgressIndicator())
             : details == null
                 ? PortalStateView(
@@ -289,6 +346,7 @@ class _StudentDetailsScreenState extends State<StudentDetailsScreen> {
                       child: ListView(
                         padding: const EdgeInsets.all(16),
                         children: [
+                          PortalRefreshStrip(refreshing: _isRefreshing),
                           Card(
                             child: Padding(
                               padding: const EdgeInsets.all(16),

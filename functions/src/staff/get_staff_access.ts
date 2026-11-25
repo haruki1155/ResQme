@@ -8,7 +8,7 @@ export const getStaffAccess = onCall(resqmeRuntimeOptions, async (request) => {
   if (!uid) {
     throw new HttpsError('unauthenticated', 'Sign in is required.');
   }
-  keys(object(request.data), []);
+  keys(object(request.data ?? {}), []);
   const db = onboardingDatabase(uid);
   const scope = await requireStaff(db, uid, undefined, undefined, {
     requireSetupComplete: false,

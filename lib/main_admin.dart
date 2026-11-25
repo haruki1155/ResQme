@@ -10,6 +10,7 @@ import 'package:resqme/features/admin/admin_app.dart';
 import 'package:resqme/features/admin/config/admin_backend_config.dart';
 import 'package:resqme/features/admin/screens/staff_device_setup_screen.dart';
 import 'package:resqme/features/admin/screens/staff_tier2_scanner_screen.dart';
+import 'package:resqme/features/admin/services/portal_read_coordinator.dart';
 import 'package:resqme/features/admin/services/portal_student_repository.dart';
 import 'package:resqme/features/admin/services/staff_access_repository.dart';
 import 'package:resqme/features/admin/services/staff_management_repository.dart';
@@ -61,6 +62,10 @@ Future<void> main() async {
       );
     }
     final lock = AccountOperationLock();
+    final readCoordinator = PortalReadCoordinator(
+      currentUidProvider: () => auth.currentUser?.uid,
+      requireBoundScope: true,
+    );
     final accessRepository = FirebaseStaffAccessRepository(
       auth: auth,
       functions: functions,
@@ -72,12 +77,14 @@ Future<void> main() async {
       functions: functions,
       operationLock: lock,
       expectedProjectId: backend.projectId,
+      readCoordinator: readCoordinator,
     );
     final portalStudentRepository = FirebasePortalStudentRepository(
       auth: auth,
       functions: functions,
       operationLock: lock,
       expectedProjectId: backend.projectId,
+      readCoordinator: readCoordinator,
     );
     final tier2Client = StaffTier2Repository(
       auth: auth,
@@ -90,6 +97,7 @@ Future<void> main() async {
         accessRepository: accessRepository,
         managementRepository: managementRepository,
         portalStudentRepository: portalStudentRepository,
+        readCoordinator: readCoordinator,
         scannerBuilder: (_, _) => StaffTier2ScannerScreen(client: tier2Client),
         deviceSetupBuilder: (_, _) =>
             StaffDeviceSetupScreen(client: tier2Client),
