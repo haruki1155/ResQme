@@ -229,6 +229,7 @@ class RosterImportPreview {
   const RosterImportPreview({
     required this.previewId,
     required this.fileName,
+    this.fileSha256 = '',
     required this.detectedGradeLevel,
     required this.confirmedGradeLevel,
     required this.totalRows,
@@ -243,6 +244,7 @@ class RosterImportPreview {
 
   final String previewId;
   final String fileName;
+  final String fileSha256;
   final String? detectedGradeLevel;
   final String confirmedGradeLevel;
   final int totalRows;
@@ -440,10 +442,21 @@ abstract interface class TrustedDeviceRecoveryPortalRepository
   });
 }
 
+abstract interface class IntegrityBoundRosterImportRepository
+    implements PortalStudentRepository {
+  Future<RosterImportCommitResult> commitBoundRosterImport({
+    required String previewId,
+    required String requestId,
+    String? expectedFileSha256,
+    required bool privacyNoticeAcknowledged,
+  });
+}
+
 class FirebasePortalStudentRepository
     implements
         RegistrationFilterableRosterRepository,
-        TrustedDeviceRecoveryPortalRepository {
+        TrustedDeviceRecoveryPortalRepository,
+        IntegrityBoundRosterImportRepository {
   FirebasePortalStudentRepository({
     required this.auth,
     required this.functions,
@@ -1199,6 +1212,7 @@ class FirebasePortalStudentRepository
       return RosterImportPreview(
         previewId: raw['previewId'] as String? ?? '',
         fileName: raw['fileName'] as String? ?? fileName,
+        fileSha256: raw['fileSha256'] as String? ?? '',
         detectedGradeLevel: raw['detectedGradeLevel'] as String?,
         confirmedGradeLevel: raw['confirmedGradeLevel'] as String? ?? '',
         totalRows: (summary['totalRows'] as num?)?.toInt() ?? 0,
@@ -1233,13 +1247,30 @@ class FirebasePortalStudentRepository
     required String previewId,
     required String requestId,
   }) =>
+      commitBoundRosterImport(
+        previewId: previewId,
+        requestId: requestId,
+        privacyNoticeAcknowledged: true,
+      );
+
+  @override
+  Future<RosterImportCommitResult> commitBoundRosterImport({
+    required String previewId,
+    required String requestId,
+    String? expectedFileSha256,
+    required bool privacyNoticeAcknowledged,
+  }) =>
       operationLock.run(() async {
         try {
+          final cleanSha = expectedFileSha256?.trim();
           final result =
               await _callable('commitSchoolRosterImport').call<dynamic>(
             <String, dynamic>{
               'previewId': previewId,
               'requestId': requestId,
+              if (cleanSha != null && cleanSha.isNotEmpty)
+                'expectedFileSha256': cleanSha,
+              'privacyNoticeAcknowledged': privacyNoticeAcknowledged,
             },
           );
           readCoordinator.notifyMutation();

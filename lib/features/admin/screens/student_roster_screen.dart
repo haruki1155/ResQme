@@ -32,6 +32,7 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
   bool _hasLoadedOnce = false;
   bool _loadingMore = false;
   bool _importing = false;
+  String? _importStageLabel;
   int _requestSeq = 0;
   int? _lastObservedMutationVersion;
   String? _error;
@@ -233,7 +234,10 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
 
   Future<void> _startSf1Import() async {
     if (_importing) return;
-    setState(() => _importing = true);
+    setState(() {
+      _importing = true;
+      _importStageLabel = 'Selecting SF1 spreadsheet (.xls / .xlsx)…';
+    });
     try {
       final picked = await widget.portalStudentRepository.pickSf1ExcelFile();
       if (picked == null || !mounted) return;
@@ -243,32 +247,53 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Confirm SF1 Grade Level'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'File: ${picked.fileName}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: PortalColors.inkPrimary,
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'File: ${picked.fileName}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: PortalColors.inkPrimary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Enter a Grade Level to override or confirm the SF1 worksheet header (leave blank to use the sheet metadata).',
-                style: TextStyle(fontSize: 12, color: PortalColors.inkSecondary),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: gradeController,
-                decoration: const InputDecoration(
-                  labelText: 'Grade Level (optional if in sheet)',
-                  hintText: 'e.g. Grade 10',
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: PortalColors.background,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: PortalColors.border),
+                  ),
+                  child: const Text(
+                    'SF1 Import Requirements:\n'
+                    '• Supported formats: genuine .xls or .xlsx (max 2 MB, no macros)\n'
+                    '• Required columns: LRN (12 digits), NAME, BIRTH DATE, Grade Level',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      height: 1.4,
+                      color: PortalColors.inkSecondary,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 10),
+                const Text(
+                  'Enter a Grade Level to override or confirm the SF1 worksheet header (leave blank to use the sheet metadata).',
+                  style: TextStyle(fontSize: 12, color: PortalColors.inkSecondary),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: gradeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Grade Level (optional if in sheet)',
+                    hintText: 'e.g. Grade 10',
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -286,6 +311,9 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
       gradeController.dispose();
       if (confirmedGrade == '__CANCEL__' || !mounted) return;
 
+      setState(() {
+        _importStageLabel = 'Parsing and validating SF1 worksheet rows…';
+      });
       final preview = await widget.portalStudentRepository.previewRosterImport(
         fileName: picked.fileName,
         fileBase64: picked.fileBase64,
@@ -295,6 +323,7 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                 : confirmedGrade,
       );
       if (!mounted) return;
+      setState(() => _importStageLabel = null);
 
       final shouldCommit = await showDialog<bool>(
         context: context,
@@ -303,14 +332,26 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
       );
       if (shouldCommit != true || !mounted) return;
 
+      setState(() {
+        _importStageLabel =
+            'Committing ${preview.newCount + preview.proposedUpdateCount} verified student roster records…';
+      });
       final requestId =
           'sf1_imp_${DateTime.now().microsecondsSinceEpoch}';
-      final commitResult =
-          await widget.portalStudentRepository.commitRosterImport(
-        previewId: preview.previewId,
-        requestId: requestId,
-      );
+      final repo = widget.portalStudentRepository;
+      final commitResult = repo is IntegrityBoundRosterImportRepository
+          ? await repo.commitBoundRosterImport(
+              previewId: preview.previewId,
+              requestId: requestId,
+              expectedFileSha256: preview.fileSha256,
+              privacyNoticeAcknowledged: true,
+            )
+          : await repo.commitRosterImport(
+              previewId: preview.previewId,
+              requestId: requestId,
+            );
       if (!mounted) return;
+      setState(() => _importStageLabel = null);
       PortalScope.notifyMutation(context);
 
       await showDialog<void>(
@@ -333,10 +374,19 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                 ? error.message
                 : 'Unable to import SF1 spreadsheet.',
           ),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: _startSf1Import,
+          ),
         ),
       );
     } finally {
-      if (mounted) setState(() => _importing = false);
+      if (mounted) {
+        setState(() {
+          _importing = false;
+          _importStageLabel = null;
+        });
+      }
     }
   }
 
@@ -575,6 +625,35 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                       ),
                     ],
                   ),
+                  if (_importing && _importStageLabel != null) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: PortalColors.surface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: PortalColors.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            _importStageLabel!,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: PortalColors.inkPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const LinearProgressIndicator(minHeight: 3),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -799,13 +878,22 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
   }
 }
 
-class _RosterPreviewDialog extends StatelessWidget {
+class _RosterPreviewDialog extends StatefulWidget {
   const _RosterPreviewDialog({required this.preview});
   final RosterImportPreview preview;
 
   @override
+  State<_RosterPreviewDialog> createState() => _RosterPreviewDialogState();
+}
+
+class _RosterPreviewDialogState extends State<_RosterPreviewDialog> {
+  bool _privacyAcknowledged = false;
+
+  @override
   Widget build(BuildContext context) {
-    final canCommit = preview.newCount + preview.proposedUpdateCount > 0;
+    final preview = widget.preview;
+    final committableCount = preview.newCount + preview.proposedUpdateCount;
+    final canCommit = committableCount > 0 && _privacyAcknowledged;
     return AlertDialog(
       title: const Text('SF1 Import Preview'),
       content: SizedBox(
@@ -822,6 +910,18 @@ class _RosterPreviewDialog extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              if (preview.detectedGradeLevel != null &&
+                  preview.detectedGradeLevel!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'Sheet Grade: ${preview.detectedGradeLevel} • Applied Grade: ${preview.confirmedGradeLevel}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: PortalColors.inkSecondary,
+                    ),
+                  ),
+                ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -889,6 +989,52 @@ class _RosterPreviewDialog extends StatelessWidget {
                     ),
                   ),
                 ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFCD34D)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Data Privacy Act Notice (RA 10173)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF92400E),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Upload official DepEd SF1 records only with school authorization for student verification and emergency readiness. Raw Excel files are never retained after processing.',
+                      style: TextStyle(fontSize: 11.5, height: 1.35),
+                    ),
+                    Material(
+                      color: Colors.transparent,
+                      child: CheckboxListTile(
+                        key: const Key('sf1-privacy-ack-checkbox'),
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        value: _privacyAcknowledged,
+                        onChanged: (next) =>
+                            setState(() => _privacyAcknowledged = next == true),
+                        title: const Text(
+                          'I confirm authorization and Data Privacy compliance for this SF1 import.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -901,7 +1047,7 @@ class _RosterPreviewDialog extends StatelessWidget {
         FilledButton(
           onPressed: canCommit ? () => Navigator.of(context).pop(true) : null,
           child: Text(
-            'Confirm & Import (${preview.newCount + preview.proposedUpdateCount})',
+            'Confirm & Import ($committableCount)',
           ),
         ),
       ],

@@ -5,6 +5,56 @@ export const MAX_SF1_FILE_BYTES = 2 * 1024 * 1024;
 export const MAX_SF1_RAW_ROWS = 2500;
 export const MAX_SF1_STUDENTS = 500;
 export const MAX_SF1_SHEETS = 20;
+export const MAX_SF1_COLUMNS = 64;
+export const MAX_SF1_CELLS = 50_000;
+
+const XLSX_ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+const XLS_CFBF_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+
+export function assertSafeExcelMagicBytes(
+  buffer: Buffer,
+  fileName?: string | null,
+): 'xlsx' | 'xls' {
+  if (buffer.length < 8) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Unable to read Excel file. Upload a valid .xls or .xlsx SF1 workbook.',
+    );
+  }
+  const isZip = buffer.subarray(0, 4).equals(XLSX_ZIP_MAGIC);
+  const isCfbf = buffer.subarray(0, 8).equals(XLS_CFBF_MAGIC);
+  if (!isZip && !isCfbf) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Invalid spreadsheet binary header. Upload a genuine .xls or .xlsx SF1 workbook (HTML, CSV, and text exports are not accepted).',
+    );
+  }
+
+  const trimmedName = typeof fileName === 'string' ? fileName.trim().toLowerCase() : '';
+  if (trimmedName.endsWith('.xlsx') && !isZip) {
+    throw new HttpsError(
+      'invalid-argument',
+      'File extension .xlsx does not match file contents. Upload a valid .xls or .xlsx SF1 workbook.',
+    );
+  }
+  if (trimmedName.endsWith('.xls') && !isCfbf) {
+    throw new HttpsError(
+      'invalid-argument',
+      'File extension .xls does not match file contents. Upload a valid .xls or .xlsx SF1 workbook.',
+    );
+  }
+
+  // Reject macro-containing workbooks (`vbaProject.bin` inside OOXML or `_VBA_PROJECT_CUR` in BIFF/OLE)
+  const asciiProbe = buffer.toString('latin1').toLowerCase();
+  if (asciiProbe.includes('vbaproject.bin') || asciiProbe.includes('_vba_project')) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Macro-enabled spreadsheets (VBA macros) are not permitted. Save the SF1 workbook as a standard .xlsx or .xls file without macros.',
+    );
+  }
+
+  return isZip ? 'xlsx' : 'xls';
+}
 
 export interface ParsedSf1Row {
   rowNumber: number;
@@ -215,6 +265,7 @@ function extractMetadataValue(
 export function parseSf1Workbook(input: {
   buffer: Buffer;
   confirmedGradeLevel?: string | null;
+  fileName?: string | null;
 }): ParsedSf1Workbook {
   if (!Buffer.isBuffer(input.buffer) || input.buffer.length === 0) {
     throw new HttpsError('invalid-argument', 'Uploaded spreadsheet file is empty.');
@@ -222,6 +273,7 @@ export function parseSf1Workbook(input: {
   if (input.buffer.length > MAX_SF1_FILE_BYTES) {
     throw new HttpsError('invalid-argument', 'Spreadsheet file exceeds the 2 MB limit.');
   }
+  assertSafeExcelMagicBytes(input.buffer, input.fileName);
 
   let wb: XLSX.WorkBook;
   try {
@@ -231,6 +283,9 @@ export function parseSf1Workbook(input: {
       cellNF: true,
       cellFormula: false,
       cellHTML: false,
+      cellText: false,
+      bookVBA: false,
+      bookFiles: false,
       sheetStubs: false,
       raw: false,
     });
@@ -261,8 +316,16 @@ export function parseSf1Workbook(input: {
     const ws = wb.Sheets[name];
     if (!ws || !ws['!ref']) continue;
     const range = XLSX.utils.decode_range(ws['!ref']);
-    if (range.e.r - range.s.r + 1 > MAX_SF1_RAW_ROWS) {
+    const rowSpan = range.e.r - range.s.r + 1;
+    const colSpan = range.e.c - range.s.c + 1;
+    if (rowSpan > MAX_SF1_RAW_ROWS) {
       throw new HttpsError('invalid-argument', 'Spreadsheet exceeds maximum supported row count (2,500 rows).');
+    }
+    if (colSpan > MAX_SF1_COLUMNS || rowSpan * colSpan > MAX_SF1_CELLS) {
+      throw new HttpsError(
+        'invalid-argument',
+        'Spreadsheet exceeds maximum supported column or cell count.',
+      );
     }
 
     const scanLimit = Math.min(range.e.r, 30);

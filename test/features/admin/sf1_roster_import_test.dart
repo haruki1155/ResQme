@@ -8,8 +8,10 @@ import 'package:resqme/features/admin/screens/student_roster_screen.dart';
 import 'package:resqme/features/admin/services/portal_student_repository.dart';
 import 'package:resqme/features/admin/widgets/portal_widgets.dart';
 
-class _FakeSf1RosterRepo implements PortalStudentRepository {
+class _FakeSf1RosterRepo implements IntegrityBoundRosterImportRepository {
   bool committed = false;
+  String? lastExpectedFileSha256;
+  bool? lastPrivacyAck;
 
   @override
   String? get currentAdminUid => 'admin-1';
@@ -29,6 +31,7 @@ class _FakeSf1RosterRepo implements PortalStudentRepository {
       RosterImportPreview(
         previewId: 'a' * 32,
         fileName: fileName,
+        fileSha256: 'b' * 64,
         detectedGradeLevel: 'Grade 10',
         confirmedGradeLevel: confirmedGradeLevel ?? 'Grade 10',
         totalRows: 2,
@@ -66,8 +69,23 @@ class _FakeSf1RosterRepo implements PortalStudentRepository {
   Future<RosterImportCommitResult> commitRosterImport({
     required String previewId,
     required String requestId,
+  }) =>
+      commitBoundRosterImport(
+        previewId: previewId,
+        requestId: requestId,
+        privacyNoticeAcknowledged: true,
+      );
+
+  @override
+  Future<RosterImportCommitResult> commitBoundRosterImport({
+    required String previewId,
+    required String requestId,
+    String? expectedFileSha256,
+    required bool privacyNoticeAcknowledged,
   }) async {
     committed = true;
+    lastExpectedFileSha256 = expectedFileSha256;
+    lastPrivacyAck = privacyNoticeAcknowledged;
     return const RosterImportCommitResult(
       importId: 'imp_1',
       status: 'completed',
@@ -282,12 +300,25 @@ void main() {
     expect(find.text('Conflicts: 1'), findsOneWidget);
     expect(find.textContaining('0098••••3210'), findsAtLeastNWidgets(1));
     expect(find.textContaining('009876543210'), findsNothing);
+    expect(find.textContaining('Data Privacy Act Notice'), findsOneWidget);
+
+    // Confirm & Import must stay disabled until explicit Data Privacy acknowledgement!
+    final confirmBtnBefore = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Confirm & Import (1)'),
+    );
+    expect(confirmBtnBefore.onPressed, isNull);
+
+    await tester.ensureVisible(find.byKey(const Key('sf1-privacy-ack-checkbox')));
+    await tester.tap(find.byKey(const Key('sf1-privacy-ack-checkbox')));
+    await tester.pump();
 
     await tester.tap(find.text('Confirm & Import (1)'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('SF1 Import Complete'), findsOneWidget);
     expect(find.textContaining('ABCD2345EFGH6789JKLM'), findsOneWidget);
+    expect(repo.lastExpectedFileSha256, 'b' * 64);
+    expect(repo.lastPrivacyAck, isTrue);
 
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();

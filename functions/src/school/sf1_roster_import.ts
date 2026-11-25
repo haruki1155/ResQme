@@ -136,11 +136,45 @@ export const previewSchoolRosterImport = onCall(resqmeRuntimeOptions, async (req
 
   const buffer = Buffer.from(data.fileBase64, 'base64');
   const fileSha256 = createHash('sha256').update(buffer).digest('hex');
-  const parsed = parseSf1Workbook({buffer, confirmedGradeLevel});
+  const parsed = parseSf1Workbook({
+    buffer,
+    confirmedGradeLevel,
+    fileName: data.fileName.trim(),
+  });
 
   const key = process.env.RESQME_SCHOOL_ROSTER_HMAC_KEY;
   if (!key || Buffer.byteLength(key, 'utf8') < 32) {
     throw new HttpsError('failed-precondition', 'Roster lookup key is not configured.');
+  }
+
+  // Opportunistic TTL cleanup of expired previews for this school so temporary rows are not retained.
+  try {
+    const nowCleanup = Date.now();
+    const staleSnap = await db
+      .collection('schoolRosterImportPreviews')
+      .where('schoolId', '==', admin.schoolId)
+      .get();
+    let cleaned = 0;
+    for (const doc of staleSnap.docs) {
+      if (cleaned >= 15) break;
+      const d = doc.data();
+      const exp = d.expiresAt;
+      const expMs =
+        exp instanceof Timestamp
+          ? exp.toMillis()
+          : exp instanceof Date
+            ? exp.getTime()
+            : 0;
+      if (expMs > 0 && expMs <= nowCleanup) {
+        const refAny = doc.ref as unknown as {delete?: () => Promise<void>};
+        if (typeof refAny.delete === 'function') {
+          await refAny.delete();
+        }
+        cleaned++;
+      }
+    }
+  } catch {
+    // Cleanup is best-effort and must never fail a valid preview.
   }
 
   const seenLrns = new Set<string>();
@@ -304,6 +338,7 @@ export const previewSchoolRosterImport = onCall(resqmeRuntimeOptions, async (req
   return {
     previewId,
     fileName: data.fileName.trim().slice(0, 120),
+    fileSha256,
     detectedGradeLevel: parsed.detectedGradeLevel,
     confirmedGradeLevel: parsed.effectiveGradeLevel,
     summary,
@@ -315,13 +350,26 @@ export const commitSchoolRosterImport = onCall(resqmeRuntimeOptions, async (requ
   const adminUid = request.auth?.uid;
   if (!adminUid) throw new HttpsError('unauthenticated', 'Sign in is required.');
   const data = object(request.data);
-  keys(data, ['previewId', 'requestId']);
+  keys(data, ['previewId', 'requestId', 'expectedFileSha256', 'privacyNoticeAcknowledged']);
 
   if (typeof data.previewId !== 'string' || !PREVIEW_ID_PATTERN.test(data.previewId)) {
     throw new HttpsError('invalid-argument', 'Invalid preview ID.');
   }
   if (typeof data.requestId !== 'string' || !REQUEST_ID_PATTERN.test(data.requestId)) {
     throw new HttpsError('invalid-argument', 'Invalid import request ID.');
+  }
+  if (data.privacyNoticeAcknowledged !== undefined && data.privacyNoticeAcknowledged !== true) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Acknowledge the Data Privacy Act notice before importing student records.',
+    );
+  }
+  let expectedFileSha256: string | null = null;
+  if (data.expectedFileSha256 !== undefined && data.expectedFileSha256 !== null) {
+    if (typeof data.expectedFileSha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(data.expectedFileSha256)) {
+      throw new HttpsError('invalid-argument', 'Invalid preview file hash.');
+    }
+    expectedFileSha256 = data.expectedFileSha256.toLowerCase();
   }
   const previewId = data.previewId;
   const requestId = data.requestId;
@@ -379,6 +427,16 @@ export const commitSchoolRosterImport = onCall(resqmeRuntimeOptions, async (requ
     expiresMs <= Date.now()
   ) {
     throw new HttpsError('failed-precondition', 'Import preview expired or unavailable.');
+  }
+  if (
+    expectedFileSha256 !== null &&
+    typeof preview.fileSha256 === 'string' &&
+    preview.fileSha256.toLowerCase() !== expectedFileSha256
+  ) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Import preview file hash mismatch. Generate a fresh preview before committing.',
+    );
   }
   if (preview.consumed === true && !existingImport.exists) {
     throw new HttpsError('failed-precondition', 'Import preview has already been committed.');
@@ -536,7 +594,11 @@ export const commitSchoolRosterImport = onCall(resqmeRuntimeOptions, async (requ
         ...(done ? {completedAt: FieldValue.serverTimestamp()} : {}),
       });
       if (done) {
-        tx.update(previewRef, {consumed: true, consumedAt: FieldValue.serverTimestamp()});
+        tx.update(previewRef, {
+          consumed: true,
+          rows: [],
+          consumedAt: FieldValue.serverTimestamp(),
+        });
         tx.create(
           db.doc(`staffManagementAudits/${randomBytes(16).toString('hex')}`),
           auditRecord({
