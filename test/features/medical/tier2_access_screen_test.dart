@@ -44,6 +44,9 @@ void main() {
       await tester.tap(find.text('Unlock with biometrics'));
       repo.pending.complete(record);
       await tester.pumpAndSettle();
+      expect(find.text('Fictional contact (Parent)'), findsOneWidget);
+      await tester.tap(find.text('Medical'));
+      await tester.pumpAndSettle();
       expect(find.text('Fictional condition'), findsOneWidget);
       if (transition == 'background') {
         tester.binding.handleAppLifecycleStateChanged(
@@ -62,6 +65,7 @@ void main() {
       }
       await tester.pumpAndSettle();
       expect(find.text('Fictional condition'), findsNothing);
+      expect(find.text('Fictional contact (Parent)'), findsNothing);
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller!.text,
         isEmpty,
@@ -82,7 +86,16 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       repo.pending.complete(record);
       await tester.pumpAndSettle();
+      expect(find.text('Fictional contact (Parent)'), findsOneWidget);
+      await tester.tap(find.text('Allergies'));
+      await tester.pumpAndSettle();
+      expect(find.text('KNOWN ALLERGIES'), findsOneWidget);
+      await tester.tap(find.text('Medical'));
+      await tester.pumpAndSettle();
       expect(find.text('Fictional condition'), findsOneWidget);
+      await tester.tap(find.text('History'));
+      await tester.pumpAndSettle();
+      expect(find.text('HEALTH RECORDS'), findsOneWidget);
     },
   );
   for (final transition in [
@@ -164,8 +177,7 @@ void main() {
     await tester.tap(find.text('Unlock with biometrics'));
     repo.pending.complete(record);
     await tester.pumpAndSettle();
-    expect(find.text('Fictional condition'), findsOneWidget);
-    await tester.enterText(find.byType(TextField), 'fictional-password');
+    expect(find.text('Fictional contact (Parent)'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Lock Tier 2 information'),
       200,
@@ -178,7 +190,7 @@ void main() {
     );
     await tester.tap(find.text('Lock Tier 2 information'));
     await tester.pump();
-    expect(find.text('Fictional condition'), findsNothing);
+    expect(find.text('Fictional contact (Parent)'), findsNothing);
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
       isEmpty,
