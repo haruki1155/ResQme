@@ -27,6 +27,9 @@ const SECURITY_ACTIONS = new Set([
   'reactivate_authorized_account',
   'revoke_authorized_account',
   'student_registration_conflict',
+  'issue_student_login_qr',
+  'replace_student_login_qr',
+  'revoke_student_login_qr',
 ]);
 
 const ACTION_LABELS: Record<string, string> = {
@@ -45,6 +48,9 @@ const ACTION_LABELS: Record<string, string> = {
   enroll_staff_tier2_device: 'Biometric Device Enrolled',
   auto_verify_student_roster: 'Student Auto-Verified via Roster',
   student_registration_conflict: 'Student Registration Conflict Blocked',
+  issue_student_login_qr: 'Student Login QR Issued',
+  replace_student_login_qr: 'Student Login QR Replaced',
+  revoke_student_login_qr: 'Student Login QR Revoked',
   verify_student_account: 'Student Manually Verified',
   disable_student_account: 'Student Account Disabled',
   enable_student_account: 'Student Account Enabled',

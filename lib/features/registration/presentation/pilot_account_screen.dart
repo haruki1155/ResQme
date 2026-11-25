@@ -9,6 +9,8 @@ import '../../medical/services/tier2_authorization_repository.dart';
 import '../../qr/screens/my_unverified_qr_screen.dart';
 import '../../qr/services/tier1_qr_repository.dart';
 import '../models/student_registration_profile.dart';
+import '../screens/student_login_qr_screen.dart';
+import '../services/student_registration_repository.dart';
 
 class PilotAccountScreen extends StatefulWidget {
   const PilotAccountScreen({
@@ -23,6 +25,7 @@ class PilotAccountScreen extends StatefulWidget {
     this.completion,
     this.tier2,
     this.onTier2,
+    this.registrationRepository,
   });
   final StudentRegistrationProfile profile;
   final SyntheticMedicalRepository medical;
@@ -33,6 +36,7 @@ class PilotAccountScreen extends StatefulWidget {
   final MedicalCompletionRepository? completion;
   final Tier2AuthorizationRepository? tier2;
   final VoidCallback? onTier2;
+  final StudentRegistrationRepository? registrationRepository;
   @override
   State<PilotAccountScreen> createState() => _PilotAccountScreenState();
 }
@@ -148,6 +152,15 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
       medicalComplete: widget.profile.medicalStatus == 'complete',
       studentFullName: widget.profile.fullName,
       tier2Repository: widget.tier2,
+      onManageLoginQr: widget.registrationRepository == null
+          ? null
+          : () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ManageStudentLoginQrScreen(
+                    repository: widget.registrationRepository!,
+                  ),
+                ),
+              ),
     ),
     _ => const SizedBox.shrink(),
   };

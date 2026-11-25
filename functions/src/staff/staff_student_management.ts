@@ -8,6 +8,7 @@ import {isQrPayload} from '../qr/ensure_my_tier1_qr';
 import {evaluateQrEligibility} from '../qr/qr_eligibility';
 import {hashQrPayload} from '../qr/resolve_tier1_qr';
 import {parseIsoBirthDate} from '../registration/registration_contract';
+import {revokeStudentLoginQrFromSnapshotInTx} from '../registration/student_login_qr';
 import {rosterLookupId} from '../school/roster_contract';
 import {auditRecord, requireMasterAdmin, staffManagementDeps} from './staff_account_management';
 import {assertAttestationSerialsNotRevoked} from './staff_attestation';
@@ -772,9 +773,11 @@ export const setStudentAccountStatus = onCall(resqmeRuntimeOptions, async (reque
     const admin = await requireMasterAdmin(db, adminUid, emailVerified, tx);
     const profileRef = db.doc(`studentProfiles/${studentUid}`);
     const tier2DeviceRef = db.doc(`tier2Devices/${studentUid}`);
-    const [profileSnap, tier2DeviceSnap] = await Promise.all([
+    const loginQrRef = db.doc(`studentLoginQrCredentials/${studentUid}`);
+    const [profileSnap, tier2DeviceSnap, loginQrSnap] = await Promise.all([
       tx.get(profileRef),
       tx.get(tier2DeviceRef),
+      tx.get(loginQrRef),
     ]);
 
     const profile = profileSnap.data();
@@ -809,6 +812,9 @@ export const setStudentAccountStatus = onCall(resqmeRuntimeOptions, async (reque
         status: 'revoked',
         revokedAt: FieldValue.serverTimestamp(),
       });
+    }
+    if (disabling) {
+      revokeStudentLoginQrFromSnapshotInTx(db, tx, studentUid, loginQrSnap);
     }
 
     tx.create(

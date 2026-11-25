@@ -17,6 +17,7 @@ class MyUnverifiedQrScreen extends StatefulWidget {
     this.medicalComplete = false,
     this.studentFullName,
     this.tier2Repository,
+    this.onManageLoginQr,
   });
 
   final Tier1QrRepository repository;
@@ -28,6 +29,7 @@ class MyUnverifiedQrScreen extends StatefulWidget {
   final bool medicalComplete;
   final String? studentFullName;
   final Tier2AuthorizationRepository? tier2Repository;
+  final VoidCallback? onManageLoginQr;
 
   @override
   State<MyUnverifiedQrScreen> createState() => _MyUnverifiedQrScreenState();
@@ -426,6 +428,14 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen>
                           : 'Biometric Security Setup',
                     ),
                   ),
+                if (widget.onManageLoginQr != null) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: widget.onManageLoginQr,
+                    icon: const Icon(Icons.qr_code_2),
+                    label: const Text('Student Login QR'),
+                  ),
+                ],
                 if (widget.onScan != null)
                   TextButton(
                     onPressed: widget.onScan,

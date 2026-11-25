@@ -17,7 +17,16 @@ abstract interface class RegistrationClient {
   Future<void> signOut();
 }
 
-class FlutterFireRegistrationClient implements RegistrationClient {
+abstract interface class LoginQrRegistrationClient
+    implements RegistrationClient {
+  Future<Map<String, dynamic>> resolveStudentLoginQr(String payload);
+  Future<Map<String, dynamic>> ensureMyStudentLoginQr();
+  Future<Map<String, dynamic>> replaceMyStudentLoginQr();
+  Future<void> revokeMyStudentLoginQr();
+}
+
+class FlutterFireRegistrationClient
+    implements RegistrationClient, LoginQrRegistrationClient {
   FlutterFireRegistrationClient({
     required this.auth,
     required this.firestore,
@@ -83,6 +92,58 @@ class FlutterFireRegistrationClient implements RegistrationClient {
       auth.sendPasswordResetEmail(email: email);
   @override
   Future<void> signOut() => auth.signOut();
+
+  @override
+  Future<Map<String, dynamic>> resolveStudentLoginQr(String payload) async {
+    final res = await functions
+        .httpsCallable(
+          'resolveStudentLoginQr',
+          options: HttpsCallableOptions(timeout: const Duration(seconds: 10)),
+        )
+        .call<dynamic>({'payload': payload});
+    if (res.data is! Map) {
+      throw StateError('Invalid Login QR response.');
+    }
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  @override
+  Future<Map<String, dynamic>> ensureMyStudentLoginQr() async {
+    final res = await functions
+        .httpsCallable(
+          'ensureMyStudentLoginQr',
+          options: HttpsCallableOptions(timeout: const Duration(seconds: 10)),
+        )
+        .call<dynamic>({});
+    if (res.data is! Map) {
+      throw StateError('Invalid Login QR response.');
+    }
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  @override
+  Future<Map<String, dynamic>> replaceMyStudentLoginQr() async {
+    final res = await functions
+        .httpsCallable(
+          'replaceMyStudentLoginQr',
+          options: HttpsCallableOptions(timeout: const Duration(seconds: 10)),
+        )
+        .call<dynamic>({});
+    if (res.data is! Map) {
+      throw StateError('Invalid Login QR response.');
+    }
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  @override
+  Future<void> revokeMyStudentLoginQr() async {
+    await functions
+        .httpsCallable(
+          'revokeMyStudentLoginQr',
+          options: HttpsCallableOptions(timeout: const Duration(seconds: 10)),
+        )
+        .call<dynamic>({});
+  }
 }
 
 class FirebaseStudentRegistrationRepository
@@ -232,6 +293,143 @@ class FirebaseStudentRegistrationRepository
       message:
           'If an account can receive recovery email, reset instructions will be sent.',
     );
+  }
+
+  @override
+  Future<LoginQrResolutionResult> resolveLoginQr(String qrPayload) async {
+    final trimmed = qrPayload.trim();
+    if (trimmed.startsWith('resqme:v1:') ||
+        trimmed.startsWith('resqme:tier2:v1:')) {
+      return const LoginQrResolutionResult.failure(
+        'This is an emergency QR code, not a Student Login QR code.',
+      );
+    }
+    if (!RegExp(r'^resqme:login:v1:[A-Za-z0-9_-]{43}$').hasMatch(trimmed)) {
+      return const LoginQrResolutionResult.failure(
+        'Invalid Student Login QR code.',
+      );
+    }
+    final qrClient = client;
+    if (qrClient is! LoginQrRegistrationClient) {
+      return const LoginQrResolutionResult.failure(
+        'Login QR service is unavailable. Sign in with your email and password.',
+      );
+    }
+    try {
+      final data = await qrClient.resolveStudentLoginQr(trimmed);
+      final email = data['email'];
+      final maskedEmail = data['maskedEmail'];
+      if (email is! String ||
+          email.trim().isEmpty ||
+          maskedEmail is! String ||
+          maskedEmail.trim().isEmpty) {
+        return const LoginQrResolutionResult.failure(
+          'This Login QR code is inactive, expired, or unavailable.',
+        );
+      }
+      return LoginQrResolutionResult.resolved(
+        email: email.trim().toLowerCase(),
+        maskedEmail: maskedEmail.trim(),
+      );
+    } on FirebaseFunctionsException catch (error) {
+      if (error.code == 'invalid-argument') {
+        return LoginQrResolutionResult.failure(
+          error.message?.isNotEmpty == true
+              ? error.message!
+              : 'Invalid Student Login QR code.',
+        );
+      }
+      if (error.code == 'resource-exhausted') {
+        return const LoginQrResolutionResult.failure(
+          'Too many QR sign-in attempts. Wait a few minutes or sign in with email and password.',
+        );
+      }
+      if (['unavailable', 'deadline-exceeded', 'network-request-failed']
+          .contains(error.code)) {
+        return const LoginQrResolutionResult.failure(
+          'Connection unavailable. Check your internet connection or sign in with email and password.',
+        );
+      }
+      return const LoginQrResolutionResult.failure(
+        'This Login QR code is inactive, expired, or unavailable.',
+      );
+    } catch (_) {
+      return const LoginQrResolutionResult.failure(
+        'Unable to verify this Login QR code. Sign in with your email and password.',
+      );
+    }
+  }
+
+  StudentLoginQrManageResult _parseManagedLoginQr(Map<String, dynamic> data) {
+    final payload = data['payload'];
+    final version = data['credentialVersion'];
+    final status = data['status'];
+    if (payload is! String || version is! int || status is! String) {
+      return const StudentLoginQrManageResult(
+        errorMessage: 'Unable to load Student Login QR.',
+      );
+    }
+    return StudentLoginQrManageResult(
+      credential: StudentLoginQrCredential(
+        payload: payload,
+        credentialVersion: version,
+        status: status,
+      ),
+    );
+  }
+
+  @override
+  Future<StudentLoginQrManageResult> ensureMyLoginQr() async {
+    final qrClient = client;
+    if (qrClient is! LoginQrRegistrationClient) {
+      return const StudentLoginQrManageResult(
+        errorMessage: 'Login QR management is unavailable.',
+      );
+    }
+    try {
+      return _parseManagedLoginQr(await qrClient.ensureMyStudentLoginQr());
+    } on FirebaseFunctionsException catch (error) {
+      return StudentLoginQrManageResult(
+        errorMessage: error.code == 'permission-denied'
+            ? 'Student Login QR is unavailable for this account.'
+            : 'Unable to load Student Login QR. Please try again.',
+      );
+    } catch (_) {
+      return const StudentLoginQrManageResult(
+        errorMessage: 'Unable to load Student Login QR. Please try again.',
+      );
+    }
+  }
+
+  @override
+  Future<StudentLoginQrManageResult> replaceMyLoginQr() async {
+    final qrClient = client;
+    if (qrClient is! LoginQrRegistrationClient) {
+      return const StudentLoginQrManageResult(
+        errorMessage: 'Login QR management is unavailable.',
+      );
+    }
+    try {
+      return _parseManagedLoginQr(await qrClient.replaceMyStudentLoginQr());
+    } catch (_) {
+      return const StudentLoginQrManageResult(
+        errorMessage: 'Unable to replace Student Login QR. Please try again.',
+      );
+    }
+  }
+
+  @override
+  Future<String?> revokeMyLoginQr() async {
+    final qrClient = client;
+    if (qrClient is! LoginQrRegistrationClient) {
+      return 'Login QR management is unavailable.';
+    }
+    try {
+      await qrClient.revokeMyStudentLoginQr();
+      return null;
+    } catch (_) {
+      return 'Unable to revoke Student Login QR. Please try again.';
+    }
   }
 
   @override
