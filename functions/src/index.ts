@@ -16,3 +16,8 @@ export {
 export {
   listSchoolActivityLogs,
 } from './staff/staff_activity_logs';
+export {
+  previewSchoolRosterImport,
+  commitSchoolRosterImport,
+  listSchoolRosterImports,
+} from './school/sf1_roster_import';

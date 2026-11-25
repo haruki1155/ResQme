@@ -305,6 +305,27 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
       const ActivityLogPage(entries: [], nextCursor: null, totalMatched: 0);
 
   @override
+  Future<Sf1PickedFile?> pickSf1ExcelFile() async => null;
+
+  @override
+  Future<RosterImportPreview> previewRosterImport({
+    required String fileName,
+    required String fileBase64,
+    String? confirmedGradeLevel,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<RosterImportCommitResult> commitRosterImport({
+    required String previewId,
+    required String requestId,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<List<RosterImportHistoryItem>> listRosterImports() async => const [];
+
+  @override
   Future<String> revealLrnWithBiometric({
     required String targetType,
     required String targetId,
@@ -757,9 +778,14 @@ void main() {
     expect(find.text('Bautista, Zara'), findsOneWidget);
     expect(find.textContaining('0022••••2222'), findsOneWidget);
     expect(find.textContaining('002222222222'), findsNothing);
-    expect(find.text('Not Registered'), findsOneWidget);
+    expect(find.text('Not Registered'), findsAtLeastNWidgets(1));
+    await tester.scrollUntilVisible(
+      find.text('Santos, Ana'),
+      150,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('Santos, Ana'), findsOneWidget);
-    expect(find.textContaining('Import'), findsNothing);
+    expect(find.text('Import Student Roster'), findsOneWidget);
 
     await tester.pumpWidget(
       AdminApp(

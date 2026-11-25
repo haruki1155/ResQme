@@ -179,6 +179,27 @@ class _FakePortalStudentRepo implements PortalStudentRepository {
     String? cursor,
   }) async =>
       const ActivityLogPage(entries: [], nextCursor: null, totalMatched: 0);
+
+  @override
+  Future<Sf1PickedFile?> pickSf1ExcelFile() async => null;
+
+  @override
+  Future<RosterImportPreview> previewRosterImport({
+    required String fileName,
+    required String fileBase64,
+    String? confirmedGradeLevel,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<RosterImportCommitResult> commitRosterImport({
+    required String previewId,
+    required String requestId,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<List<RosterImportHistoryItem>> listRosterImports() async => const [];
 }
 
 class _FakeAccessRepo implements StaffAccessRepository {

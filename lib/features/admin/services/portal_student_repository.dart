@@ -1,5 +1,6 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/data/account_operation_lock.dart';
 import '../../medical/services/platform_tier2_key.dart';
@@ -177,6 +178,122 @@ class ActivityLogPage {
   final int totalMatched;
 }
 
+class Sf1PickedFile {
+  const Sf1PickedFile({
+    required this.fileName,
+    required this.fileBase64,
+  });
+
+  final String fileName;
+  final String fileBase64;
+}
+
+class RosterImportPreviewRow {
+  const RosterImportPreviewRow({
+    required this.rowNumber,
+    required this.status,
+    required this.maskedLrn,
+    required this.fullName,
+    required this.gradeLevel,
+    required this.sex,
+    required this.birthDate,
+    required this.reason,
+  });
+
+  final int rowNumber;
+  final String status;
+  final String? maskedLrn;
+  final String fullName;
+  final String gradeLevel;
+  final String? sex;
+  final String? birthDate;
+  final String? reason;
+}
+
+class RosterImportPreview {
+  const RosterImportPreview({
+    required this.previewId,
+    required this.fileName,
+    required this.detectedGradeLevel,
+    required this.confirmedGradeLevel,
+    required this.totalRows,
+    required this.newCount,
+    required this.unchangedCount,
+    required this.proposedUpdateCount,
+    required this.duplicateCount,
+    required this.conflictCount,
+    required this.invalidCount,
+    required this.rows,
+  });
+
+  final String previewId;
+  final String fileName;
+  final String? detectedGradeLevel;
+  final String confirmedGradeLevel;
+  final int totalRows;
+  final int newCount;
+  final int unchangedCount;
+  final int proposedUpdateCount;
+  final int duplicateCount;
+  final int conflictCount;
+  final int invalidCount;
+  final List<RosterImportPreviewRow> rows;
+}
+
+class RosterGeneratedCredential {
+  const RosterGeneratedCredential({
+    required this.maskedLrn,
+    required this.fullName,
+    required this.gradeLevel,
+    required this.enrollmentCode,
+  });
+
+  final String maskedLrn;
+  final String fullName;
+  final String gradeLevel;
+  final String enrollmentCode;
+}
+
+class RosterImportCommitResult {
+  const RosterImportCommitResult({
+    required this.importId,
+    required this.status,
+    required this.committedCount,
+    required this.newCount,
+    required this.updatedCount,
+    required this.generatedCredentials,
+  });
+
+  final String importId;
+  final String status;
+  final int committedCount;
+  final int newCount;
+  final int updatedCount;
+  final List<RosterGeneratedCredential> generatedCredentials;
+}
+
+class RosterImportHistoryItem {
+  const RosterImportHistoryItem({
+    required this.importId,
+    required this.fileName,
+    required this.confirmedGradeLevel,
+    required this.status,
+    required this.committedCount,
+    required this.newCount,
+    required this.updatedCount,
+    required this.timestamp,
+  });
+
+  final String importId;
+  final String fileName;
+  final String confirmedGradeLevel;
+  final String status;
+  final int committedCount;
+  final int newCount;
+  final int updatedCount;
+  final String timestamp;
+}
+
 class SchoolRosterEntry {
   const SchoolRosterEntry({
     required this.rosterId,
@@ -272,6 +389,17 @@ abstract interface class PortalStudentRepository {
     int limit = 25,
     String? cursor,
   });
+  Future<Sf1PickedFile?> pickSf1ExcelFile();
+  Future<RosterImportPreview> previewRosterImport({
+    required String fileName,
+    required String fileBase64,
+    String? confirmedGradeLevel,
+  });
+  Future<RosterImportCommitResult> commitRosterImport({
+    required String previewId,
+    required String requestId,
+  });
+  Future<List<RosterImportHistoryItem>> listRosterImports();
   Future<void> setSecureScreen(bool enabled);
 }
 
@@ -850,6 +978,140 @@ class FirebasePortalStudentRepository implements PortalStudentRepository {
           );
         } catch (error) {
           _rethrowMapped(error, 'Unable to load school activity logs.');
+        }
+      });
+
+  @override
+  Future<Sf1PickedFile?> pickSf1ExcelFile() async {
+    try {
+      const channel = MethodChannel('resqme/tier2_key');
+      final raw = await channel.invokeMethod<dynamic>('pickExcelFile');
+      if (raw == null) return null;
+      final map = Map<String, dynamic>.from(raw as Map);
+      final name = map['fileName'] as String?;
+      final b64 = map['fileBase64'] as String?;
+      if (name == null || b64 == null) return null;
+      return Sf1PickedFile(fileName: name, fileBase64: b64);
+    } on PlatformException catch (error) {
+      throw PortalStudentException(
+        error.message ?? 'Unable to open spreadsheet file.',
+      );
+    }
+  }
+
+  @override
+  Future<RosterImportPreview> previewRosterImport({
+    required String fileName,
+    required String fileBase64,
+    String? confirmedGradeLevel,
+  }) =>
+      operationLock.run(() async {
+        try {
+          final result =
+              await _callable('previewSchoolRosterImport').call<dynamic>(
+            <String, dynamic>{
+              'fileName': fileName,
+              'fileBase64': fileBase64,
+              'confirmedGradeLevel': confirmedGradeLevel,
+            },
+          );
+          final raw = Map<String, dynamic>.from(result.data as Map);
+          final summary =
+              Map<String, dynamic>.from(raw['summary'] as Map? ?? const {});
+          final rows = (raw['rows'] as List?) ?? const [];
+          return RosterImportPreview(
+            previewId: raw['previewId'] as String? ?? '',
+            fileName: raw['fileName'] as String? ?? fileName,
+            detectedGradeLevel: raw['detectedGradeLevel'] as String?,
+            confirmedGradeLevel: raw['confirmedGradeLevel'] as String? ?? '',
+            totalRows: (summary['totalRows'] as num?)?.toInt() ?? 0,
+            newCount: (summary['newCount'] as num?)?.toInt() ?? 0,
+            unchangedCount: (summary['unchangedCount'] as num?)?.toInt() ?? 0,
+            proposedUpdateCount:
+                (summary['proposedUpdateCount'] as num?)?.toInt() ?? 0,
+            duplicateCount: (summary['duplicateCount'] as num?)?.toInt() ?? 0,
+            conflictCount: (summary['conflictCount'] as num?)?.toInt() ?? 0,
+            invalidCount: (summary['invalidCount'] as num?)?.toInt() ?? 0,
+            rows: rows.map((item) {
+              final r = Map<String, dynamic>.from(item as Map);
+              return RosterImportPreviewRow(
+                rowNumber: (r['rowNumber'] as num?)?.toInt() ?? 0,
+                status: r['status'] as String? ?? 'invalid',
+                maskedLrn: r['maskedLrn'] as String?,
+                fullName: r['fullName'] as String? ?? '',
+                gradeLevel: r['gradeLevel'] as String? ?? '',
+                sex: r['sex'] as String?,
+                birthDate: r['birthDate'] as String?,
+                reason: r['reason'] as String?,
+              );
+            }).toList(),
+          );
+        } catch (error) {
+          _rethrowMapped(error, 'Unable to preview SF1 roster import.');
+        }
+      });
+
+  @override
+  Future<RosterImportCommitResult> commitRosterImport({
+    required String previewId,
+    required String requestId,
+  }) =>
+      operationLock.run(() async {
+        try {
+          final result =
+              await _callable('commitSchoolRosterImport').call<dynamic>(
+            <String, dynamic>{
+              'previewId': previewId,
+              'requestId': requestId,
+            },
+          );
+          final raw = Map<String, dynamic>.from(result.data as Map);
+          final creds = (raw['generatedCredentials'] as List?) ?? const [];
+          return RosterImportCommitResult(
+            importId: raw['importId'] as String? ?? requestId,
+            status: raw['status'] as String? ?? 'completed',
+            committedCount: (raw['committedCount'] as num?)?.toInt() ?? 0,
+            newCount: (raw['newCount'] as num?)?.toInt() ?? 0,
+            updatedCount: (raw['updatedCount'] as num?)?.toInt() ?? 0,
+            generatedCredentials: creds.map((item) {
+              final c = Map<String, dynamic>.from(item as Map);
+              return RosterGeneratedCredential(
+                maskedLrn: c['maskedLrn'] as String? ?? '',
+                fullName: c['fullName'] as String? ?? '',
+                gradeLevel: c['gradeLevel'] as String? ?? '',
+                enrollmentCode: c['enrollmentCode'] as String? ?? '',
+              );
+            }).toList(),
+          );
+        } catch (error) {
+          _rethrowMapped(error, 'Unable to commit SF1 roster import.');
+        }
+      });
+
+  @override
+  Future<List<RosterImportHistoryItem>> listRosterImports() =>
+      operationLock.run(() async {
+        try {
+          final result =
+              await _callable('listSchoolRosterImports').call<dynamic>({});
+          final raw = Map<String, dynamic>.from(result.data as Map);
+          final items = (raw['imports'] as List?) ?? const [];
+          return items.map((item) {
+            final row = Map<String, dynamic>.from(item as Map);
+            return RosterImportHistoryItem(
+              importId: row['importId'] as String? ?? '',
+              fileName: row['fileName'] as String? ?? 'SF1 Import',
+              confirmedGradeLevel:
+                  row['confirmedGradeLevel'] as String? ?? '',
+              status: row['status'] as String? ?? 'completed',
+              committedCount: (row['committedCount'] as num?)?.toInt() ?? 0,
+              newCount: (row['newCount'] as num?)?.toInt() ?? 0,
+              updatedCount: (row['updatedCount'] as num?)?.toInt() ?? 0,
+              timestamp: row['timestamp'] as String? ?? '',
+            );
+          }).toList();
+        } catch (error) {
+          _rethrowMapped(error, 'Unable to load roster import history.');
         }
       });
 }

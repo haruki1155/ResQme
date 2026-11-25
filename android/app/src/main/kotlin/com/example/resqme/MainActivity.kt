@@ -1,9 +1,13 @@
 package com.example.resqme
 
+import android.app.Activity
+import android.content.Intent
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
+import android.net.Uri
 import android.os.Build
 import android.os.CancellationSignal
+import android.provider.OpenableColumns
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyPermanentlyInvalidatedException
@@ -25,9 +29,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TIER2_CHANNEL = "resqme/tier2_key"
 private const val LOG_TAG = "ResQMeBiometric"
+private const val PICK_EXCEL_REQUEST = 9401
+private const val MAX_EXCEL_BYTES = 2 * 1024 * 1024
 
 class MainActivity : FlutterActivity() {
     private var biometricCancellation: CancellationSignal? = null
+    private var pendingExcelResult: MethodChannel.Result? = null
 
     override fun onStop() {
         biometricCancellation?.cancel()
@@ -113,6 +120,7 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         }
                     }
+                    "pickExcelFile" -> pickExcelFile(result)
                     else -> result.notImplemented()
                 }
             }
@@ -137,6 +145,66 @@ class MainActivity : FlutterActivity() {
                 ks.deleteEntry(keyAlias)
             }
         } catch (_: Exception) { }
+    }
+
+    private fun pickExcelFile(result: MethodChannel.Result) {
+        if (pendingExcelResult != null) {
+            result.error("picker_busy", "File selection is already in progress.", null)
+            return
+        }
+        pendingExcelResult = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "application/vnd.ms-excel",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            )
+        }
+        startActivityForResult(intent, PICK_EXCEL_REQUEST)
+    }
+
+    private fun queryDisplayName(uri: Uri): String {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0 && cursor.moveToFirst()) {
+                val name = cursor.getString(idx)
+                if (!name.isNullOrBlank()) return name
+            }
+        }
+        return "sf1_roster.xlsx"
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == PICK_EXCEL_REQUEST) {
+            val callback = pendingExcelResult
+            pendingExcelResult = null
+            if (callback == null) return
+            if (resultCode != Activity.RESULT_OK || data?.data == null) {
+                callback.success(null)
+                return
+            }
+            val uri = data.data!!
+            try {
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: throw IllegalStateException("Unable to read selected file.")
+                if (bytes.size > MAX_EXCEL_BYTES) {
+                    callback.error("file_too_large", "Selected Excel file exceeds the 2 MB limit.", null)
+                    return
+                }
+                val fileName = queryDisplayName(uri)
+                val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                callback.success(mapOf("fileName" to fileName, "fileBase64" to base64))
+            } catch (error: Exception) {
+                callback.error("file_read_error", "Unable to read selected spreadsheet file.", null)
+            }
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     private fun checkBiometricStrongReady(): Pair<String, String>? {
