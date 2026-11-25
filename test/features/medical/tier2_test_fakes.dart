@@ -78,6 +78,13 @@ class TestFunctions implements FirebaseFunctions {
       TestCallable((data) async {
         calls.add(name);
         if (onCall != null) return onCall!(name, data);
+        if (name == 'issueStudentEnrollmentChallenge') {
+          return {
+            'challengeId': 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            'nonce': 'fictional-enroll-nonce',
+            'expiresAt': DateTime.now().millisecondsSinceEpoch + 60000,
+          };
+        }
         if (name == 'issueTier2Challenge') {
           return {
             'challengeId': 'fictional-challenge',
@@ -110,8 +117,30 @@ class TestResult<T> implements HttpsCallableResult<T> {
 
 class TestKey extends PlatformTier2Key {
   Object? failure;
+  Object? enrollFailure;
+  String availability = 'ready';
   Future<void> Function()? onSign, onCreate, onDelete;
   final calls = <String>[];
+  @override
+  Future<String> checkBiometricAvailability() async {
+    calls.add('availability');
+    return availability;
+  }
+
+  @override
+  Future<StudentKeyEnrollment> enrollStudentKey({
+    required String deviceId,
+    required String message,
+  }) async {
+    calls.add('create');
+    await onCreate?.call();
+    if (enrollFailure != null) throw enrollFailure!;
+    return const StudentKeyEnrollment(
+      publicKey: 'fictional-key',
+      signature: 'fictional-enroll-proof',
+    );
+  }
+
   @override
   Future<String> sign(String deviceId, String message) async {
     calls.add('sign');

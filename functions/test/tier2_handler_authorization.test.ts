@@ -4,7 +4,8 @@ import test from 'node:test';
 import {Timestamp} from 'firebase-admin/firestore';
 import type {CallableRequest} from 'firebase-functions/v2/https';
 import {readMyTier2Record} from '../src/medical/read_my_tier2_record';
-import {tier2SignedMessage} from '../src/medical/tier2_challenge';
+import {STUDENT_ENROLLMENT_PROOF_VERSION,studentEnrollmentSignedMessage,tier2SignedMessage} from '../src/medical/tier2_challenge';
+import {issueStudentEnrollmentChallenge} from '../src/medical/issue_student_enrollment_challenge';
 import {enrollTier2Device} from '../src/medical/enroll_tier2_device';
 import {issueTier2Challenge} from '../src/medical/issue_tier2_challenge';
 import {readMyTier2WithPassword} from '../src/medical/read_my_tier2_with_password';
@@ -14,14 +15,16 @@ import {tier2Uid,tier2Profile,tier2Medical} from './fixtures/tier2_eligibility';
 const authorization=require('../src/onboarding/authorization') as typeof import('../src/onboarding/authorization');
 
 function fixture() {
-  const uid=tier2Uid,deviceId='device_0123456789abcdef',challengeId='a'.repeat(48);
+  const uid=tier2Uid,deviceId='device_0123456789abcdef',challengeId='a'.repeat(48),enrollChallengeId='b'.repeat(48),enrollNonce='fictional-enroll-nonce';
   const {publicKey,privateKey}=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
+  const publicValue=publicKey.export({type:'spki',format:'der'}).toString('base64url');
   const message={uid,deviceId,challengeId,operation:'read_medical',nonce:'fictional-nonce'};
   const rows=new Map<string,Record<string,unknown>>([
     [`studentProfiles/${uid}`,{...tier2Profile}],
     [`studentMedicalRecords/${uid}`,{...tier2Medical,lrn:'not-returned'}],
-    [`tier2Devices/${uid}`,{deviceId,status:'active',publicKey:publicKey.export({type:'spki',format:'der'}).toString('base64url')}],
+    [`tier2Devices/${uid}`,{deviceId,status:'active',enrollmentProofVersion:STUDENT_ENROLLMENT_PROOF_VERSION,publicKey:publicValue}],
     [`tier2Challenges/${challengeId}`,{...message,consumedAt:null,expiresAt:Timestamp.fromMillis(Date.now()+60_000)}],
+    [`tier2EnrollmentChallenges/${enrollChallengeId}`,{uid,nonce:enrollNonce,consumedAt:null,expiresAt:Timestamp.fromMillis(Date.now()+60_000)}],
   ]);
   const snapshot=(ref:{path:string})=>({exists:rows.has(ref.path),data:()=>rows.get(ref.path),get:(key:string)=>rows.get(ref.path)?.[key]});
   const db={
@@ -38,11 +41,12 @@ function fixture() {
     },
   };
   const signature=sign('sha256',Buffer.from(tier2SignedMessage(message)),privateKey).toString('base64url');
+  const enrollSignature=sign('sha256',Buffer.from(studentEnrollmentSignedMessage({uid,deviceId,challengeId:enrollChallengeId,nonce:enrollNonce})),privateKey).toString('base64url');
   const request={auth:{uid,token:{auth_time:Math.floor(Date.now()/1000)}},data:{deviceId,challengeId,signature}} as unknown as CallableRequest;
-  return {uid,deviceId,challengeId,rows,db,request};
+  return {uid,deviceId,challengeId,enrollChallengeId,enrollSignature,publicValue,rows,db,request};
 }
 
-const protectedCallers={enroll:enrollTier2Device,challenge:issueTier2Challenge,biometric:readMyTier2Record,password:readMyTier2WithPassword};
+const protectedCallers={enrollChallenge:issueStudentEnrollmentChallenge,enroll:enrollTier2Device,challenge:issueTier2Challenge,biometric:readMyTier2Record,password:readMyTier2WithPassword};
 test('password fallback retains the five-per-ten-minute read limit',async t=>{
   const f=fixture(); f.request.data={};
   t.mock.method(authorization,'onboardingDatabase',()=>f.db as never);
@@ -66,18 +70,24 @@ for(const [name,callable] of Object.entries(protectedCallers)) {
       if(scenario==='verified-minor'||scenario==='wrong-guardian-owner') {
         f.rows.set(`studentGuardianAuthorizations/${f.uid}`,{status:'verified',studentUid:scenario==='wrong-guardian-owner'?'other':f.uid,guardianUid:'fictional-guardian',verifiedAt:Timestamp.now(),method:'independent_guardian_verification'});
       }
-      if(name==='enroll') f.request.data={deviceId:f.deviceId,publicKey:f.rows.get(`tier2Devices/${f.uid}`)!.publicKey};
+      if(name==='enrollChallenge') f.request.data={};
+      if(name==='enroll') f.request.data={challengeId:f.enrollChallengeId,deviceId:f.deviceId,publicKey:f.publicValue,signature:f.enrollSignature};
       if(name==='challenge') f.request.data={deviceId:f.deviceId,operation:'read_medical'};
       if(name==='password') f.request.data={};
       t.mock.method(authorization,'onboardingDatabase',()=>f.db as never);
       if(scenario==='adult'||scenario==='verified-minor') {
         const result=await callable.run(f.request);
         if(name==='password'||name==='biometric') assert.deepEqual(Object.keys(result).sort(),['allergies','conditions','primaryContact']);
-        else if(name==='enroll') assert.equal((result as {status:string}).status,'active');
-        else assert.equal((result as {operation:string}).operation,'read_medical');
+        else if(name==='enroll') {
+          assert.equal((result as {status:string}).status,'active');
+          assert.equal((result as {enrollmentProofVersion:number}).enrollmentProofVersion,STUDENT_ENROLLMENT_PROOF_VERSION);
+        } else if(name==='enrollChallenge') {
+          assert.equal(typeof (result as {challengeId:string}).challengeId,'string');
+        } else assert.equal((result as {operation:string}).operation,'read_medical');
       } else {
         await assert.rejects(()=>callable.run(f.request),{code:'permission-denied'});
         assert.equal(f.rows.get(`tier2Challenges/${f.challengeId}`)?.consumedAt,null);
+        assert.equal(f.rows.get(`tier2EnrollmentChallenges/${f.enrollChallengeId}`)?.consumedAt,null);
         assert.equal(f.rows.get(`tier2Devices/${f.uid}`)?.keyVersion,undefined);
         assert.equal([...f.rows.keys()].filter(path=>path.startsWith('tier2Challenges/')).length,1);
       }
@@ -121,3 +131,39 @@ for(const scenario of ['expired','consumed','wrong-owner','wrong-device','wrong-
     assert.equal(f.rows.get(`tier2Challenges/${f.challengeId}`)?.consumedAt,before);
   });
 }
+
+test('enrollTier2Device consumes challenge once and rejects replay, expiry, wrong owner, and invalid proof',async t=>{
+  const f=fixture();
+  f.request.data={challengeId:f.enrollChallengeId,deviceId:f.deviceId,publicKey:f.publicValue,signature:f.enrollSignature};
+  t.mock.method(authorization,'onboardingDatabase',()=>f.db as never);
+  const first=await enrollTier2Device.run(f.request);
+  assert.equal((first as {enrollmentProofVersion:number}).enrollmentProofVersion,STUDENT_ENROLLMENT_PROOF_VERSION);
+  assert.notEqual(f.rows.get(`tier2EnrollmentChallenges/${f.enrollChallengeId}`)?.consumedAt,null);
+  await assert.rejects(()=>enrollTier2Device.run(f.request),{code:'permission-denied'});
+
+  for(const bad of ['expired','wrong-owner','invalid-signature'] as const) {
+    const g=fixture();
+    const challenge=g.rows.get(`tier2EnrollmentChallenges/${g.enrollChallengeId}`)!;
+    if(bad==='expired') challenge.expiresAt=Timestamp.fromMillis(Date.now()-1);
+    if(bad==='wrong-owner') challenge.uid='other-student';
+    g.request.data={
+      challengeId:g.enrollChallengeId,
+      deviceId:g.deviceId,
+      publicKey:g.publicValue,
+      signature:bad==='invalid-signature'?'A'.repeat(90):g.enrollSignature,
+    };
+    t.mock.method(authorization,'onboardingDatabase',()=>g.db as never);
+    await assert.rejects(()=>enrollTier2Device.run(g.request),{code:'permission-denied'});
+    assert.equal(challenge.consumedAt,null);
+    assert.equal(g.rows.get(`tier2Devices/${g.uid}`)?.keyVersion,undefined);
+  }
+});
+
+test('issueTier2Challenge and readMyTier2Record reject devices without enrollmentProofVersion 2',async t=>{
+  const f=fixture();
+  delete f.rows.get(`tier2Devices/${f.uid}`)!.enrollmentProofVersion;
+  t.mock.method(authorization,'onboardingDatabase',()=>f.db as never);
+  await assert.rejects(()=>readMyTier2Record.run(f.request),{code:'failed-precondition'});
+  f.request.data={deviceId:f.deviceId,operation:'read_medical'};
+  await assert.rejects(()=>issueTier2Challenge.run(f.request),{code:'failed-precondition'});
+});

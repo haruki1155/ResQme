@@ -2,7 +2,7 @@ import {randomBytes} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
 import {HttpsError,onCall} from 'firebase-functions/v2/https';
 import {onboardingDatabase,resqmeRuntimeOptions} from '../onboarding/authorization';
-import {requireRecentAuth,requireTier2Eligible,validateChallengeRequest} from './tier2_challenge';
+import {STUDENT_ENROLLMENT_PROOF_VERSION,requireRecentAuth,requireTier2Eligible,validateChallengeRequest} from './tier2_challenge';
 
 export const issueTier2Challenge=onCall(resqmeRuntimeOptions,async request=>{
   const uid=request.auth?.uid,db=onboardingDatabase(uid);
@@ -14,6 +14,7 @@ export const issueTier2Challenge=onCall(resqmeRuntimeOptions,async request=>{
     const [p,m,g,d]=await Promise.all([tx.get(profile),tx.get(medical),tx.get(guardian),tx.get(device)]);
     requireTier2Eligible(p.data(),m.data(),{uid:uid!,guardianAuthorization:g.data()});
     if(!d.exists||d.get('deviceId')!==input.deviceId||d.get('status')!=='active') throw new HttpsError('permission-denied','Tier 2 access is unavailable.');
+    if(d.get('enrollmentProofVersion')!==STUDENT_ENROLLMENT_PROOF_VERSION) throw new HttpsError('failed-precondition','Biometric security setup is required.');
     tx.create(db.doc(`tier2Challenges/${challengeId}`),{uid,deviceId:input.deviceId,operation:input.operation,nonce,expiresAt:new Date(Date.now()+60_000),consumedAt:null,createdAt:FieldValue.serverTimestamp()});
   });
   return {challengeId,nonce,deviceId:input.deviceId,operation:input.operation};

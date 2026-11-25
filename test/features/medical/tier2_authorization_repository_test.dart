@@ -40,16 +40,50 @@ void main() {
     );
   }
   test(
-    'enrollment cancellation after correct password is not a password error',
+    'enrollment cancellation during biometric prompt does not register device',
     () async {
       final f = Tier2Fixture();
       addTearDown(f.auth.changes.close);
-      f.key.failure = PlatformException(code: 'cancelled');
+      f.key.enrollFailure = PlatformException(code: 'cancelled');
       await expectLater(
         f.repository.enrollWithPassword('fictional'),
         throwsA(failure('Biometric confirmation cancelled.')),
       );
-      expect(f.functions.calls, ['enrollTier2Device', 'issueTier2Challenge']);
+      expect(f.functions.calls, ['issueStudentEnrollmentChallenge']);
+    },
+  );
+  test(
+    'enrollment rejects when no strong biometric is enrolled on device',
+    () async {
+      final f = Tier2Fixture();
+      addTearDown(f.auth.changes.close);
+      f.key.availability = 'biometric_not_enrolled';
+      await expectLater(
+        f.repository.enrollBiometricDeviceWithPassword('fictional'),
+        throwsA(
+          failure(
+            'No fingerprint or strong biometric is enrolled on this device. Add one in Android Settings, then retry.',
+          ),
+        ),
+      );
+      expect(f.functions.calls, isEmpty);
+    },
+  );
+  test(
+    'enrollment rejects when strong biometric hardware is unsupported',
+    () async {
+      final f = Tier2Fixture();
+      addTearDown(f.auth.changes.close);
+      f.key.availability = 'biometric_unsupported';
+      await expectLater(
+        f.repository.enrollBiometricDeviceWithPassword('fictional'),
+        throwsA(
+          failure(
+            'Strong hardware-backed biometrics are not available on this device.',
+          ),
+        ),
+      );
+      expect(f.functions.calls, isEmpty);
     },
   );
   test('wrong password performs no key or callable operation', () async {
@@ -107,7 +141,11 @@ void main() {
         throwsA(failure('Account changed. Reopen Tier 2.')),
       );
       expect(f.functions.calls, isNot(contains('readMyTier2Record')));
-      if (stage != 'sign') expect(f.functions.calls, isEmpty);
+      if (stage == 'reauth' || stage == 'token') {
+        expect(f.functions.calls, isEmpty);
+      } else if (stage == 'delete' || stage == 'create') {
+        expect(f.functions.calls, isNot(contains('enrollTier2Device')));
+      }
     });
   }
   test(

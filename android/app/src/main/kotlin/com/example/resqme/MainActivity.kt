@@ -55,6 +55,15 @@ class MainActivity : FlutterActivity() {
                     return@setMethodCallHandler
                 }
                 when (call.method) {
+                    "checkBiometricAvailability" -> {
+                        val readinessError = checkBiometricStrongReady()
+                        result.success(readinessError?.first ?: "ready")
+                    }
+                    "enrollStudentKey" -> enrollStudentKey(
+                        call.argument<String>("deviceId"),
+                        call.argument<String>("message"),
+                        result
+                    )
                     "createKey" -> try {
                         val alias = alias(call.argument<String>("deviceId"))
                         val keyStore = keyStore()
@@ -242,6 +251,93 @@ class MainActivity : FlutterActivity() {
         } catch (error: Exception) {
             Log.w(LOG_TAG, "KeyInfo inspection failed: ${error.javaClass.simpleName}")
             false
+        }
+    }
+
+    private fun enrollStudentKey(
+        deviceId: String?,
+        message: String?,
+        result: MethodChannel.Result
+    ) {
+        if (biometricCancellation != null) {
+            result.error("biometric_busy", "Biometric confirmation is already in progress.", null)
+            return
+        }
+        val readinessError = checkBiometricStrongReady()
+        if (readinessError != null) {
+            Log.w(LOG_TAG, "Student biometric not ready for enrollment: ${readinessError.first}")
+            result.error(readinessError.first, readinessError.second, null)
+            return
+        }
+
+        val keyAlias: String
+        try {
+            keyAlias = alias(deviceId)
+            require(!message.isNullOrBlank() && message.length <= 2048)
+        } catch (error: Exception) {
+            result.error("invalid_argument", "Invalid biometric enrollment parameters.", null)
+            return
+        }
+
+        try {
+            val ks = keyStore()
+            if (ks.containsAlias(keyAlias)) {
+                ks.deleteEntry(keyAlias)
+            }
+            val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
+            val builder = KeyGenParameterSpec.Builder(keyAlias, KeyProperties.PURPOSE_SIGN)
+                .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                .setDigests(KeyProperties.DIGEST_SHA256)
+                .setUserAuthenticationRequired(true)
+                .setInvalidatedByBiometricEnrollment(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                builder.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+            } else {
+                @Suppress("DEPRECATION")
+                builder.setUserAuthenticationValidityDurationSeconds(-1)
+            }
+            generator.initialize(builder.build())
+            generator.generateKeyPair()
+
+            val privateKey = keyStore().getKey(keyAlias, null) as? PrivateKey
+                ?: throw IllegalStateException("Generated student key unavailable.")
+            if (!isKeyHardwareBacked(privateKey)) {
+                deleteAliasQuietly(keyAlias)
+                Log.w(LOG_TAG, "Rejected software-backed keystore key during student enrollment")
+                result.error("biometric_unsupported", "Hardware-backed biometric keystore is required.", null)
+                return
+            }
+
+            val certificate = keyStore().getCertificate(keyAlias)
+                ?: throw IllegalStateException("Student device certificate unavailable.")
+            val publicKey = Base64.encodeToString(
+                certificate.publicKey.encoded,
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            )
+
+            promptBiometricSignature(
+                privateKey = privateKey,
+                message = message!!,
+                title = "Set Up Biometric Security",
+                subtitle = "Confirm with your fingerprint to activate biometric protection",
+                onSuccess = { encodedSignature ->
+                    Log.i(LOG_TAG, "Student biometric enrollment proof signed")
+                    result.success(
+                        mapOf(
+                            "publicKey" to publicKey,
+                            "signature" to encodedSignature
+                        )
+                    )
+                },
+                onFailure = { code, text ->
+                    deleteAliasQuietly(keyAlias)
+                    result.error(code, text, null)
+                }
+            )
+        } catch (error: Exception) {
+            deleteAliasQuietly(keyAlias)
+            Log.w(LOG_TAG, "enrollStudentKey failed: ${error.javaClass.simpleName}")
+            result.error("biometric_unsupported", "Unable to set up hardware biometric security on this device.", null)
         }
     }
 

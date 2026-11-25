@@ -4,20 +4,29 @@ import {keys,object} from './medical_contract';
 import {evaluateStudentEligibility} from '../qr/qr_eligibility';
 
 export const tier2Operation='read_medical' as const;
+export const STUDENT_ENROLLMENT_PROOF_VERSION=2 as const;
+export function studentEnrollmentSignedMessage(input:{uid:string;deviceId:string;challengeId:string;nonce:string}) {
+  return `student_biometric_enroll\n${input.uid}\n${input.deviceId}\n${input.challengeId}\n${input.nonce}`;
+}
 export function requireRecentAuth(authTime:unknown,nowSeconds=Math.floor(Date.now()/1000),maxAge=300) {
   if(!Number.isSafeInteger(authTime)||(authTime as number)>nowSeconds+5||nowSeconds-(authTime as number)>maxAge) {
     throw new HttpsError('failed-precondition','Please reauthenticate to access Tier 2.');
   }
 }
 export function validateDeviceEnrollment(value:unknown) {
-  const data=object(value);keys(data,['deviceId','publicKey']);
-  if(typeof data.deviceId!=='string'||!/^[A-Za-z0-9_-]{20,80}$/.test(data.deviceId)||typeof data.publicKey!=='string'||data.publicKey.length>1024) throw new HttpsError('invalid-argument','Invalid device enrollment.');
+  const data=object(value);keys(data,['challengeId','deviceId','publicKey','signature']);
+  if(typeof data.challengeId!=='string'||!/^[A-Fa-f0-9]{32,64}$/.test(data.challengeId)||
+     typeof data.deviceId!=='string'||!/^[A-Za-z0-9_-]{20,80}$/.test(data.deviceId)||
+     typeof data.publicKey!=='string'||data.publicKey.length>1024||
+     typeof data.signature!=='string'||!/^[A-Za-z0-9_-]{80,160}$/.test(data.signature)) {
+    throw new HttpsError('invalid-argument','Invalid device enrollment.');
+  }
   try {
     const der=Buffer.from(data.publicKey,'base64url');
     const key=createPublicKey({key:der,format:'der',type:'spki'});
     if(key.asymmetricKeyType!=='ec'||key.asymmetricKeyDetails?.namedCurve!=='prime256v1') throw new Error('key');
   } catch {throw new HttpsError('invalid-argument','Invalid device enrollment.');}
-  return {deviceId:data.deviceId,publicKey:data.publicKey};
+  return {challengeId:data.challengeId,deviceId:data.deviceId,publicKey:data.publicKey,signature:data.signature};
 }
 export function validateChallengeRequest(value:unknown) {
   const data=object(value);keys(data,['deviceId','operation']);

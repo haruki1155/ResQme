@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,sign} from 'node:crypto';
 import test from 'node:test';
-import {requireRecentAuth,requireTier2Eligible,sanitizeTier2Record,tier2SignedMessage,validateChallengeRequest,validateDeviceEnrollment,validateProof,verifyTier2Signature} from '../src/medical/tier2_challenge';
+import {requireRecentAuth,requireTier2Eligible,sanitizeTier2Record,studentEnrollmentSignedMessage,tier2SignedMessage,validateChallengeRequest,validateDeviceEnrollment,validateProof,verifyTier2Signature} from '../src/medical/tier2_challenge';
 import {tier2Uid,tier2Profile,tier2Medical} from './fixtures/tier2_eligibility';
 
 test('Tier 2 requires recent authentication and approved complete records',()=>{
@@ -25,7 +25,16 @@ test('device key and signed challenge proof are bound to exact owner/device/oper
   const {publicKey,privateKey}=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
   const deviceId='device_0123456789abcdef';
   const publicValue=publicKey.export({type:'spki',format:'der'}).toString('base64url');
-  assert.deepEqual(validateDeviceEnrollment({deviceId,publicKey:publicValue}),{deviceId,publicKey:publicValue});
+  const enrollChallengeId='b'.repeat(48);
+  const enrollMsg=studentEnrollmentSignedMessage({uid:'owner-a',deviceId,challengeId:enrollChallengeId,nonce:'enroll-nonce'});
+  const enrollSig=sign('sha256',Buffer.from(enrollMsg),privateKey).toString('base64url');
+  assert.deepEqual(
+    validateDeviceEnrollment({challengeId:enrollChallengeId,deviceId,publicKey:publicValue,signature:enrollSig}),
+    {challengeId:enrollChallengeId,deviceId,publicKey:publicValue,signature:enrollSig},
+  );
+  assert.throws(()=>validateDeviceEnrollment({deviceId,publicKey:publicValue}),{code:'invalid-argument'});
+  assert.equal(verifyTier2Signature(publicValue,enrollMsg,enrollSig),true);
+  assert.equal(verifyTier2Signature(publicValue,studentEnrollmentSignedMessage({uid:'owner-b',deviceId,challengeId:enrollChallengeId,nonce:'enroll-nonce'}),enrollSig),false);
   assert.deepEqual(validateChallengeRequest({deviceId,operation:'read_medical'}),{deviceId,operation:'read_medical'});
   const fields={uid:'owner-a',deviceId,operation:'read_medical',challengeId:'a'.repeat(48),nonce:'random-one-time-nonce'};
   const message=tier2SignedMessage(fields),signature=sign('sha256',Buffer.from(message),privateKey).toString('base64url');

@@ -11,6 +11,7 @@ class MyUnverifiedQrScreen extends StatefulWidget {
     this.onSignOut,
     this.onScan,
     this.onTier2,
+    this.onSetupBiometrics,
     this.onCompleteMedical,
     this.medicalComplete = false,
   });
@@ -18,6 +19,7 @@ class MyUnverifiedQrScreen extends StatefulWidget {
   final VoidCallback onDashboard;
   final VoidCallback? onScan, onSignOut;
   final VoidCallback? onTier2;
+  final VoidCallback? onSetupBiometrics;
   final VoidCallback? onCompleteMedical;
   final bool medicalComplete;
   @override
@@ -192,6 +194,12 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen> {
                   onPressed: widget.onDashboard,
                   child: const Text('Go to Dashboard'),
                 ),
+                if (widget.onSetupBiometrics != null)
+                  OutlinedButton.icon(
+                    onPressed: widget.onSetupBiometrics,
+                    icon: const Icon(Icons.fingerprint),
+                    label: const Text('Biometric Security Setup'),
+                  ),
                 if (widget.onTier2 != null)
                   OutlinedButton(
                     onPressed: widget.onTier2,

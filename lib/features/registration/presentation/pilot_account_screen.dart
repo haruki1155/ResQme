@@ -3,7 +3,9 @@ import '../../../app/app_routes.dart';
 import '../../medical/screens/synthetic_medical_screen.dart';
 import '../../medical/services/synthetic_medical_repository.dart';
 import '../../medical/services/medical_completion_repository.dart';
+import '../../medical/screens/biometric_onboarding_screen.dart';
 import '../../medical/screens/medical_completion_screen.dart';
+import '../../medical/services/tier2_authorization_repository.dart';
 import '../../qr/screens/my_unverified_qr_screen.dart';
 import '../../qr/services/tier1_qr_repository.dart';
 import '../models/student_registration_profile.dart';
@@ -19,6 +21,7 @@ class PilotAccountScreen extends StatefulWidget {
     this.openMedical = false,
     this.onMedicalCompleted,
     this.completion,
+    this.tier2,
     this.onTier2,
   });
   final StudentRegistrationProfile profile;
@@ -28,6 +31,7 @@ class PilotAccountScreen extends StatefulWidget {
   final bool openMedical;
   final VoidCallback? onMedicalCompleted;
   final MedicalCompletionRepository? completion;
+  final Tier2AuthorizationRepository? tier2;
   final VoidCallback? onTier2;
   @override
   State<PilotAccountScreen> createState() => _PilotAccountScreenState();
@@ -37,6 +41,10 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
   late String step;
   String _eligibleStep(StudentRegistrationProfile profile) =>
       profile.schoolApprovalStatus == 'revoked' ? 'approval' : 'qr';
+  bool get _canSetupBiometrics =>
+      widget.tier2 != null &&
+      widget.profile.schoolApprovalStatus == 'approved' &&
+      widget.profile.ageYearsAtRegistration >= 18;
   @override
   void initState() {
     super.initState();
@@ -49,7 +57,9 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
   void didUpdateWidget(covariant PilotAccountScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.completion != null && oldWidget.profile != widget.profile) {
-      step = _eligibleStep(widget.profile);
+      if (step != 'biometrics') {
+        step = _eligibleStep(widget.profile);
+      }
     }
   }
 
@@ -62,7 +72,7 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
               onGuest: widget.onPublicDashboard,
               onComplete: () {
                 widget.onMedicalCompleted?.call();
-                setState(() => step = 'qr');
+                setState(() => step = _canSetupBiometrics ? 'biometrics' : 'qr');
               },
             )
           : SyntheticMedicalScreen(
@@ -73,6 +83,10 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
                 setState(() => step = 'qr');
               },
             ),
+    'biometrics' => BiometricOnboardingScreen(
+      repository: widget.tier2!,
+      onContinue: () => setState(() => step = 'qr'),
+    ),
     'approval' => Scaffold(
       appBar: AppBar(title: const Text('School approval')),
       body: SafeArea(
@@ -125,6 +139,9 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
       onScan: () => Navigator.pushNamed(context, AppRoutes.scanner),
       onSignOut: widget.onSignOut,
       onTier2: widget.onTier2,
+      onSetupBiometrics: widget.tier2 == null
+          ? null
+          : () => setState(() => step = 'biometrics'),
       onCompleteMedical: widget.completion == null
           ? null
           : () => setState(() => step = 'medical'),

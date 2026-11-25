@@ -1,5 +1,15 @@
 import 'package:flutter/services.dart';
 
+class StudentKeyEnrollment {
+  const StudentKeyEnrollment({
+    required this.publicKey,
+    required this.signature,
+  });
+
+  final String publicKey;
+  final String signature;
+}
+
 class StaffKeyEnrollment {
   const StaffKeyEnrollment({
     required this.publicKey,
@@ -14,6 +24,29 @@ class StaffKeyEnrollment {
 
 class PlatformTier2Key {
   static const _channel = MethodChannel('resqme/tier2_key');
+  Future<String> checkBiometricAvailability() async =>
+      await _channel.invokeMethod<String>('checkBiometricAvailability') ??
+      'biometric_unavailable';
+
+  Future<StudentKeyEnrollment> enrollStudentKey({
+    required String deviceId,
+    required String message,
+  }) async {
+    final result = await _channel.invokeMapMethod<String, dynamic>(
+      'enrollStudentKey',
+      {'deviceId': deviceId, 'message': message},
+    );
+    final publicKey = result?['publicKey'];
+    final signature = result?['signature'];
+    if (publicKey is! String ||
+        publicKey.isEmpty ||
+        signature is! String ||
+        signature.isEmpty) {
+      throw PlatformException(code: 'sign_failed');
+    }
+    return StudentKeyEnrollment(publicKey: publicKey, signature: signature);
+  }
+
   Future<String> createKey(String deviceId) async =>
       await _channel.invokeMethod<String>('createKey', {
         'deviceId': deviceId,

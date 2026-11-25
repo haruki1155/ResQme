@@ -69,9 +69,13 @@ class Tier2AuthorizationRepository {
     if (error is PlatformException) {
       return Tier2AuthorizationFailure(switch (error.code) {
         'cancelled' => 'Biometric confirmation cancelled.',
+        'biometric_not_enrolled' =>
+          'No fingerprint or strong biometric is enrolled on this device. Add one in Android Settings, then retry.',
+        'biometric_unsupported' =>
+          'Strong hardware-backed biometrics are not available on this device.',
         'biometric_lockout' =>
           'Biometrics are locked. Use your account password to continue.',
-        'key_unavailable' =>
+        'key_unavailable' || 'key_invalidated' =>
           'Set up biometrics again using your account password.',
         'sign_failed' =>
           'Biometric verification failed. Try again or use your account password.',
@@ -175,27 +179,74 @@ class Tier2AuthorizationRepository {
         return _readWithDevice(uid, await _deviceId(uid, check), check);
       });
 
+  Future<String> checkBiometricAvailability() async {
+    try {
+      return await keyProvider.checkBiometricAvailability();
+    } on PlatformException catch (error) {
+      return error.code;
+    } catch (_) {
+      return 'biometric_unavailable';
+    }
+  }
+
+  Future<String> _enrollDeviceInternal(
+    String uid,
+    String password,
+    void Function() check,
+  ) async {
+    final user = auth.currentUser;
+    if (user == null || user.email == null || password.isEmpty) {
+      throw const Tier2AuthorizationFailure('Enter your account password.');
+    }
+    await user.reauthenticateWithCredential(
+      EmailAuthProvider.credential(email: user.email!, password: password),
+    );
+    check();
+    await user.getIdToken(true);
+    check();
+    final availability = await checkBiometricAvailability();
+    check();
+    if (availability != 'ready') {
+      throw PlatformException(code: availability);
+    }
+    final challenge = await _call('issueStudentEnrollmentChallenge', {}, check);
+    final challengeId = challenge['challengeId'];
+    final nonce = challenge['nonce'];
+    if (challengeId is! String ||
+        challengeId.isEmpty ||
+        nonce is! String ||
+        nonce.isEmpty) {
+      throw const Tier2AuthorizationFailure(
+        'Biometric enrollment challenge is invalid.',
+      );
+    }
+    final deviceId = await _deviceId(uid, check);
+    await keyProvider.deleteKey(deviceId);
+    check();
+    final message =
+        'student_biometric_enroll\n$uid\n$deviceId\n$challengeId\n$nonce';
+    final enrollment = await keyProvider.enrollStudentKey(
+      deviceId: deviceId,
+      message: message,
+    );
+    check();
+    await _call('enrollTier2Device', {
+      'challengeId': challengeId,
+      'deviceId': deviceId,
+      'publicKey': enrollment.publicKey,
+      'signature': enrollment.signature,
+    }, check);
+    return deviceId;
+  }
+
+  Future<void> enrollBiometricDeviceWithPassword(String password) =>
+      _withOwner((uid, check) async {
+        await _enrollDeviceInternal(uid, password, check);
+      });
+
   Future<Map<String, dynamic>> enrollWithPassword(String password) =>
       _withOwner((uid, check) async {
-        final user = auth.currentUser;
-        if (user == null || user.email == null || password.isEmpty) {
-          throw const Tier2AuthorizationFailure('Enter your account password.');
-        }
-        await user.reauthenticateWithCredential(
-          EmailAuthProvider.credential(email: user.email!, password: password),
-        );
-        check();
-        await user.getIdToken(true);
-        check();
-        final deviceId = await _deviceId(uid, check);
-        await keyProvider.deleteKey(deviceId);
-        check();
-        final publicKey = await keyProvider.createKey(deviceId);
-        check();
-        await _call('enrollTier2Device', {
-          'deviceId': deviceId,
-          'publicKey': publicKey,
-        }, check);
+        final deviceId = await _enrollDeviceInternal(uid, password, check);
         return _readWithDevice(uid, deviceId, check);
       });
 
