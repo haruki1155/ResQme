@@ -207,7 +207,8 @@ test('SF1 import, authoritative minor birthDate/grade inheritance, LRN lock, and
   assert.equal(lockSnap.exists, true);
   assert.equal(lockSnap.get('studentUid'), minorUid);
 
-  // Second student attempting to reuse the same LRN/code gets conflict (NOT approved)
+  // Second student attempting to reuse the same LRN/code stays pending and
+  // receives uniform 'manual_review' (preventing LRN claim enumeration).
   await dupClient.call('createStudentRegistration', {
     fullName: 'Juan Santos Dela Cruz',
     ageYears: 16,
@@ -218,7 +219,7 @@ test('SF1 import, authoritative minor birthDate/grade inheritance, LRN lock, and
   });
   const dupProfile = await store.doc(`studentProfiles/${duplicateUid}`).get();
   assert.equal(dupProfile.get('schoolApprovalStatus'), 'pending');
-  assert.equal(dupProfile.get('schoolVerificationOutcome'), 'conflict');
+  assert.equal(dupProfile.get('schoolVerificationOutcome'), 'manual_review');
 
   // Activity Logs shows commit_roster_import with zero secret leakage
   const logs = (await masterClient.call('listSchoolActivityLogs', {

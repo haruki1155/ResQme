@@ -101,8 +101,8 @@ function buildSf1Fixture(): {base64: string; sha256: string} {
     [],
     ['', 'LRN', 'NAME (Last Name, First Name, Middle Name)', '', '', '', 'Sex (M/F)', 'BIRTH DATE (mm/dd/ yyyy)', 'AGE', '', '', '', '', '', '', '', '', '', '', 'PARENTS', '', '', '', 'GUARDIAN (If not Parent)', '', 'Contact Number of Parent or Guardian'],
     ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', "Father's Name", '', "Mother's Maiden Name", '', 'Name', 'Relation-ship', ''],
-    ['', '009123456789', 'Reyes, Mara Cruz', '', '', '', 'F', '03/10/2005', '', '', '', '', '', '', '', '', '', '', '', 'Reyes, Jose', '', 'Cruz, Elena', '', '', '', '09179876543'],
-    ['', '009987654321', 'Dela Cruz, Juan Santos', '', '', '', 'M', '05/10/2010', '', '', '', '', '', '', '', '', '', '', '', 'Dela Cruz, Pedro', '', 'Santos, Maria', '', 'Maria Dela Cruz', 'Mother', '09171234567'],
+    ['', '009888111222', 'Reyes, Mara Cruz', '', '', '', 'F', '03/10/2005', '', '', '', '', '', '', '', '', '', '', '', 'Reyes, Jose', '', 'Cruz, Elena', '', '', '', '09179876543'],
+    ['', '009888333444', 'Dela Cruz, Juan Santos', '', '', '', 'M', '05/10/2010', '', '', '', '', '', '', '', '', '', '', '', 'Dela Cruz, Pedro', '', 'Santos, Maria', '', 'Maria Dela Cruz', 'Mother', '09171234567'],
     ['List and Code of Indicators under REMARKS', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'Prepared by:'],
   ];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -218,8 +218,8 @@ test('Phase 9: End-to-end two-app synchronization across SF1 import, auto/manual
     generatedCredentials: Array<{fullName: string; maskedLrn: string; enrollmentCode: string}>;
   };
   assert.equal(commit.committedCount, 2);
-  const adultRosterCred = commit.generatedCredentials.find((c) => c.maskedLrn === '0091••••6789');
-  const minorRosterCred = commit.generatedCredentials.find((c) => c.maskedLrn === '0099••••4321');
+  const adultRosterCred = commit.generatedCredentials.find((c) => c.maskedLrn === '0098••••1222');
+  const minorRosterCred = commit.generatedCredentials.find((c) => c.maskedLrn === '0098••••3444');
   assert.ok(adultRosterCred);
   assert.ok(minorRosterCred);
 
@@ -238,7 +238,7 @@ test('Phase 9: End-to-end two-app synchronization across SF1 import, auto/manual
     ageYears: 21,
     noticeVersion,
     acknowledgmentAccepted: true,
-    lrn: '009123456789',
+    lrn: '009888111222',
     enrollmentCode: adultRosterCred!.enrollmentCode,
   })).data as {status: string};
   assert.equal(adultReg.status, 'pending_review');
@@ -249,7 +249,7 @@ test('Phase 9: End-to-end two-app synchronization across SF1 import, auto/manual
     ageYears: 19, // Attempted adult claim overridden by authoritative roster birthDate!
     noticeVersion,
     acknowledgmentAccepted: true,
-    lrn: '009987654321',
+    lrn: '009888333444',
     enrollmentCode: minorRosterCred!.enrollmentCode,
   })).data as {status: string};
   assert.equal(minorReg.status, 'pending_guardian');
@@ -671,8 +671,8 @@ test('Phase 9: End-to-end two-app synchronization across SF1 import, auto/manual
   assert.ok(allLogs.entries.every((e) => e.manilaTimeLabel.includes('PHT')));
 
   const serializedLogs = JSON.stringify(allLogs);
-  assert.equal(serializedLogs.includes('009123456789'), false);
-  assert.equal(serializedLogs.includes('009987654321'), false);
+  assert.equal(serializedLogs.includes('009888111222'), false);
+  assert.equal(serializedLogs.includes('009888333444'), false);
   assert.equal(serializedLogs.includes(adultRosterCred!.enrollmentCode), false);
   assert.equal(serializedLogs.includes('asthma'), false);
   assert.equal(serializedLogs.includes('penicillin'), false);
