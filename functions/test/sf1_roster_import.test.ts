@@ -237,6 +237,7 @@ test('Preview masks LRNs, detects duplicates/conflicts, commits idempotently, an
       }),
     )) as {
       previewId: string;
+      fileSha256: string;
       summary: {newCount: number; duplicateCount: number};
       rows: Array<{maskedLrn: string; status: string}>;
     };
@@ -247,7 +248,12 @@ test('Preview masks LRNs, detects duplicates/conflicts, commits idempotently, an
     assert.equal(JSON.stringify(preview).includes('009876543210'), false);
 
     const commit1 = (await commitSchoolRosterImport.run(
-      authReq('admin-1', {previewId: preview.previewId, requestId: 'imp_req_0001'}),
+      authReq('admin-1', {
+        previewId: preview.previewId,
+        requestId: 'imp_req_0001',
+        expectedFileSha256: preview.fileSha256,
+        privacyNoticeAcknowledged: true,
+      }),
     )) as {
       committedCount: number;
       newCount: number;
@@ -259,7 +265,12 @@ test('Preview masks LRNs, detects duplicates/conflicts, commits idempotently, an
 
     // Idempotent retry
     const commitReplay = (await commitSchoolRosterImport.run(
-      authReq('admin-1', {previewId: preview.previewId, requestId: 'imp_req_0001'}),
+      authReq('admin-1', {
+        previewId: preview.previewId,
+        requestId: 'imp_req_0001',
+        expectedFileSha256: preview.fileSha256,
+        privacyNoticeAcknowledged: true,
+      }),
     )) as {committedCount: number; generatedCredentials: unknown[]};
     assert.equal(commitReplay.committedCount, 1);
     assert.equal(commitReplay.generatedCredentials.length, 0);

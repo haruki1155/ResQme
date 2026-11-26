@@ -358,19 +358,16 @@ export const commitSchoolRosterImport = onCall(resqmeRuntimeOptions, async (requ
   if (typeof data.requestId !== 'string' || !REQUEST_ID_PATTERN.test(data.requestId)) {
     throw new HttpsError('invalid-argument', 'Invalid import request ID.');
   }
-  if (data.privacyNoticeAcknowledged !== undefined && data.privacyNoticeAcknowledged !== true) {
+  if (data.privacyNoticeAcknowledged !== true) {
     throw new HttpsError(
       'failed-precondition',
       'Acknowledge the Data Privacy Act notice before importing student records.',
     );
   }
-  let expectedFileSha256: string | null = null;
-  if (data.expectedFileSha256 !== undefined && data.expectedFileSha256 !== null) {
-    if (typeof data.expectedFileSha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(data.expectedFileSha256)) {
-      throw new HttpsError('invalid-argument', 'Invalid preview file hash.');
-    }
-    expectedFileSha256 = data.expectedFileSha256.toLowerCase();
+  if (typeof data.expectedFileSha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(data.expectedFileSha256)) {
+    throw new HttpsError('invalid-argument', 'Invalid preview file hash.');
   }
+  const expectedFileSha256 = data.expectedFileSha256.toLowerCase();
   const previewId = data.previewId;
   const requestId = data.requestId;
 

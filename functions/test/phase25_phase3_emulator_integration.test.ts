@@ -146,6 +146,7 @@ test('SF1 import, authoritative minor birthDate/grade inheritance, LRN lock, and
     confirmedGradeLevel: null,
   })).data as {
     previewId: string;
+    fileSha256: string;
     confirmedGradeLevel: string;
     summary: {newCount: number; duplicateCount: number; invalidCount: number};
   };
@@ -158,6 +159,8 @@ test('SF1 import, authoritative minor birthDate/grade inheritance, LRN lock, and
   const commit = (await masterClient.call('commitSchoolRosterImport', {
     previewId: preview.previewId,
     requestId: 'emu_sf1_imp_001',
+    expectedFileSha256: preview.fileSha256,
+    privacyNoticeAcknowledged: true,
   })).data as {
     committedCount: number;
     newCount: number;
@@ -169,6 +172,8 @@ test('SF1 import, authoritative minor birthDate/grade inheritance, LRN lock, and
   const replay = (await masterClient.call('commitSchoolRosterImport', {
     previewId: preview.previewId,
     requestId: 'emu_sf1_imp_001',
+    expectedFileSha256: preview.fileSha256,
+    privacyNoticeAcknowledged: true,
   })).data as {committedCount: number; generatedCredentials: unknown[]};
   assert.equal(replay.committedCount, 2);
   assert.equal(replay.generatedCredentials.length, 0);

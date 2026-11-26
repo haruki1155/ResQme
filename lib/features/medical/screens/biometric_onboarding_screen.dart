@@ -24,6 +24,7 @@ class _BiometricOnboardingScreenState extends State<BiometricOnboardingScreen> {
   bool _needsTransferCode = false;
   bool _busy = false;
   bool _enrolled = false;
+  String? _generatedTransferCode;
   String? _error;
 
   @override
@@ -77,6 +78,64 @@ class _BiometricOnboardingScreenState extends State<BiometricOnboardingScreen> {
           _needsTransferCode = true;
         }
         _error = msg;
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _generateTransferCode({String? passwordOverride}) async {
+    if (_busy) return;
+    var pwd = passwordOverride ?? _password.text;
+    if (pwd.isEmpty) {
+      final ctrl = TextEditingController();
+      final entered = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Confirm Account Password'),
+          content: TextField(
+            controller: ctrl,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'ResQMe account password',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(ctrl.text),
+              child: const Text('Verify with Biometrics'),
+            ),
+          ],
+        ),
+      );
+      ctrl.dispose();
+      if (entered == null || entered.isEmpty || !mounted) return;
+      pwd = entered;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+      _generatedTransferCode = null;
+    });
+    try {
+      final code = await widget.repository.approveTrustedDeviceTransfer(pwd);
+      if (!mounted) return;
+      setState(() {
+        _password.clear();
+        _generatedTransferCode = code;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error is Tier2AuthorizationFailure
+            ? error.message
+            : 'Unable to generate device transfer code.';
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -141,8 +200,14 @@ class _BiometricOnboardingScreenState extends State<BiometricOnboardingScreen> {
               ),
               const SizedBox(height: 24),
               FilledButton(
-                onPressed: widget.onContinue,
+                onPressed: _busy ? null : widget.onContinue,
                 child: const Text('Continue to My QR'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _busy ? null : () => _generateTransferCode(),
+                icon: const Icon(Icons.phonelink_setup_outlined),
+                label: const Text('Generate transfer code for new phone'),
               ),
             ] else if (_availability == 'checking') ...[
               const Center(
@@ -267,6 +332,27 @@ class _BiometricOnboardingScreenState extends State<BiometricOnboardingScreen> {
               OutlinedButton(
                 onPressed: _busy ? null : widget.onContinue,
                 child: const Text('Skip for now and view My QR'),
+              ),
+              const SizedBox(height: 4),
+              TextButton.icon(
+                onPressed: _busy ? null : () => _generateTransferCode(),
+                icon: const Icon(Icons.phonelink_setup_outlined, size: 18),
+                label: const Text('Switching phones? Generate transfer code'),
+              ),
+            ],
+            if (_generatedTransferCode != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: SelectableText(
+                  'Transfer Code (valid 10 min): $_generatedTransferCode\nEnter this code on your replacement personal phone during Biometric Security Setup.',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ],
             if (_error != null) ...[
