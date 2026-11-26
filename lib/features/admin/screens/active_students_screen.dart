@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:pretty_qr_code/pretty_qr_code.dart';
 import '../../../core/widgets/feature_guide.dart';
 import '../../../core/widgets/resqme_skeleton.dart';
+import '../../qr/widgets/download_emergency_qr_button.dart';
 import '../services/portal_read_coordinator.dart';
 import '../services/portal_student_repository.dart';
 import '../services/staff_access_repository.dart';
@@ -38,6 +40,54 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
   int _requestSeq = 0;
   int? _lastObservedMutationVersion;
   String? _error;
+  bool _openingQr = false;
+
+  Future<void> _viewQr(
+    SchoolStudentQrRepository repository,
+    SchoolStudentSummary student,
+  ) async {
+    if (_openingQr) return;
+    setState(() => _openingQr = true);
+    try {
+      final payload = await repository.viewStudentTier1Qr(student.uid);
+      if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+      await showDialog<void>(
+        context: context,
+        useRootNavigator: false,
+        builder: (context) => AlertDialog(
+          scrollable: true,
+          title: const Text('Emergency QR'),
+          content: SizedBox(
+            width: 240,
+            child: PrettyQrView.data(
+              data: payload,
+              decoration: const PrettyQrDecoration(
+                background: Colors.white,
+                quietZone: PrettyQrQuietZone.standard,
+              ),
+            ),
+          ),
+          actions: [
+            DownloadEmergencyQrButton(payload: payload),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to view an active emergency QR.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingQr = false);
+    }
+  }
 
   static const _statusFilters = <(String, String)>[
     ('all', 'All'),
@@ -205,6 +255,7 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final qrRepository = widget.portalStudentRepository;
     final gradeItems = <DropdownMenuItem<String>>[
       const DropdownMenuItem(
         value: 'all',
@@ -230,8 +281,9 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
               guide: ResQMeFeatureGuides.portalActiveStudents,
               trailing: IconButton(
                 tooltip: 'Refresh students',
-                onPressed:
-                    _isInitialLoading || _isRefreshing ? null : _loadInitial,
+                onPressed: _isInitialLoading || _isRefreshing
+                    ? null
+                    : _loadInitial,
                 icon: const Icon(Icons.refresh),
               ),
             ),
@@ -307,10 +359,7 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
             const SizedBox(height: 10),
             PortalRefreshStrip(refreshing: _isRefreshing),
             if (_hasLoadedOnce && _error != null)
-              PortalInlineErrorBanner(
-                message: _error!,
-                onRetry: _loadInitial,
-              ),
+              PortalInlineErrorBanner(message: _error!, onRetry: _loadInitial),
             if (_isInitialLoading)
               const PortalCardListSkeleton(itemCount: 4, scrollable: false)
             else if (!_hasLoadedOnce && _error != null)
@@ -393,6 +442,19 @@ class _ActiveStudentsScreenState extends State<ActiveStudentsScreen> {
                             PortalStatusBadge.forStudentCategory(
                               student.accountCategory,
                             ),
+                            if (student.accountCategory == 'verified' &&
+                                qrRepository is SchoolStudentQrRepository)
+                              IconButton(
+                                tooltip: 'View QR',
+                                onPressed: _openingQr
+                                    ? null
+                                    : () => _viewQr(
+                                        qrRepository
+                                            as SchoolStudentQrRepository,
+                                        student,
+                                      ),
+                                icon: const Icon(Icons.qr_code),
+                              ),
                             const SizedBox(width: 4),
                             const Icon(
                               Icons.chevron_right,

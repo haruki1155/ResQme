@@ -518,6 +518,22 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
                 },
               ),
               const SizedBox(height: 16),
+              if (entry.registrationState == 'not_registered' &&
+                  widget.portalStudentRepository
+                      is RosterCodeReissueRepository) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _reissueRosterEnrollmentCode(entry);
+                    },
+                    icon: const Icon(Icons.key_outlined, size: 18),
+                    label: const Text('Issue New Enrollment Code'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
@@ -530,6 +546,88 @@ class _StudentRosterScreenState extends State<StudentRosterScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _reissueRosterEnrollmentCode(SchoolRosterEntry entry) async {
+    final repo = widget.portalStudentRepository;
+    if (repo is! RosterCodeReissueRepository) return;
+    try {
+      final cred = await repo.reissueRosterEnrollmentCode(entry.rosterId);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('One-Time Enrollment Code'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${cred.fullName} (${cred.maskedLrn}) • ${cred.gradeLevel}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Share this one-time enrollment code with the student for automatic verification. Any previous code for this roster entry has been revoked.',
+                style: TextStyle(fontSize: 12.5, color: PortalColors.inkSecondary),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: PortalColors.background,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: PortalColors.border),
+                ),
+                child: SelectableText(
+                  cred.enrollmentCode,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(
+                  ClipboardData(text: cred.enrollmentCode),
+                );
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('Enrollment code copied.')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy, size: 18),
+              label: const Text('Copy Code'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      if (PortalErrorClassifier.isSessionAuthorizationError(error)) {
+        PortalScope.reportIfSessionAuthorizationLost(context, error);
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error is PortalStudentException
+                ? error.message
+                : 'Unable to issue enrollment code.',
+          ),
+        ),
+      );
+    }
   }
 
   Widget _rosterRow(String label, String value) {
@@ -1034,51 +1132,83 @@ class _RosterCommitResultDialog extends StatelessWidget {
   const _RosterCommitResultDialog({required this.result});
   final RosterImportCommitResult result;
 
+  String _formatAllCredentials() => result.generatedCredentials
+      .map(
+        (c) => '${c.fullName} | ${c.maskedLrn} | ${c.gradeLevel} | ${c.enrollmentCode}',
+      )
+      .join('\n');
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('SF1 Import Complete'),
       content: SizedBox(
         width: 440,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '${result.committedCount} student records processed (${result.newCount} new, ${result.updatedCount} updated).',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            if (result.generatedCredentials.isNotEmpty) ...[
+              const SizedBox(height: 10),
               Text(
-                '${result.committedCount} student records processed (${result.newCount} new, ${result.updatedCount} updated).',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              if (result.generatedCredentials.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                const Text(
-                  'One-Time Enrollment Credentials (share securely with students):',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: PortalColors.inkSecondary,
-                  ),
+                'One-Time Enrollment Credentials (${result.generatedCredentials.length} total — share securely with students):',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: PortalColors.inkSecondary,
                 ),
-                const SizedBox(height: 8),
-                for (final c in result.generatedCredentials.take(15))
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('${c.fullName} (${c.maskedLrn})'),
-                    subtitle: Text('Code: ${c.enrollmentCode}'),
-                    trailing: IconButton(
-                      tooltip: 'Copy enrollment code',
-                      icon: const Icon(Icons.copy, size: 18),
-                      onPressed: () => Clipboard.setData(
-                        ClipboardData(text: c.enrollmentCode),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 260,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: result.generatedCredentials.length,
+                  itemBuilder: (_, i) {
+                    final c = result.generatedCredentials[i];
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('${i + 1}. ${c.fullName} (${c.maskedLrn})'),
+                      subtitle: SelectableText('Code: ${c.enrollmentCode}'),
+                      trailing: IconButton(
+                        tooltip: 'Copy enrollment code',
+                        icon: const Icon(Icons.copy, size: 18),
+                        onPressed: () => Clipboard.setData(
+                          ClipboardData(text: c.enrollmentCode),
+                        ),
                       ),
-                    ),
-                  ),
-              ],
+                    );
+                  },
+                ),
+              ),
             ],
-          ),
+          ],
         ),
       ),
       actions: [
+        if (result.generatedCredentials.isNotEmpty)
+          TextButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(
+                ClipboardData(text: _formatAllCredentials()),
+              );
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Copied ${result.generatedCredentials.length} enrollment codes.',
+                    ),
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.copy_all, size: 18),
+            label: const Text('Copy All'),
+          ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Done'),

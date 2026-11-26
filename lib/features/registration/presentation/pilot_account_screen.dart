@@ -11,6 +11,7 @@ import '../../qr/services/tier1_qr_repository.dart';
 import '../models/student_registration_profile.dart';
 import '../screens/student_login_qr_screen.dart';
 import '../services/student_registration_repository.dart';
+import '../widgets/roster_claim_verification_dialog.dart';
 
 class PilotAccountScreen extends StatefulWidget {
   const PilotAccountScreen({
@@ -22,6 +23,7 @@ class PilotAccountScreen extends StatefulWidget {
     required this.onSignOut,
     this.openMedical = false,
     this.onMedicalCompleted,
+    this.onRefreshProfile,
     this.completion,
     this.tier2,
     this.onTier2,
@@ -33,6 +35,7 @@ class PilotAccountScreen extends StatefulWidget {
   final VoidCallback onPublicDashboard, onSignOut;
   final bool openMedical;
   final VoidCallback? onMedicalCompleted;
+  final VoidCallback? onRefreshProfile;
   final MedicalCompletionRepository? completion;
   final Tier2AuthorizationRepository? tier2;
   final VoidCallback? onTier2;
@@ -76,6 +79,7 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
               onGuest: widget.onPublicDashboard,
               onComplete: () {
                 widget.onMedicalCompleted?.call();
+                widget.onRefreshProfile?.call();
                 setState(() => step = _canSetupBiometrics ? 'biometrics' : 'qr');
               },
             )
@@ -84,6 +88,7 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
               isMinor: widget.profile.ageYearsAtRegistration < 18,
               onContinue: () {
                 widget.onMedicalCompleted?.call();
+                widget.onRefreshProfile?.call();
                 setState(() => step = 'qr');
               },
             ),
@@ -119,7 +124,8 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
                   ),
                   const SizedBox(height: 20),
                   OutlinedButton(
-                    onPressed: widget.onMedicalCompleted,
+                    onPressed:
+                        widget.onRefreshProfile ?? widget.onMedicalCompleted,
                     child: const Text('Refresh status'),
                   ),
                   FilledButton(
@@ -151,6 +157,34 @@ class _PilotAccountScreenState extends State<PilotAccountScreen> {
           : () => setState(() => step = 'medical'),
       medicalComplete: widget.profile.medicalStatus == 'complete',
       studentFullName: widget.profile.fullName,
+      schoolApprovalStatus: widget.profile.schoolApprovalStatus,
+      ageYearsAtRegistration: widget.profile.ageYearsAtRegistration,
+      onRefreshStatus: widget.onRefreshProfile,
+      onVerifyWithEnrollmentCode:
+          widget.profile.schoolApprovalStatus == 'pending' &&
+              widget.registrationRepository
+                  is RosterClaimRegistrationRepository
+          ? () async {
+              final repo =
+                  widget.registrationRepository
+                      as RosterClaimRegistrationRepository;
+              final verified = await showRosterClaimVerificationDialog(
+                context: context,
+                repository: repo,
+                initialFullName: widget.profile.fullName,
+              );
+              if (!context.mounted ||
+                  verified?.profile?.schoolApprovalStatus != 'approved') {
+                return;
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('School enrollment verified automatically!'),
+                ),
+              );
+              widget.onRefreshProfile?.call();
+            }
+          : null,
       tier2Repository: widget.tier2,
       onManageLoginQr: widget.registrationRepository == null
           ? null

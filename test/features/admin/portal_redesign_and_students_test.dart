@@ -631,7 +631,11 @@ void main() {
     expect(find.text('000000123456'), findsNothing);
 
     // Second biometric attempt succeeds -> reveals full LRN + enables FLAG_SECURE
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     await tester.tap(find.byKey(const Key('reveal-lrn-biometric-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('000000123456'), findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
     expect(find.text('000000123456'), findsOneWidget);
     expect(studentRepo.biometricRevealCalls, 1);
@@ -670,6 +674,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('000000123456'), findsNothing);
     expect(find.text('0000••••3456'), findsOneWidget);
+
+    // Leaving the app while waiting for focus invalidates the successful proof.
+    await tester.tap(find.byKey(const Key('reveal-lrn-button')));
+    await tester.pumpAndSettle();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.tap(find.byKey(const Key('reveal-lrn-biometric-button')));
+    await tester.pumpAndSettle();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.text('000000123456'), findsNothing);
+    expect(studentRepo.secureScreenEnabled, isFalse);
   });
 
   testWidgets('Active Students supports status filters (no Pending/Revoked categories), exact LRN search, manual verification, and account disable/enable without restoring revoked QR', (tester) async {

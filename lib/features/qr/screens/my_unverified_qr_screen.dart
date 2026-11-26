@@ -5,6 +5,7 @@ import '../../../core/widgets/feature_guide.dart';
 import '../../../core/widgets/resqme_skeleton.dart';
 import '../../medical/services/tier2_authorization_repository.dart';
 import '../services/tier1_qr_repository.dart';
+import '../widgets/download_emergency_qr_button.dart';
 
 class MyUnverifiedQrScreen extends StatefulWidget {
   const MyUnverifiedQrScreen({
@@ -18,6 +19,10 @@ class MyUnverifiedQrScreen extends StatefulWidget {
     this.onCompleteMedical,
     this.medicalComplete = false,
     this.studentFullName,
+    this.schoolApprovalStatus,
+    this.ageYearsAtRegistration,
+    this.onRefreshStatus,
+    this.onVerifyWithEnrollmentCode,
     this.tier2Repository,
     this.onManageLoginQr,
   });
@@ -30,6 +35,10 @@ class MyUnverifiedQrScreen extends StatefulWidget {
   final VoidCallback? onCompleteMedical;
   final bool medicalComplete;
   final String? studentFullName;
+  final String? schoolApprovalStatus;
+  final int? ageYearsAtRegistration;
+  final VoidCallback? onRefreshStatus;
+  final Future<void> Function()? onVerifyWithEnrollmentCode;
   final Tier2AuthorizationRepository? tier2Repository;
   final VoidCallback? onManageLoginQr;
 
@@ -155,7 +164,103 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen>
         setState(() => loading = false);
       }
     }
+    if (forceRefresh) {
+      widget.onRefreshStatus?.call();
+    }
     await _checkBiometricStatus();
+  }
+
+  Widget _buildSchoolVerificationCard() {
+    final approval = widget.schoolApprovalStatus;
+    if (approval == null) return const SizedBox.shrink();
+    final approved = approval == 'approved';
+    final isMinor = (widget.ageYearsAtRegistration ?? 18) < 18;
+    final String title;
+    final String body;
+    final Color bg;
+    final Color border;
+    final Color accent;
+    final IconData icon;
+
+    if (approved) {
+      title = 'School Enrollment Verified';
+      body = !widget.medicalComplete
+          ? 'Your school enrollment is verified. Complete your Medical Information below to activate your ResQMe QR.'
+          : isMinor && credential?.verificationStatus != 'active'
+          ? 'Your school enrollment is verified. Because you are under 18, verified parent or guardian authorization is required to activate your emergency QR and set up Tier 2 biometrics.'
+          : 'Your school enrollment and emergency readiness requirements are verified.';
+      bg = const Color(0xFFECFDF3);
+      border = const Color(0xFFBBF7D0);
+      accent = const Color(0xFF15803D);
+      icon = Icons.verified_outlined;
+    } else {
+      title = 'Pending School Verification';
+      body =
+          'Your account is awaiting school approval. If you have a school-issued enrollment code, you can verify automatically right now.';
+      bg = const Color(0xFFFFFBEB);
+      border = const Color(0xFFFDE68A);
+      accent = const Color(0xFFB45309);
+      icon = Icons.pending_actions_outlined;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: accent, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: accent,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      body,
+                      style: const TextStyle(
+                        color: Color(0xFF1E293B),
+                        fontSize: 12.5,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (!approved && widget.onVerifyWithEnrollmentCode != null) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: loading
+                  ? null
+                  : () async {
+                      await widget.onVerifyWithEnrollmentCode!.call();
+                      if (mounted) await load(forceRefresh: true);
+                    },
+              icon: const Icon(Icons.verified_user_outlined, size: 18),
+              label: const Text('Verify with Enrollment Code'),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Future<void> replace() async {
@@ -362,10 +467,14 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen>
                 const SizedBox(height: 16),
                 Text(
                   credential?.verificationStatus == 'pending'
-                      ? 'This QR is not active yet. It does not sign anyone in or reveal student information. Public Tier 1 emergency resources remain available while school review is pending.'
+                      ? (widget.schoolApprovalStatus == 'approved'
+                            ? 'This QR is not active yet because medical or guardian requirements are still incomplete. Public Tier 1 emergency resources remain available.'
+                            : 'This QR is not active yet. It does not sign anyone in or reveal student information. Public Tier 1 emergency resources remain available while school review is pending.')
                       : 'Scanning confirms this QR is active for Tier 1 public emergency resources. It does not sign the holder into the student account or reveal private student information.',
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
+                _buildSchoolVerificationCard(),
+                const SizedBox(height: 8),
                 if (loading && credential == null)
                   const StudentQrCardSkeleton(),
                 if (loading && credential != null)
@@ -384,6 +493,8 @@ class _MyUnverifiedQrScreenState extends State<MyUnverifiedQrScreen>
                       ),
                     ),
                   ),
+                if (!loading && credential?.verificationStatus == 'active')
+                  DownloadEmergencyQrButton(payload: credential!.payload),
                 if (credential != null) _buildCensoredIdentityCard(),
                 if (credential != null) ...[
                   const SizedBox(height: 14),

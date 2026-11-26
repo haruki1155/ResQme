@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {evaluateStudentEligibility} from '../src/qr/qr_eligibility';
-import {createStudentRegistration, registrationDeps} from '../src/registration/create_student_registration';
+import {hashQrPayload} from '../src/qr/resolve_tier1_qr';
+import {
+  claimMyRosterVerification,
+  createStudentRegistration,
+  registrationDeps,
+} from '../src/registration/create_student_registration';
 import {noticeVersion, validateRegistration} from '../src/registration/registration_contract';
 import {
   evaluateRosterClaim,
@@ -14,6 +19,37 @@ import {staffManagementDeps} from '../src/staff/staff_account_management';
 import {verifySchoolStudentAccount} from '../src/staff/staff_student_management';
 
 const TEST_HMAC_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef';
+
+test('registration with an enrollment code stays retryable when roster verification is unavailable', async (t) => {
+  const previousKey = process.env.RESQME_SCHOOL_ROSTER_HMAC_KEY;
+  delete process.env.RESQME_SCHOOL_ROSTER_HMAC_KEY;
+  t.after(() => {
+    if (previousKey !== undefined) process.env.RESQME_SCHOOL_ROSTER_HMAC_KEY = previousKey;
+  });
+  const store = makeMockDb();
+  t.mock.method(registrationDeps, 'db', () => store.db as never);
+  const request = {
+    auth: {uid: 'student-retry', token: {}},
+    data: {
+      fullName: 'Mara Cruz Reyes',
+      birthDate: '2005-03-10',
+      lrn: '109900112233',
+      enrollmentCode: 'ENROLL-TEST-CODE-0001',
+      noticeVersion,
+      acknowledgmentAccepted: true,
+    },
+  };
+  await assert.rejects(createStudentRegistration.run(request as never), {
+    code: 'failed-precondition',
+  });
+  assert.equal(store.rows.size, 0);
+
+  await createStudentRegistration.run({
+    ...request,
+    data: {...request.data, enrollmentCode: null},
+  } as never);
+  assert.equal(store.rows.get('studentProfiles/student-retry')?.schoolApprovalStatus, 'pending');
+});
 
 function makeMockDb() {
   const rows = new Map<string, Record<string, unknown>>();
@@ -45,6 +81,7 @@ function makeMockDb() {
       const ops: Array<() => void> = [];
       const tx = {
         async get(ref: {path: string}) {
+          if (ops.length > 0) throw new Error('Firestore transactions require reads before writes.');
           const data = rows.get(ref.path);
           return {
             exists: data !== undefined,
@@ -396,4 +433,145 @@ test('createStudentRegistration automatically activates verified roster student,
   assert.ok((manuallyVerifiedMinor.ageYearsAtRegistration as number) < 18);
   assert.equal(manuallyVerifiedMinor.birthDate, '2012-03-15');
   assert.equal(manuallyVerifiedMinor.gradeLevel, 'Grade 9');
+});
+
+test('claimMyRosterVerification allows a pending student to fix a birthDate typo and auto-verify with their enrollment code', async (t) => {
+  const prevKey = process.env.RESQME_SCHOOL_ROSTER_HMAC_KEY;
+  process.env.RESQME_SCHOOL_ROSTER_HMAC_KEY = TEST_HMAC_KEY;
+  t.after(() => {
+    if (prevKey === undefined) delete process.env.RESQME_SCHOOL_ROSTER_HMAC_KEY;
+    else process.env.RESQME_SCHOOL_ROSTER_HMAC_KEY = prevKey;
+  });
+
+  const s = makeMockDb();
+  t.mock.method(registrationDeps, 'db', () => s.db as never);
+
+  const lrn = '109900112233';
+  const code = 'ENROLL-RECOVERY-CODE1';
+  const rId = rosterLookupId(lrn, TEST_HMAC_KEY);
+  const cDigest = rosterCodeDigest(code, TEST_HMAC_KEY);
+
+  s.rows.set(`schoolRosterClaims/${rId}`, {
+    schoolId: 'school-alpha',
+    lrn,
+    lastName: 'Reyes',
+    firstName: 'Mara',
+    middleName: 'Cruz',
+    fullName: 'Mara Cruz Reyes',
+    normalizedName: 'mara cruz reyes',
+    gradeLevel: 'Grade 10',
+    sex: 'Female',
+    birthDate: '2005-03-10',
+    enrollmentCodeDigest: cDigest,
+    claimedByUid: null,
+  });
+  s.rows.set(`schoolRosterCodes/${cDigest}`, {
+    rosterId: rId,
+    schoolId: 'school-alpha',
+    claimedByUid: null,
+  });
+
+  // Step 1: Student accidentally submits wrong birthDate year (2010-03-10) -> falls back to unassigned manual_review
+  await createStudentRegistration.run({
+    auth: {uid: 'stu-recovery-1', token: {}},
+    data: {
+      fullName: 'Mara Cruz Reyes',
+      birthDate: '2010-03-10',
+      ageYears: 16,
+      lrn,
+      enrollmentCode: code,
+      noticeVersion,
+      acknowledgmentAccepted: true,
+    },
+  } as never);
+  assert.equal(s.rows.get('studentProfiles/stu-recovery-1')!.schoolApprovalStatus, 'pending');
+  assert.equal(s.rows.get('studentProfiles/stu-recovery-1')!.schoolAssignmentStatus, 'unassigned');
+
+  // Step 2: Mismatched claim attempt fails cleanly without mutating or leaking
+  await assert.rejects(
+    () =>
+      claimMyRosterVerification.run({
+        auth: {uid: 'stu-recovery-1', token: {}},
+        data: {
+          fullName: 'Mara Cruz Reyes',
+          birthDate: '2010-03-10',
+          lrn,
+          enrollmentCode: code,
+        },
+      } as never),
+    /did not match/i,
+  );
+  assert.equal(s.rows.get('studentProfiles/stu-recovery-1')!.schoolApprovalStatus, 'pending');
+
+  // Opening My QR before retrying enrollment creates a pending credential and lookup.
+  const payload = 'resqme:v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  s.rows.set('studentQrCredentials/stu-recovery-1', {
+    payload,
+    verificationStatus: 'pending',
+  });
+  const lookupPath = `studentQrLookups/${hashQrPayload(payload)}`;
+  s.rows.set(lookupPath, {uid: 'stu-recovery-1', status: 'pending'});
+  Object.assign(s.rows.get('studentProfiles/stu-recovery-1')!, {
+    medicalStatus: 'complete',
+    medicalRevision: 1,
+  });
+  s.rows.set('studentMedicalRecords/stu-recovery-1', {
+    schemaVersion: 1,
+    medicalStatus: 'complete',
+    selfReported: true,
+    revision: 1,
+    conditions: {state: 'none_known', details: null},
+    allergies: {state: 'none_known', details: null},
+    primaryContact: {fullName: 'Test Guardian', relationship: 'Parent', phoneNumber: '09171234567'},
+  });
+
+  // Step 3: Corrected birthDate 2005-03-10 claims roster, sets approved, and updates age/status
+  const verified = (await claimMyRosterVerification.run({
+    auth: {uid: 'stu-recovery-1', token: {}},
+    data: {
+      fullName: 'Mara Cruz Reyes',
+      birthDate: '2005-03-10',
+      lrn,
+      enrollmentCode: code,
+    },
+  } as never)) as {verified: boolean; schoolApprovalStatus: string};
+
+  assert.equal(verified.verified, true);
+  assert.equal(verified.schoolApprovalStatus, 'approved');
+  const updated = s.rows.get('studentProfiles/stu-recovery-1')!;
+  assert.equal(updated.schoolApprovalStatus, 'approved');
+  assert.equal(updated.schoolAssignmentStatus, 'assigned');
+  assert.equal(updated.schoolId, 'school-alpha');
+  assert.equal(updated.schoolVerificationMethod, 'roster');
+  assert.equal(updated.schoolVerificationOutcome, 'verified');
+  assert.equal(updated.birthDate, '2005-03-10');
+  assert.equal(updated.status, 'pending_review');
+  assert.ok((updated.ageYearsAtRegistration as number) >= 18);
+  assert.equal(s.rows.get(`schoolRosterClaims/${rId}`)!.claimedByUid, 'stu-recovery-1');
+  assert.equal(s.rows.get('studentQrCredentials/stu-recovery-1')!.verificationStatus, 'active');
+  assert.equal(s.rows.get(lookupPath)!.status, 'active');
+
+  // Step 4: Second account trying to claim the consumed code fails cleanly
+  s.rows.set('studentProfiles/stu-other-claim', {
+    schemaVersion: 1,
+    fullName: 'Mara Cruz Reyes',
+    ageYearsAtRegistration: 21,
+    status: 'pending_review',
+    schoolApprovalStatus: 'pending',
+    medicalStatus: 'not_started',
+    medicalRevision: 0,
+  });
+  await assert.rejects(
+    () =>
+      claimMyRosterVerification.run({
+        auth: {uid: 'stu-other-claim', token: {}},
+        data: {
+          fullName: 'Mara Cruz Reyes',
+          birthDate: '2005-03-10',
+          lrn,
+          enrollmentCode: code,
+        },
+      } as never),
+    /did not match/i,
+  );
 });

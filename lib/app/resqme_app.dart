@@ -21,7 +21,6 @@ import 'package:resqme/features/welcome/presentation/scanner_entry_screen.dart';
 import 'package:resqme/features/qr/presentation/qr_scanner_screen.dart';
 import 'package:resqme/features/qr/services/tier1_qr_repository.dart';
 import 'package:resqme/features/school/services/school_review_repository.dart';
-import 'package:resqme/features/school/screens/school_review_screen.dart';
 
 class ResQMeApp extends StatelessWidget {
   const ResQMeApp({
@@ -79,6 +78,7 @@ class ResQMeApp extends StatelessWidget {
                   onSignOut: onSignOut,
                   openMedical: registered,
                   onMedicalCompleted: onOnboarded,
+                  onRefreshProfile: onRefresh,
                   onTier2: () =>
                       Navigator.of(context).pushNamed(AppRoutes.tier2),
                 )
@@ -139,13 +139,6 @@ class ResQMeApp extends StatelessWidget {
                 qrRepository: qrRepository!,
                 presentationClient: tier2Repository,
               ),
-        AppRoutes.schoolReview: (_) => schoolReviewRepository == null
-            ? const Tier1PendingScreen(
-                title: 'School review unavailable',
-                message: 'Reviewer services are unavailable.',
-                icon: Icons.school_outlined,
-              )
-            : SchoolReviewScreen(repository: schoolReviewRepository!),
       },
     );
   }

@@ -12,6 +12,7 @@ import {
   adminLrnRevealSignedMessage,
   getPortalDashboardStats,
   getSchoolStudentDetails,
+  viewSchoolStudentTier1Qr,
   issueAdminLrnRevealChallenge,
   listSchoolRoster,
   listSchoolStudents,
@@ -452,6 +453,29 @@ test('dashboard stats, Active Students filters, LRN leading zeros, pagination, a
   assert.equal(details.medicalCompletionStatus, 'complete');
   assert.equal(details.guardianAuthorizationStatus, 'verified');
   assert.equal(details.qrStatus, 'active');
+
+  s.rows.get('studentMedicalRecords/stu-verified')!.primaryContact = {
+    fullName: 'Test Guardian', relationship: 'Parent', phoneNumber: '09171234567',
+  };
+  const lookupPath = `studentQrLookups/${hashQrPayload(TEST_QR)}`;
+  s.rows.set(lookupPath, {uid: 'stu-verified', status: 'active'});
+  assert.deepEqual(
+    await viewSchoolStudentTier1Qr.run(req('master-a', {studentUid: 'stu-verified'})),
+    {payload: TEST_QR},
+  );
+  await assert.rejects(
+    () => viewSchoolStudentTier1Qr.run(req('master-a', {studentUid: 'stu-other-school'})),
+    {code: 'permission-denied'},
+  );
+  await assert.rejects(
+    () => viewSchoolStudentTier1Qr.run(req('stu-verified', {studentUid: 'stu-verified'})),
+    {code: 'permission-denied'},
+  );
+  s.rows.get(lookupPath)!.status = 'revoked';
+  await assert.rejects(
+    () => viewSchoolStudentTier1Qr.run(req('master-a', {studentUid: 'stu-verified'})),
+    {code: 'failed-precondition'},
+  );
 
   // Cross-school details denied
   await assert.rejects(

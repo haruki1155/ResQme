@@ -6,6 +6,7 @@ import '../screens/registration_pending_screen.dart';
 import '../screens/student_sign_in_screen.dart';
 import '../services/student_registration_repository.dart';
 import '../models/student_registration_profile.dart';
+import '../widgets/roster_claim_verification_dialog.dart';
 
 class StudentAccessGate extends StatefulWidget {
   const StudentAccessGate({
@@ -180,6 +181,28 @@ class _StudentAccessGateState extends State<StudentAccessGate>
           onRefreshStatus: reload,
           onPublicDashboard: publicDashboard,
           onSignOut: signOut,
+          onVerifyWithCode:
+              widget.repository is RosterClaimRegistrationRepository &&
+                  result.profile!.schoolApprovalStatus == 'pending'
+              ? () async {
+                  final verified = await showRosterClaimVerificationDialog(
+                    context: context,
+                    repository:
+                        widget.repository as RosterClaimRegistrationRepository,
+                    initialFullName: result.profile!.fullName,
+                  );
+                  if (!context.mounted ||
+                      verified?.profile?.schoolApprovalStatus != 'approved') {
+                    return;
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('School enrollment verified automatically!'),
+                    ),
+                  );
+                  reload();
+                }
+              : null,
         );
       }
       return Scaffold(

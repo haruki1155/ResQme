@@ -30,11 +30,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 private const val TIER2_CHANNEL = "resqme/tier2_key"
 private const val LOG_TAG = "ResQMeBiometric"
 private const val PICK_EXCEL_REQUEST = 9401
+private const val SAVE_QR_REQUEST = 9402
 private const val MAX_EXCEL_BYTES = 2 * 1024 * 1024
 
 class MainActivity : FlutterActivity() {
     private var biometricCancellation: CancellationSignal? = null
     private var pendingExcelResult: MethodChannel.Result? = null
+    private var pendingQrSave: Pair<ByteArray, MethodChannel.Result>? = null
 
     override fun onStop() {
         biometricCancellation?.cancel()
@@ -48,6 +50,30 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "resqme/qr_download")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "savePng") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val png = call.arguments as? ByteArray
+                if (png == null || png.isEmpty() || pendingQrSave != null) {
+                    result.error("save_unavailable", "Unable to save QR.", null)
+                    return@setMethodCallHandler
+                }
+                pendingQrSave = png to result
+                try {
+                    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "image/png"
+                        putExtra(Intent.EXTRA_TITLE, "ResQMe-Emergency-QR.png")
+                    }
+                    startActivityForResult(intent, SAVE_QR_REQUEST)
+                } catch (error: Exception) {
+                    pendingQrSave = null
+                    result.error("save_unavailable", "Unable to open the file picker.", null)
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TIER2_CHANNEL)
             .setMethodCallHandler { call, result ->
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
@@ -189,6 +215,24 @@ class MainActivity : FlutterActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == SAVE_QR_REQUEST) {
+            val (png, callback) = pendingQrSave ?: return
+            pendingQrSave = null
+            val uri = data?.data
+            if (resultCode != Activity.RESULT_OK || uri == null) {
+                callback.success(false)
+                return
+            }
+            try {
+                val output = contentResolver.openOutputStream(uri, "w")
+                    ?: throw IllegalStateException("Unable to open QR file.")
+                output.use { it.write(png) }
+                callback.success(true)
+            } catch (error: Exception) {
+                callback.error("save_failed", "Unable to write QR file.", null)
+            }
+            return
+        }
         if (requestCode == PICK_EXCEL_REQUEST) {
             val callback = pendingExcelResult
             pendingExcelResult = null

@@ -7,6 +7,7 @@ import {
   commitSchoolRosterImport,
   listSchoolRosterImports,
   previewSchoolRosterImport,
+  reissueRosterEnrollmentCode,
 } from '../src/school/sf1_roster_import';
 import {staffManagementDeps, type StaffAdminAuthPort} from '../src/staff/staff_account_management';
 
@@ -331,5 +332,15 @@ test('Preview masks LRNs, detects duplicates/conflicts, commits idempotently, an
     };
     assert.equal(history.imports.length, 1);
     assert.equal(history.imports[0].importId, 'imp_req_0001');
+
+    // Master Admin can re-issue an enrollment code for an unclaimed roster entry, revoking the old code
+    const reissued = (await reissueRosterEnrollmentCode.run(
+      authReq('admin-1', {rosterId: rId}),
+    )) as {maskedLrn: string; fullName: string; enrollmentCode: string};
+    assert.ok(reissued.enrollmentCode.length >= 16);
+    assert.notEqual(reissued.enrollmentCode, enrollmentCode);
+    assert.equal(store.rows.get(`schoolRosterCodes/${codeDigest}`)!.revoked, true);
+    const nextDigest = rosterCodeDigest(reissued.enrollmentCode, TEST_ROSTER_KEY);
+    assert.equal(store.rows.get(`schoolRosterClaims/${rId}`)!.enrollmentCodeDigest, nextDigest);
   });
 });

@@ -393,6 +393,39 @@ export const listSchoolStudents = onCall(resqmeRuntimeOptions, async (request) =
   };
 });
 
+export const viewSchoolStudentTier1Qr = onCall(resqmeRuntimeOptions, async (request) => {
+  const adminUid = request.auth?.uid;
+  if (!adminUid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const data = object(request.data);
+  keys(data, ['studentUid']);
+  const uid = validateStudentUid(data.studentUid);
+  const db = staffManagementDeps.db(adminUid);
+  return db.runTransaction(async (tx) => {
+    const admin = await requireMasterAdmin(db, adminUid, request.auth?.token.email_verified === true, tx);
+    const profile = (await tx.get(db.doc(`studentProfiles/${uid}`))).data();
+    if (profile?.schoolAssignmentStatus !== 'assigned' || profile.schoolId !== admin.schoolId) {
+      throw new HttpsError('permission-denied', 'Student account is unavailable.');
+    }
+    const [credential, medical, guardian] = await Promise.all([
+      tx.get(db.doc(`studentQrCredentials/${uid}`)),
+      tx.get(db.doc(`studentMedicalRecords/${uid}`)),
+      tx.get(db.doc(`studentGuardianAuthorizations/${uid}`)),
+    ]);
+    const payload = credential.get('payload');
+    if (credential.get('verificationStatus') !== 'active' || !isQrPayload(payload)) {
+      throw new HttpsError('failed-precondition', 'An active emergency QR is unavailable.');
+    }
+    const lookup = await tx.get(db.doc(`studentQrLookups/${hashQrPayload(payload)}`));
+    if (!lookup.exists || !evaluateQrEligibility({
+      uid, profile, credential: credential.data(), lookup: lookup.data(),
+      medical: medical.data(), guardianAuthorization: guardian.data(),
+    })) {
+      throw new HttpsError('failed-precondition', 'An active emergency QR is unavailable.');
+    }
+    return {payload};
+  });
+});
+
 export const getSchoolStudentDetails = onCall(resqmeRuntimeOptions, async (request) => {
   const adminUid = request.auth?.uid;
   if (!adminUid) throw new HttpsError('unauthenticated', 'Sign in is required.');

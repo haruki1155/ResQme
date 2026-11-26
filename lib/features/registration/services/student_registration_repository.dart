@@ -67,3 +67,13 @@ abstract interface class StudentRegistrationRepository {
   Future<RegistrationResult> loadOwnProfile();
   Future<void> signOut();
 }
+
+abstract interface class RosterClaimRegistrationRepository
+    implements StudentRegistrationRepository {
+  Future<RegistrationResult> claimRosterVerification({
+    required String fullName,
+    required String birthDate,
+    required String lrn,
+    required String enrollmentCode,
+  });
+}

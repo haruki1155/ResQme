@@ -8,10 +8,12 @@ class RegistrationPendingScreen extends StatelessWidget {
     required this.onRefreshStatus,
     required this.onPublicDashboard,
     required this.onSignOut,
+    this.onVerifyWithCode,
   });
 
   final StudentRegistrationProfile profile;
   final VoidCallback onRefreshStatus, onPublicDashboard, onSignOut;
+  final VoidCallback? onVerifyWithCode;
 
   @override
   Widget build(BuildContext context) {
@@ -102,6 +104,14 @@ class RegistrationPendingScreen extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 24),
+                  if (!isSchoolApproved && onVerifyWithCode != null) ...[
+                    FilledButton.icon(
+                      onPressed: onVerifyWithCode,
+                      icon: const Icon(Icons.verified_user_outlined),
+                      label: const Text('Verify with Enrollment Code'),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   FilledButton(
                     onPressed: onRefreshStatus,
                     child: const Text('View registration status'),

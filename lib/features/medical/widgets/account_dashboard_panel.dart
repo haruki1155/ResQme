@@ -88,11 +88,6 @@ class _AccountDashboardPanelState extends State<AccountDashboardPanel> {
               : 'My Account / My QR',
         ),
       ),
-      TextButton.icon(
-        onPressed: () => Navigator.pushNamed(context, AppRoutes.schoolReview),
-        icon: const Icon(Icons.school_outlined),
-        label: const Text('School reviewer sign in'),
-      ),
       if (unavailable)
         TextButton(
           onPressed: load,

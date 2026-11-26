@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/school_review_repository.dart';
+import '../../qr/presentation/qr_scanner_screen.dart';
 
 class SchoolReviewScreen extends StatefulWidget {
-  const SchoolReviewScreen({super.key, required this.repository});
+  const SchoolReviewScreen({super.key, required this.repository, this.scanQr});
   final SchoolReviewRepository repository;
+  final Future<String?> Function(BuildContext context)? scanQr;
   @override
   State<SchoolReviewScreen> createState() => _SchoolReviewScreenState();
 }
@@ -14,9 +17,49 @@ class _SchoolReviewScreenState extends State<SchoolReviewScreen> {
       studentUid = TextEditingController();
   SchoolReviewCandidate? candidate;
   bool busy = false;
+  int generation = 0;
+  StreamSubscription<void>? sessionSubscription;
+  @override
+  void initState() {
+    super.initState();
+    sessionSubscription = widget.repository.sessionChanges.listen((_) {
+      if (!mounted) return;
+      setState(() {
+        generation++;
+        candidate = null;
+        message = null;
+        busy = false;
+      });
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant SchoolReviewScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository != widget.repository) {
+      generation++;
+      candidate = null;
+      message = null;
+      busy = false;
+      sessionSubscription?.cancel();
+      sessionSubscription = widget.repository.sessionChanges.listen((_) {
+        if (mounted) {
+          setState(() {
+            generation++;
+            candidate = null;
+            message = null;
+            busy = false;
+          });
+        }
+      });
+    }
+  }
+
   String? message;
   @override
   void dispose() {
+    generation++;
+    sessionSubscription?.cancel();
     email.dispose();
     password.dispose();
     studentUid.dispose();
@@ -30,7 +73,7 @@ class _SchoolReviewScreenState extends State<SchoolReviewScreen> {
       if (!mounted) return;
       password.clear();
       setState(
-        () => message = 'Signed in. Enter the student review reference.',
+        () => message = 'Signed in. Scan a student QR for authorized review.',
       );
     } catch (_) {
       if (mounted) {
@@ -42,12 +85,53 @@ class _SchoolReviewScreenState extends State<SchoolReviewScreen> {
   }
 
   Future<void> findCandidate() async {
+    if (busy) return;
+    final ticket = ++generation;
+    final repository = widget.repository;
+    final owner = repository.currentUid;
+    setState(() {
+      candidate = null;
+      message = null;
+      busy = true;
+    });
+    final payload = widget.scanQr != null
+        ? await widget.scanQr!(context)
+        : await Navigator.of(context).push<String>(
+            MaterialPageRoute(
+              builder: (scannerContext) => QrScannerScreen(
+                onReviewerScan: (value) =>
+                    Navigator.of(scannerContext).pop(value),
+              ),
+            ),
+          );
+    if (payload == null ||
+        !mounted ||
+        ticket != generation ||
+        owner != repository.currentUid) {
+      if (mounted && ticket == generation) setState(() => busy = false);
+      return;
+    }
     setState(() => busy = true);
     try {
-      final result = await widget.repository.loadCandidate(studentUid.text);
-      if (mounted) setState(() => candidate = result);
+      final result = await repository.loadCandidateByQr(payload);
+      if (!mounted || ticket != generation || owner != repository.currentUid) {
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          candidate = result;
+          message =
+              'Registration found. School verification is pending; QR is inactive.';
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() => candidate = null);
+      if (mounted && ticket == generation && owner == repository.currentUid) {
+        setState(() {
+          candidate = null;
+          message =
+              'Registration is unavailable for review. Check your access or scan again.';
+        });
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -55,7 +139,13 @@ class _SchoolReviewScreenState extends State<SchoolReviewScreen> {
 
   Future<void> approve() async {
     final selected = candidate;
-    if (selected == null) return;
+    if (selected == null || busy) return;
+    final ticket = generation;
+    final owner = widget.repository.currentUid;
+    bool valid() =>
+        mounted &&
+        ticket == generation &&
+        owner == widget.repository.currentUid;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -75,28 +165,53 @@ class _SchoolReviewScreenState extends State<SchoolReviewScreen> {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !valid()) return;
     setState(() => busy = true);
     try {
       await widget.repository.approve(
         selected.studentUid,
         FirebaseSchoolReviewRepository.createRequestId(),
       );
-      if (mounted) {
-        setState(() => candidate = null);
-        message = 'School approval recorded.';
-        studentUid.clear();
+      if (!valid()) return;
+      setState(() {
+        candidate = null;
+        message = 'School approval recorded. Confirming current status...';
+      });
+      try {
+        final status = await widget.repository.refreshStatus(
+          selected.studentUid,
+        );
+        if (!valid()) return;
+        setState(
+          () => message =
+              'School verification: ${status.schoolStatus}\n${status.qrActive ? "QR ACTIVE" : "QR awaiting additional requirements"}',
+        );
+      } catch (_) {
+        if (valid()) {
+          setState(
+            () => message =
+                'School approval recorded. Status confirmation unavailable; QR activity is unknown.',
+          );
+        }
       }
     } catch (_) {
-      if (mounted) {
-        message = 'Approval could not be recorded. Refresh status and retry.';
+      if (valid()) {
+        setState(
+          () => message =
+              'Approval could not be confirmed. Refresh status and retry.',
+        );
       }
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (valid()) setState(() => busy = false);
     }
   }
 
   Future<void> signOut() async {
+    generation++;
+    setState(() {
+      candidate = null;
+      message = null;
+    });
     setState(() => busy = true);
     try {
       await widget.repository.signOut();
@@ -153,16 +268,9 @@ class _SchoolReviewScreenState extends State<SchoolReviewScreen> {
                       'Signed in as ${widget.repository.currentUid}',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    TextField(
-                      controller: studentUid,
-                      decoration: const InputDecoration(
-                        labelText: 'Student review reference',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
                     FilledButton(
                       onPressed: busy ? null : findCandidate,
-                      child: const Text('Find pending student'),
+                      child: const Text('Scan Student QR'),
                     ),
                     if (candidate != null)
                       Card(
@@ -191,7 +299,7 @@ class _SchoolReviewScreenState extends State<SchoolReviewScreen> {
                         ),
                       ),
                     OutlinedButton(
-                      onPressed: busy ? null : signOut,
+                      onPressed: signOut,
                       child: const Text('Sign out'),
                     ),
                   ],

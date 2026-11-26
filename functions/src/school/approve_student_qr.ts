@@ -23,10 +23,12 @@ export const approveStudentQr=onCall(resqmeRuntimeOptions,async request=>{
       reviewer:reviewerSnapshot.data(),student,
     });
     if(replay.exists){
+      if(replay.get('reviewerUid')!==reviewerUid||replay.get('schoolId')!==schoolId) throw new HttpsError('permission-denied','Approval unavailable.');
       if(replay.get('digest')!==digest) throw new HttpsError('already-exists','Request ID already used.');
+      if(student.schoolApprovalStatus!=='approved') throw new HttpsError('failed-precondition','Approval unavailable.');
       return {schoolApprovalStatus:'approved'};
     }
-    if(student.schoolApprovalStatus==='approved') throw new HttpsError('already-exists','School approval is already recorded.');
+    if(student.schoolApprovalStatus!=='pending') throw new HttpsError('failed-precondition','A pending school review is required.');
     tx.update(profile,{
       schoolApprovalStatus:'approved',schoolApprovedAt:FieldValue.serverTimestamp(),
       schoolApprovedBy:reviewerUid,updatedAt:FieldValue.serverTimestamp(),

@@ -1,4 +1,7 @@
-export { createStudentRegistration } from './registration/create_student_registration';
+export {
+  createStudentRegistration,
+  claimMyRosterVerification,
+} from './registration/create_student_registration';
 export {
   ensureMyStudentLoginQr,
   replaceMyStudentLoginQr,
@@ -12,6 +15,8 @@ export {completeMyMedicalRecord} from './medical/complete_my_medical_record';
 export {approveStudentQr} from './school/approve_student_qr';
 export {revokeStudentQr} from './school/revoke_student_qr';
 export {getSchoolReviewCandidate} from './school/get_school_review_candidate';
+export {getSchoolReviewCandidateByQr} from './school/get_school_review_candidate_by_qr';
+export {getSchoolReviewStatus} from './school/get_school_review_status';
 export {ensureMyTier1Qr} from './qr/ensure_my_tier1_qr';
 export {resolveTier1Qr} from './qr/resolve_tier1_qr';
 export {replaceMyTier1Qr} from './qr/replace_my_tier1_qr';
@@ -47,6 +52,7 @@ export {
   getPortalDashboardStats,
   listSchoolStudents,
   getSchoolStudentDetails,
+  viewSchoolStudentTier1Qr,
   verifySchoolStudentAccount,
   setStudentAccountStatus,
   resetStudentTrustedDevice,
@@ -65,4 +71,5 @@ export {
   previewSchoolRosterImport,
   commitSchoolRosterImport,
   listSchoolRosterImports,
+  reissueRosterEnrollmentCode,
 } from './school/sf1_roster_import';

@@ -25,8 +25,21 @@ abstract interface class LoginQrRegistrationClient
   Future<void> revokeMyStudentLoginQr();
 }
 
+abstract interface class RosterClaimRegistrationClient
+    implements RegistrationClient {
+  Future<Map<String, dynamic>> claimMyRosterVerification({
+    required String fullName,
+    required String birthDate,
+    required String lrn,
+    required String enrollmentCode,
+  });
+}
+
 class FlutterFireRegistrationClient
-    implements RegistrationClient, LoginQrRegistrationClient {
+    implements
+        RegistrationClient,
+        LoginQrRegistrationClient,
+        RosterClaimRegistrationClient {
   FlutterFireRegistrationClient({
     required this.auth,
     required this.firestore,
@@ -144,10 +157,36 @@ class FlutterFireRegistrationClient
         )
         .call<dynamic>({});
   }
+
+  @override
+  Future<Map<String, dynamic>> claimMyRosterVerification({
+    required String fullName,
+    required String birthDate,
+    required String lrn,
+    required String enrollmentCode,
+  }) async {
+    final res = await functions
+        .httpsCallable(
+          'claimMyRosterVerification',
+          options: HttpsCallableOptions(timeout: const Duration(seconds: 10)),
+        )
+        .call<dynamic>({
+          'fullName': fullName.trim(),
+          'birthDate': birthDate.trim(),
+          'lrn': lrn.trim(),
+          'enrollmentCode': enrollmentCode.trim().toUpperCase(),
+        });
+    if (res.data is! Map) {
+      throw StateError('Invalid roster verification response.');
+    }
+    return Map<String, dynamic>.from(res.data as Map);
+  }
 }
 
 class FirebaseStudentRegistrationRepository
-    implements StudentRegistrationRepository {
+    implements
+        StudentRegistrationRepository,
+        RosterClaimRegistrationRepository {
   FirebaseStudentRegistrationRepository(
     this.client, {
     AccountOperationLock? operationLock,
@@ -429,6 +468,56 @@ class FirebaseStudentRegistrationRepository
       return null;
     } catch (_) {
       return 'Unable to revoke Student Login QR. Please try again.';
+    }
+  }
+
+  @override
+  Future<RegistrationResult> claimRosterVerification({
+    required String fullName,
+    required String birthDate,
+    required String lrn,
+    required String enrollmentCode,
+  }) async {
+    if (_busy) {
+      return const RegistrationResult(
+        RegistrationState.failure,
+        message: 'An account operation is in progress. Please wait.',
+      );
+    }
+    final claimClient = client;
+    if (claimClient is! RosterClaimRegistrationClient) {
+      return const RegistrationResult(
+        RegistrationState.failure,
+        message: 'Roster verification service is unavailable.',
+      );
+    }
+    _busy = true;
+    try {
+      await claimClient.claimMyRosterVerification(
+        fullName: fullName,
+        birthDate: birthDate,
+        lrn: lrn,
+        enrollmentCode: enrollmentCode,
+      );
+      return await loadOwnProfile();
+    } on FirebaseFunctionsException catch (error) {
+      if (['unavailable', 'deadline-exceeded', 'network-request-failed']
+          .contains(error.code)) {
+        return const RegistrationResult(
+          RegistrationState.offline,
+          message: 'Connection unavailable. Please retry.',
+        );
+      }
+      return RegistrationResult(
+        RegistrationState.failure,
+        message: (error.message?.isNotEmpty == true)
+            ? error.message!
+            : 'Unable to verify enrollment details.',
+      );
+    } catch (error) {
+      return _error(error);
+    } finally {
+      _busy = false;
     }
   }
 

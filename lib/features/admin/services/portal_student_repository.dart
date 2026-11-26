@@ -458,11 +458,24 @@ abstract interface class IntegrityBoundRosterImportRepository
   });
 }
 
+abstract interface class RosterCodeReissueRepository
+    implements PortalStudentRepository {
+  Future<RosterGeneratedCredential> reissueRosterEnrollmentCode(
+    String rosterId,
+  );
+}
+
+abstract interface class SchoolStudentQrRepository {
+  Future<String> viewStudentTier1Qr(String studentUid);
+}
+
 class FirebasePortalStudentRepository
     implements
         RegistrationFilterableRosterRepository,
         TrustedDeviceRecoveryPortalRepository,
-        IntegrityBoundRosterImportRepository {
+        IntegrityBoundRosterImportRepository,
+        RosterCodeReissueRepository,
+        SchoolStudentQrRepository {
   FirebasePortalStudentRepository({
     required this.auth,
     required this.functions,
@@ -648,6 +661,26 @@ class FirebasePortalStudentRepository
     } catch (error) {
       _rethrowMapped(error, 'Unable to load school student accounts.');
     }
+  }
+
+  @override
+  Future<String> viewStudentTier1Qr(String studentUid) async {
+    final uid = auth.currentUser?.uid;
+    final scope = readCoordinator.activeScopeKey;
+    if (uid == null || (readCoordinator.requireBoundScope && scope == null)) {
+      throw StateError('Staff session unavailable.');
+    }
+    final response = await _callable('viewSchoolStudentTier1Qr')
+        .call<dynamic>({'studentUid': studentUid});
+    final data = response.data;
+    final payload = data is Map ? data['payload'] : null;
+    if (uid != auth.currentUser?.uid ||
+        scope != readCoordinator.activeScopeKey ||
+        payload is! String ||
+        !RegExp(r'^resqme:v1:[A-Za-z0-9_-]{43}$').hasMatch(payload)) {
+      throw StateError('Emergency QR unavailable.');
+    }
+    return payload;
   }
 
   @override
@@ -1336,4 +1369,26 @@ class FirebasePortalStudentRepository
       _rethrowMapped(error, 'Unable to load roster import history.');
     }
   }
+
+  @override
+  Future<RosterGeneratedCredential> reissueRosterEnrollmentCode(
+    String rosterId,
+  ) =>
+      operationLock.run(() async {
+        try {
+          final result =
+              await _callable('reissueRosterEnrollmentCode').call<dynamic>(
+            <String, dynamic>{'rosterId': rosterId},
+          );
+          final raw = Map<String, dynamic>.from(result.data as Map);
+          return RosterGeneratedCredential(
+            maskedLrn: raw['maskedLrn'] as String? ?? '••••••••••••',
+            fullName: raw['fullName'] as String? ?? 'Student',
+            gradeLevel: raw['gradeLevel'] as String? ?? '',
+            enrollmentCode: raw['enrollmentCode'] as String? ?? '',
+          );
+        } catch (error) {
+          _rethrowMapped(error, 'Unable to generate a new enrollment code.');
+        }
+      });
 }

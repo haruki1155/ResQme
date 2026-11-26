@@ -640,7 +640,8 @@ class _PortalProtectedLrnRowState extends State<PortalProtectedLrnRow>
   String? _revealedLrn;
   Timer? _autoHideTimer;
   int _revealGeneration = 0;
-  bool _isBackgrounded = false;
+  AppLifecycleState _lifecycle = AppLifecycleState.resumed;
+  Completer<void>? _waitingForFocus;
 
   @override
   void initState() {
@@ -660,20 +661,26 @@ class _PortalProtectedLrnRowState extends State<PortalProtectedLrnRow>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _isBackgrounded = false;
-    } else {
-      _isBackgrounded = true;
+    _lifecycle = state;
+    if (state != AppLifecycleState.inactive) {
+      _waitingForFocus?.complete();
+      _waitingForFocus = null;
+    }
+    // Android's biometric prompt temporarily takes focus from the Flutter view.
+    if (state != AppLifecycleState.resumed &&
+        state != AppLifecycleState.inactive) {
       _revealGeneration++;
-      if (_revealedLrn != null) {
-        _hideLrn();
-      }
+    }
+    if (state != AppLifecycleState.resumed && _revealedLrn != null) {
+      _hideLrn();
     }
   }
 
   @override
   void dispose() {
     _revealGeneration++;
+    _waitingForFocus?.complete();
+    _waitingForFocus = null;
     _autoHideTimer?.cancel();
     if (_revealedLrn != null) {
       widget.portalStudentRepository.setSecureScreen(false);
@@ -707,16 +714,22 @@ class _PortalProtectedLrnRowState extends State<PortalProtectedLrnRow>
         portalStudentRepository: widget.portalStudentRepository,
       ),
     );
+    if (revealed != null &&
+        mounted &&
+        gen == _revealGeneration &&
+        _lifecycle == AppLifecycleState.inactive) {
+      await (_waitingForFocus ??= Completer<void>()).future;
+    }
     if (revealed == null ||
         !mounted ||
-        _isBackgrounded ||
+        _lifecycle != AppLifecycleState.resumed ||
         gen != _revealGeneration ||
         widget.portalStudentRepository.currentAdminUid != startUid) {
       return;
     }
     await widget.portalStudentRepository.setSecureScreen(true);
     if (!mounted ||
-        _isBackgrounded ||
+        _lifecycle != AppLifecycleState.resumed ||
         gen != _revealGeneration ||
         widget.portalStudentRepository.currentAdminUid != startUid) {
       await widget.portalStudentRepository.setSecureScreen(false);

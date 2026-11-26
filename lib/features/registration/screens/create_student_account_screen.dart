@@ -4,6 +4,7 @@ import '../models/registration_draft.dart';
 import '../registration_validators.dart';
 import '../services/student_registration_repository.dart';
 import '../widgets/registration_privacy_dialog.dart';
+import '../widgets/roster_claim_verification_dialog.dart';
 
 class CreateStudentAccountScreen extends StatefulWidget {
   const CreateStudentAccountScreen({
@@ -41,6 +42,7 @@ class _CreateStudentAccountScreenState
   };
   String? gender, relationship;
   bool busy = false;
+  bool _hideEnrollmentCode = false;
   String? message;
 
   @override
@@ -71,6 +73,7 @@ class _CreateStudentAccountScreenState
       initialDate: initialDate.isAfter(now) ? now : initialDate,
       firstDate: DateTime(1900, 1, 1),
       lastDate: now,
+      initialDatePickerMode: DatePickerMode.year,
       helpText: 'Select Student Birth Date',
     );
     if (picked == null || !mounted) return;
@@ -160,6 +163,66 @@ class _CreateStudentAccountScreenState
       message = result.message;
     });
     if (result.state == RegistrationState.pending) {
+      final submittedName = fields['name']!.text.trim();
+      final submittedBirthDate = fields['birthDate']!.text.trim();
+      final submittedLrn = fields['lrn']!.text.trim();
+      final submittedCode = fields['enrollmentCode']!.text.trim();
+      final approvalStatus = result.profile?.schoolApprovalStatus;
+      final repo = widget.repository;
+
+      if (submittedCode.isNotEmpty &&
+          approvalStatus != 'approved' &&
+          repo is RosterClaimRegistrationRepository) {
+        final retry = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Automatic Verification Did Not Match'),
+            content: const Text(
+              'Your student account was created, but automatic school roster verification did not complete.\n\n'
+              'Double-check your full name, birth date (YYYY-MM-DD), 12-digit LRN, and enrollment code to retry automatic verification now, or continue for manual school review.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Continue as Pending'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Fix & Retry Verification'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted) return;
+        if (retry == true) {
+          final verified = await showRosterClaimVerificationDialog(
+            context: context,
+            repository: repo,
+            initialFullName: submittedName,
+            initialBirthDate: submittedBirthDate,
+            initialLrn: submittedLrn,
+            initialEnrollmentCode: submittedCode,
+            initialNotice:
+                'Check each field carefully (especially Birth Date YYYY-MM-DD and Enrollment Code).',
+          );
+          if (!mounted) return;
+          if (verified?.profile?.schoolApprovalStatus == 'approved') {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('School enrollment verified automatically!'),
+              ),
+            );
+          }
+        }
+      } else if (approvalStatus == 'approved') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('School enrollment verified automatically!'),
+          ),
+        );
+      }
+
       fields['password']!.clear();
       fields['confirm']!.clear();
       fields['lrn']!.clear();
@@ -204,7 +267,7 @@ class _CreateStudentAccountScreenState
                   field(
                     'birthDate',
                     'Birth date (YYYY-MM-DD)',
-                    hintText: 'e.g. 2010-05-10',
+                    hintText: 'YYYY-MM-DD (e.g. 2005-03-10)',
                     keyboard: TextInputType.datetime,
                     onChanged: _syncAgeFromBirthDate,
                     suffixIcon: IconButton(
@@ -238,7 +301,22 @@ class _CreateStudentAccountScreenState
                   field(
                     'enrollmentCode',
                     'Enrollment code (optional for manual review)',
-                    secret: true,
+                    secret: _hideEnrollmentCode,
+                    hintText: '20-character code from your school roster',
+                    suffixIcon: IconButton(
+                      tooltip: _hideEnrollmentCode
+                          ? 'Show enrollment code'
+                          : 'Hide enrollment code',
+                      onPressed: () => setState(
+                        () => _hideEnrollmentCode = !_hideEnrollmentCode,
+                      ),
+                      icon: Icon(
+                        _hideEnrollmentCode
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        size: 20,
+                      ),
+                    ),
                     validator: validateEnrollmentCode,
                   ),
                   const Text(

@@ -16,6 +16,7 @@ class QrScannerScreen extends StatefulWidget {
     this.embedded = false,
     this.onDetectionChanged,
     this.onResolveQr,
+    this.onReviewerScan,
   });
 
   /// Optional controller override for unit/widget testing without physical camera hardware.
@@ -26,6 +27,7 @@ class QrScannerScreen extends StatefulWidget {
   final bool embedded;
   final ValueChanged<bool>? onDetectionChanged;
   final Future<bool> Function(String payload)? onResolveQr;
+  final ValueChanged<String>? onReviewerScan;
 
   @override
   State<QrScannerScreen> createState() => QrScannerScreenState();
@@ -129,6 +131,10 @@ class QrScannerScreenState extends State<QrScannerScreen>
     }
 
     var result = QrPayloadParser.parse(rawValue);
+    if (widget.onReviewerScan != null && result is ValidResQMeQr) {
+      widget.onReviewerScan!(rawValue.trim());
+      return;
+    }
     var active = false;
     if (result is ValidResQMeQr && widget.onResolveQr != null) {
       active = await widget.onResolveQr!(rawValue.trim());

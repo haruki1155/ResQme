@@ -666,3 +666,94 @@ export const listSchoolRosterImports = onCall(resqmeRuntimeOptions, async (reque
     imports: items.slice(0, 20).map(({ms: _m, ...rest}) => rest),
   };
 });
+
+const ROSTER_CLAIM_ID_PATTERN = /^[a-f0-9]{64}$/;
+
+export const reissueRosterEnrollmentCode = onCall(resqmeRuntimeOptions, async (request) => {
+  const adminUid = request.auth?.uid;
+  if (!adminUid) throw new HttpsError('unauthenticated', 'Sign in is required.');
+  const data = object(request.data);
+  keys(data, ['rosterId']);
+
+  if (typeof data.rosterId !== 'string' || !ROSTER_CLAIM_ID_PATTERN.test(data.rosterId)) {
+    throw new HttpsError('invalid-argument', 'Invalid roster entry ID.');
+  }
+  const rosterId = data.rosterId;
+
+  const db = staffManagementDeps.db(adminUid);
+  const admin = await requireMasterAdmin(
+    db,
+    adminUid,
+    request.auth?.token.email_verified === true,
+  );
+
+  await enforceTransactionalRateLimit(
+    db,
+    `staffRosterCodeReissueRateLimits/${adminUid}`,
+    30,
+    'Too many enrollment code requests. Wait before trying again.',
+  );
+
+  const key = process.env.RESQME_SCHOOL_ROSTER_HMAC_KEY;
+  if (!key || Buffer.byteLength(key, 'utf8') < 32) {
+    throw new HttpsError('failed-precondition', 'Roster lookup key is not configured.');
+  }
+
+  return db.runTransaction(async (tx) => {
+    const ref = db.doc(`schoolRosterClaims/${rosterId}`);
+    const snap = await tx.get(ref);
+    const row = snap.data();
+    if (!snap.exists || !row || row.schoolId !== admin.schoolId) {
+      throw new HttpsError('permission-denied', 'Roster entry is unavailable for this school.');
+    }
+    if (typeof row.claimedByUid === 'string' && row.claimedByUid.length > 0) {
+      throw new HttpsError(
+        'failed-precondition',
+        'This student has already registered and claimed their roster slot.',
+      );
+    }
+
+    const oldDigest = row.enrollmentCodeDigest;
+    const code = generateEnrollmentCode();
+    const digest = rosterCodeDigest(code, key);
+    const codeExpiresAt = Date.now() + ENROLLMENT_CODE_TTL_MS;
+
+    if (typeof oldDigest === 'string' && oldDigest.length > 0) {
+      tx.set(
+        db.doc(`schoolRosterCodes/${oldDigest}`),
+        {revoked: true, revokedAt: FieldValue.serverTimestamp()},
+        {merge: true},
+      );
+    }
+    tx.update(ref, {
+      enrollmentCodeDigest: digest,
+      codeExpiresAt,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.create(db.doc(`schoolRosterCodes/${digest}`), {
+      rosterId,
+      schoolId: admin.schoolId,
+      claimedByUid: null,
+      codeExpiresAt,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    tx.create(
+      db.doc(`staffManagementAudits/${randomBytes(16).toString('hex')}`),
+      auditRecord({
+        actorUid: adminUid,
+        actorRole: admin.role,
+        schoolId: admin.schoolId,
+        action: 'reissue_roster_enrollment_code',
+        targetUid: rosterId,
+        outcome: 'allowed',
+      }),
+    );
+
+    return {
+      maskedLrn: maskLrn(row.lrn) ?? '••••••••••••',
+      fullName: typeof row.fullName === 'string' ? row.fullName : 'Student',
+      gradeLevel: typeof row.gradeLevel === 'string' ? row.gradeLevel : '',
+      enrollmentCode: code,
+    };
+  });
+});
